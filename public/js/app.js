@@ -55,7 +55,7 @@ const NAV = [
 
 function fmtMoney(n) {
   if (n == null || isNaN(n)) return '—';
-  return Number(n).toLocaleString('bg-BG', { maximumFractionDigits: 0 }) + ' лв.';
+  return Number(n).toLocaleString('bg-BG', { maximumFractionDigits: 0 }) + ' €';
 }
 function fmtDate(d) {
   if (!d) return '—';
@@ -186,6 +186,103 @@ async function mountShell() {
   sidebarEl.querySelectorAll('.nav-link').forEach(a => a.addEventListener('click', closeSidebar));
 
   return user;
+}
+
+// ---------------------------------------------------------------------------
+// период/седмица picker — бързи бутони (Тази седмица / Миналата седмица /
+// Този месец) + номерирана селекция на седмица, монтирани над чифт date
+// inputs, за да не се налага ръчно чоплене на дати при всяко въвеждане.
+// По подразбиране навсякъде сочим предходната (последната приключила)
+// седмица — тя е и най-често търсената при въвеждане на заплати/импорт.
+// Седмиците следват ISO 8601 (понеделник — начало), както реалните данни
+// от Bolt/Glovo (week_start винаги е понеделник).
+// ---------------------------------------------------------------------------
+function isoDateOnly(dt) { return dt.toISOString().slice(0, 10); }
+function addDaysStr(dateStr, n) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDateOnly(d); }
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = (d.getDay() + 6) % 7; // Пон=0 .. Нед=6
+  d.setDate(d.getDate() - day);
+  return isoDateOnly(d);
+}
+function isoWeekNumber(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+}
+function todayStr() { return isoDateOnly(new Date()); }
+function currentWeekStart() { return mondayOf(todayStr()); }
+function previousWeekStart() { return addDaysStr(currentWeekStart(), -7); }
+function monthStartStr(dateStr) { const d = new Date(dateStr + 'T00:00:00'); return isoDateOnly(new Date(d.getFullYear(), d.getMonth(), 1)); }
+function monthEndStr(dateStr) { const d = new Date(dateStr + 'T00:00:00'); return isoDateOnly(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
+
+// последните `count` седмици (най-новата първа), номерирани по ISO седмица
+function recentWeekOptions(count) {
+  const opts = [];
+  let ws = currentWeekStart();
+  for (let i = 0; i < count; i++) {
+    const we = addDaysStr(ws, 6);
+    opts.push({ start: ws, end: we, label: `Седмица ${isoWeekNumber(ws)} (${fmtDate(ws)} – ${fmtDate(we)})` });
+    ws = addDaysStr(ws, -7);
+  }
+  return opts;
+}
+
+// монтира лентата в `host` (елемент) и я свързва към чифт date inputs.
+// wireWeekEnd: при промяна на start автоматично слага end = start+6 дни
+// (стриктно седмични полета — напр. заплати).
+// useMonthPreset: добавя бутон "Този месец" (по-широки периоди — напр.
+// партньорска статистика, която не е задължително подравнена по седмица).
+// onApply(start, end): по избор — извиква се веднага след всеки бърз избор.
+// weekPresetMode: 'range' (по подразбиране) — "Тази/Миналата седмица" слагат
+// end = start+6 дни (истинския календарен край на седмицата, за стриктно
+// седмични полета). 'single' — end = start (двете полета са независими
+// week_start граници на филтър, напр. партньорска статистика).
+function mountPeriodPicker(host, startInput, endInput, opts) {
+  opts = opts || {};
+  const wireWeekEnd = opts.wireWeekEnd !== false;
+  const useMonthPreset = !!opts.useMonthPreset;
+  const weekPresetMode = opts.weekPresetMode || 'range';
+  const onApply = opts.onApply;
+  const weeks = recentWeekOptions(20);
+  host.innerHTML = `
+    <div class="period-picker">
+      <button type="button" class="btn btn-ghost btn-sm" data-pp="this-week">Тази седмица</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-pp="last-week">Миналата седмица</button>
+      ${useMonthPreset ? '<button type="button" class="btn btn-ghost btn-sm" data-pp="this-month">Този месец</button>' : ''}
+      <select class="pp-week-select">
+        <option value="">— избери седмица по номер —</option>
+        ${weeks.map(w => `<option value="${w.start}|${w.end}">${w.label}</option>`).join('')}
+      </select>
+    </div>`;
+  function apply(start, end) {
+    startInput.value = start;
+    endInput.value = end;
+    if (onApply) onApply(start, end);
+  }
+  host.querySelector('[data-pp="this-week"]').addEventListener('click', () => {
+    const s = currentWeekStart(); apply(s, weekPresetMode === 'single' ? s : addDaysStr(s, 6));
+  });
+  host.querySelector('[data-pp="last-week"]').addEventListener('click', () => {
+    const s = previousWeekStart(); apply(s, weekPresetMode === 'single' ? s : addDaysStr(s, 6));
+  });
+  const monthBtn = host.querySelector('[data-pp="this-month"]');
+  if (monthBtn) {
+    monthBtn.addEventListener('click', () => {
+      const t = todayStr(); apply(monthStartStr(t), monthEndStr(t));
+    });
+  }
+  host.querySelector('.pp-week-select').addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    const [s, en] = e.target.value.split('|');
+    apply(s, weekPresetMode === 'single' ? s : en);
+  });
+  if (wireWeekEnd) {
+    startInput.addEventListener('change', () => {
+      if (startInput.value) endInput.value = addDaysStr(startInput.value, 6);
+    });
+  }
 }
 
 function el(html) {

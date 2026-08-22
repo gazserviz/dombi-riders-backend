@@ -42,6 +42,12 @@ button,input,select,textarea{font-family:inherit;font-size:.92rem;}
 }
 .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--green);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.period-picker{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;}
+.period-picker .pp-week-select{
+  background:#00000040;border:1.5px solid var(--line);border-radius:10px;
+  padding:9px 12px;color:#fff;font-size:.82rem;max-width:100%;
+}
+.period-picker .pp-week-select:focus{outline:none;border-color:var(--green);}
 .hint{font-size:.76rem;color:var(--muted);margin-top:6px;}
 .demo-users{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:.76rem;color:var(--muted);}
 .demo-users code{background:#00000050;padding:2px 6px;border-radius:6px;color:var(--green);}

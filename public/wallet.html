@@ -189,7 +189,7 @@ async function init() {
               ${transferTargets.map(u => `<option value="${u.id}">${u.full_name} (${ROLE_LABELS[u.role] || u.role})</option>`).join('')}
             </select>
           </div>
-          <div class="field"><label>Сума (лв.) *</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
           <div class="field"><label>Бележка</label><input name="note" placeholder="напр. За гориво"></div>
           <button type="submit" class="btn btn-primary btn-block">Изпрати заявка за превод</button>
         </form>` : `<p class="hint">Няма други активни потребители за превод.</p>`}
@@ -219,7 +219,7 @@ async function init() {
         <div class="success-box" id="adjSuccess"></div>
         <form id="adjForm">
           <div class="field"><label>Потребител *</label><select name="user_id" id="adjUserSelect" required></select></div>
-          <div class="field"><label>Сума (лв.) — може да е отрицателна за тегление *</label><input name="amount" type="number" step="0.01" required></div>
+          <div class="field"><label>Сума (€) — може да е отрицателна за тегление *</label><input name="amount" type="number" step="0.01" required></div>
           <div class="field"><label>Бележка</label><input name="note" placeholder="напр. Начално салдо"></div>
           <button type="submit" class="btn btn-primary btn-block">Приложи корекция</button>
         </form>

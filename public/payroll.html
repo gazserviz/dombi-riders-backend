@@ -25,9 +25,6 @@ let DIRECTORY = [];
 let selectedProfileId = null;
 let earningsVisible = true;
 
-function isoDate(d) { return d.toISOString().slice(0, 10); }
-function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate() + n); return isoDate(d); }
-
 async function loadEntries() {
   const host = document.getElementById('entriesHost');
   const isAdmin = ['admin', 'manager'].includes(CURRENT_USER.role);
@@ -156,7 +153,7 @@ function renderImportRows(rows, { matched }) {
         <td>${r.phone ? '+359' + r.phone : '<span class="hint">няма</span>'}</td>
         ${matched ? `<td>${r.profile_name}</td>` : ''}
         <td>${r.order_count_unknown ? '<span class="hint">няма данни</span>' : (r.order_count ?? 0)}</td>
-        <td>${Number(r.gross_earnings || 0).toFixed(2)} лв.</td>
+        <td>${Number(r.gross_earnings || 0).toFixed(2)} €</td>
         <td>${r.needs_review ? '<span class="badge badge-warn">за проверка</span>' : ''}</td>
       </tr>`).join('')}
     </tbody></table></div>`;
@@ -170,10 +167,16 @@ async function initImportPanel() {
   const errorBox = document.getElementById('importError');
 
   function syncWeekFieldsVisibility() {
-    weekFields.style.display = platformSelect.value === 'bolt' ? 'flex' : 'none';
+    weekFields.style.display = platformSelect.value === 'bolt' ? 'block' : 'none';
   }
   platformSelect.addEventListener('change', syncWeekFieldsVisibility);
   syncWeekFieldsVisibility();
+
+  const importWeekStart = document.getElementById('importWeekStart');
+  const importWeekEnd = document.getElementById('importWeekEnd');
+  mountPeriodPicker(document.getElementById('importPeriodPicker'), importWeekStart, importWeekEnd);
+  importWeekStart.value = previousWeekStart();
+  importWeekEnd.value = addDaysStr(importWeekStart.value, 6);
 
   try {
     const { available } = await Api.get('/api/hr/payroll/import/status');
@@ -270,15 +273,16 @@ async function init() {
         <div class="panel-head"><h2>Въведи седмица</h2></div>
         <div class="error-box" id="entryError"></div>
         <form id="entryForm">
+          <div id="entryPeriodPicker"></div>
           <div class="field-row">
             <div class="field"><label>Начало на седмица *</label><input name="week_start" type="date" required></div>
             <div class="field"><label>Край на седмица *</label><input name="week_end" type="date" required></div>
           </div>
           <div class="field-row">
             <div class="field"><label>Брой поръчки *</label><input name="order_count" type="number" min="0" required></div>
-            <div class="field"><label>Заработка (лв.)</label><input name="gross_earnings" type="number" step="0.01" min="0"></div>
+            <div class="field"><label>Заработка (€)</label><input name="gross_earnings" type="number" step="0.01" min="0"></div>
           </div>
-          <div class="field"><label>Удръжка (лв.) — по подразбиране от трудовия договор, може да се промени ръчно</label><input name="deduction_amount" type="number" step="0.01" min="0"></div>
+          <div class="field"><label>Удръжка (€) — по подразбиране от трудовия договор, може да се промени ръчно</label><input name="deduction_amount" type="number" step="0.01" min="0"></div>
           <button type="submit" class="btn btn-primary btn-sm">Запази седмицата</button>
         </form>
       </div>
@@ -296,9 +300,12 @@ async function init() {
         </div>
         <div class="field"><label>Файл (.xlsx) *</label><input id="importFile" type="file" accept=".xlsx,.xls"></div>
       </div>
-      <div class="field-row" id="importWeekFields" style="display:none;">
-        <div class="field"><label>Начало на седмица *</label><input id="importWeekStart" type="date"></div>
-        <div class="field"><label>Край на седмица *</label><input id="importWeekEnd" type="date"></div>
+      <div id="importWeekFields" style="display:none;">
+        <div id="importPeriodPicker"></div>
+        <div class="field-row">
+          <div class="field"><label>Начало на седмица *</label><input id="importWeekStart" type="date"></div>
+          <div class="field"><label>Край на седмица *</label><input id="importWeekEnd" type="date"></div>
+        </div>
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="importPreviewBtn">Прегледай файла</button>
       <div id="importPreviewHost" style="margin-top:14px;"></div>
@@ -330,9 +337,11 @@ async function init() {
 
     const startField = document.querySelector('#entryForm input[name="week_start"]');
     const endField = document.querySelector('#entryForm input[name="week_end"]');
-    startField.addEventListener('change', () => {
-      if (startField.value && !endField.value) endField.value = addDays(startField.value, 6);
-    });
+    mountPeriodPicker(document.getElementById('entryPeriodPicker'), startField, endField);
+    // по подразбиране предходната (последната приключила) седмица — най-често
+    // въвежданата — за по-бързо навигиране, вместо да се тръгва от празно
+    startField.value = previousWeekStart();
+    endField.value = addDaysStr(startField.value, 6);
 
     document.getElementById('entryForm').addEventListener('submit', async (e) => {
       e.preventDefault();
