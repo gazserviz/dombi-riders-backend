@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Бланки и шаблони — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .token-chip{display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0;font-family:monospace;font-size:.78rem;cursor:pointer;}
+  .token-chip:hover{background:var(--line);}
+  .tier-badge{font-size:.72rem;padding:2px 8px;border-radius:20px;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/templates.html" data-title="Бланки и шаблони"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const PROTOCOL_TOKENS = ['protocol_number','type_label','date','plate_number','make','model','vin','year','odometer_km','fuel_level_pct','driver_label','exterior_notes','interior_notes'];
+const CONTRACT_TOKENS = ['contract_number','status_label','created_date','renter_name','renter_type_label','renter_egn','renter_phone','renter_email','renter_address','plate_number','make','model','vin','start_date','end_date','rate_amount','deposit_amount','start_odometer_km','end_odometer_km'];
+const EMPLOYMENT_LABOR_TOKENS = ['contract_number','contract_type_label','status_label','created_date','hours_per_day','start_date','end_date','weekly_deduction_amount','employee_name','employee_egn','employee_address','employee_phone','employee_email'];
+const EMPLOYMENT_CIVIL_TOKENS = ['contract_number','contract_type_label','status_label','created_date','start_date','end_date','weekly_deduction_amount','employee_name','employee_egn','employee_address','employee_phone','employee_email'];
+
+const DOC_TYPE_TOKENS = {
+  protocol: PROTOCOL_TOKENS,
+  contract: CONTRACT_TOKENS,
+  employment_contract_labor: EMPLOYMENT_LABOR_TOKENS,
+  employment_contract_civil: EMPLOYMENT_CIVIL_TOKENS,
+};
+const DOC_TYPE_LABELS = {
+  protocol: 'Приемо-предавателен протокол',
+  contract: 'Договор за наем',
+  employment_contract_labor: 'Трудов договор',
+  employment_contract_civil: 'Граждански договор',
+};
+
+let CURRENT_USER = null;
+let activeType = 'protocol';
+
+async function loadTemplate(docType) {
+  const content = document.getElementById('templateArea');
+  content.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const data = await Api.get(`/api/templates/${docType}`);
+  const t = data.template;
+  const tokens = DOC_TYPE_TOKENS[docType] || [];
+  const isAdmin = CURRENT_USER.role === 'admin';
+
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-head">
+        <h2>${DOC_TYPE_LABELS[docType] || docType}</h2>
+        <span class="badge ${t.source === 'docx' ? 'badge-warn' : 'badge-green'}">${t.source === 'docx' ? 'Качен Word шаблон' : 'Вградена бланка'}</span>
+      </div>
+      ${docType === 'employment_contract_labor' ? `<p class="hint">⚠️ Действителен трудов договор изисква квалифициран електронен подпис (КЕП) от работодателя по чл. 62 КТ — тази бланка/разписване е за чернова и преглед, не е правен съвет.</p>` : ''}
+
+      <div class="grid-2" style="margin-bottom:16px;">
+        <div class="stat-card"><div class="label">Попълване на качен .docx (Ниво 2)</div>
+          <div class="value" style="font-size:1rem;">${data.tier2_available ? '<span class="badge badge-green">Активно</span>' : '<span class="badge badge-danger">Неактивно на сървъра</span>'}</div>
+          ${!data.tier2_available ? '<div class="sub">Пакетите docxtemplater/pizzip не са инсталирани — качените шаблони ще паднат обратно към вградената бланка при изтегляне, докато не бъдат добавени.</div>' : ''}
+        </div>
+        <div class="stat-card"><div class="label">Векторен PDF (LibreOffice)</div>
+          <div class="value" style="font-size:1rem;">${data.soffice_available ? '<span class="badge badge-green">Наличен</span>' : '<span class="badge badge-muted">Няма — ползва се резервен растеризиран PDF</span>'}</div>
+        </div>
+      </div>
+
+      <h3>Вградена бланка — редактируем текст на "Общи условия"</h3>
+      <p class="hint">Този текст се вмъква в секция "Общи условия" на вградената бланка (.docx и .pdf). Оставете празно, за да не се показва секцията.</p>
+      ${isAdmin ? `
+      <form id="builtinForm">
+        <textarea name="content" rows="6" style="width:100%;font-family:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);">${t.source === 'builtin' ? (t.content || '') : ''}</textarea>
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+          <button type="submit" class="btn btn-primary btn-sm">Запази и активирай вградената бланка</button>
+          <span class="hint" id="builtinMsg"></span>
+        </div>
+      </form>` : `<p class="hint">Само администратор може да редактира шаблоните.</p>`}
+
+      <h3 style="margin-top:22px;">Качване на готов Word (.docx) шаблон — Ниво 2</h3>
+      <p class="hint">
+        Качете .docx файл, изготвен напр. в Microsoft Word, с токени във вид <code>{{token}}</code> — те ще се заменят автоматично с данните за конкретния документ. Налични токени за този тип документ:
+      </p>
+      <div style="margin-bottom:10px;">${tokens.map(tk => `<span class="token-chip" title="Кликни, за да копираш">{{${tk}}}</span>`).join('')}</div>
+      ${t.source === 'docx' && t.file_name ? `<p class="hint">Текущо качен файл: <strong>${t.file_name}</strong></p>` : ''}
+      ${isAdmin ? `
+      <div class="photo-upload-btn" id="uploadDocxBtn">📄 Качи .docx шаблон / кликни за избор</div>
+      <input type="file" id="docxFile" accept=".docx" style="display:none;">
+      <div class="hint" id="uploadMsg"></div>` : ''}
+    </div>`;
+
+  document.querySelectorAll('.token-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      navigator.clipboard?.writeText(chip.textContent).catch(() => {});
+      chip.style.background = 'var(--accent)';
+      setTimeout(() => { chip.style.background = ''; }, 300);
+    });
+  });
+
+  const builtinForm = document.getElementById('builtinForm');
+  if (builtinForm) builtinForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('builtinMsg');
+    msg.textContent = 'Записване…';
+    try {
+      await Api.put(`/api/templates/${docType}`, { content: e.target.content.value });
+      await loadTemplate(docType);
+      document.getElementById('builtinMsg').textContent = 'Запазено — вградената бланка е активна.';
+    } catch (err) { msg.textContent = err.message; }
+  });
+
+  const uploadBtn = document.getElementById('uploadDocxBtn');
+  if (uploadBtn) uploadBtn.addEventListener('click', () => document.getElementById('docxFile').click());
+  const docxFile = document.getElementById('docxFile');
+  if (docxFile) docxFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById('uploadMsg');
+    msg.textContent = 'Качване…';
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const result = await Api.post(`/api/templates/${docType}/upload`, { file_base64: dataUrl, file_name: file.name });
+      await loadTemplate(docType);
+      document.getElementById('uploadMsg').textContent = result.warning || 'Качено успешно и активирано.';
+    } catch (err) { msg.textContent = err.message; }
+  });
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (!['admin','manager'].includes(CURRENT_USER.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате шаблоните.</div>`;
+    return;
+  }
+  document.getElementById('app-content').innerHTML = `
+    <div class="tabs">
+      <div class="tab active" data-type="protocol">Приемо-предавателен протокол</div>
+      <div class="tab" data-type="contract">Договор за наем</div>
+      <div class="tab" data-type="employment_contract_labor">Трудов договор</div>
+      <div class="tab" data-type="employment_contract_civil">Граждански договор</div>
+    </div>
+    <div id="templateArea"></div>
+  `;
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeType = tab.dataset.type;
+      loadTemplate(activeType);
+    });
+  });
+  await loadTemplate(activeType);
+}
+init();
+</script>
+</body>
+</html>

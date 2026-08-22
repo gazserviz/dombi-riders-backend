@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Заплати — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/payroll.html" data-title="Заплати"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const PAID_LABELS = { true: ['Платено', 'badge-green'], false: ['Неплатено', 'badge-warn'] };
+function paidBadge(paid) { const [label, cls] = PAID_LABELS[!!paid]; return `<span class="badge ${cls}">${label}</span>`; }
+function signBadge(status) {
+  if (status === 'signed_in_person' || status === 'signed_remote') return '<span class="badge badge-green">Потвърдено</span>';
+  return '<span class="badge badge-muted">Непотвърдено</span>';
+}
+
+let CURRENT_USER = null;
+let DIRECTORY = [];
+let selectedProfileId = null;
+let earningsVisible = true;
+
+function isoDate(d) { return d.toISOString().slice(0, 10); }
+function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate() + n); return isoDate(d); }
+
+async function loadEntries() {
+  const host = document.getElementById('entriesHost');
+  const isAdmin = ['admin', 'manager'].includes(CURRENT_USER.role);
+  const profileId = isAdmin ? selectedProfileId : CURRENT_USER.id;
+  if (!profileId) { host.innerHTML = `<p class="hint">Изберете служител.</p>`; return; }
+
+  const { entries, earnings_visible } = await Api.get(`/api/hr/payroll?profile_id=${profileId}`);
+  earningsVisible = earnings_visible !== false;
+
+  if (!entries.length) { host.innerHTML = `<p class="hint">Няма въведени седмици за този служител.</p>`; return; }
+
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Седмица</th><th>Брой поръчки</th>
+        ${earningsVisible ? '<th>Заработка</th><th>Удръжка</th><th>Нето</th>' : ''}
+        <th>Потвърждение</th><th>Изплащане</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${entries.map(e => `
+          <tr>
+            <td>${fmtDate(e.week_start)} — ${fmtDate(e.week_end)}</td>
+            <td><strong>${e.order_count}</strong></td>
+            ${earningsVisible ? `
+            <td>${fmtMoney(e.gross_earnings)}</td>
+            <td>${fmtMoney(e.deduction_amount)}</td>
+            <td><strong>${fmtMoney(e.net_amount)}</strong></td>` : ''}
+            <td>${signBadge(e.signature_status)}${e.signed_by_name ? `<div class="hint" style="font-size:.74rem;">${e.signed_by_name} · ${fmtDate(e.signed_at)}</div>` : ''}</td>
+            <td>${paidBadge(e.paid)}</td>
+            <td style="white-space:nowrap;">
+              ${e.signature_status === 'none' ? `<button type="button" class="btn btn-primary btn-sm sign-btn" data-id="${e.id}">Подпиши</button>` : ''}
+              ${(isAdmin && !e.paid) ? `<button type="button" class="btn btn-ghost btn-sm mark-paid-btn" data-id="${e.id}">Маркирай платено</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+
+  host.querySelectorAll('.sign-btn').forEach(btn => {
+    btn.addEventListener('click', () => openSignDialog(btn.dataset.id));
+  });
+  host.querySelectorAll('.mark-paid-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try { await Api.post(`/api/hr/payroll/${btn.dataset.id}/mark-paid`, { paid: true }); await loadEntries(); }
+      catch (err) { alert(err.message); }
+    });
+  });
+}
+
+function setupSignatureCanvas(canvas) {
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#15181f';
+  let drawing = false, hasStroke = false;
+  function pos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+    const point = e.touches ? e.touches[0] : e;
+    return { x: (point.clientX - rect.left) * scaleX, y: (point.clientY - rect.top) * scaleY };
+  }
+  function start(e) { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+  function move(e) { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); hasStroke = true; }
+  function end() { drawing = false; }
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+  return {
+    clear() { ctx.clearRect(0, 0, canvas.width, canvas.height); hasStroke = false; },
+    hasSignature: () => hasStroke,
+    toDataUrl: () => canvas.toDataURL('image/png'),
+  };
+}
+
+function openSignDialog(entryId) {
+  const modalHost = document.getElementById('signModalHost');
+  modalHost.innerHTML = `
+    <div class="panel" style="max-width:480px;margin:20px auto;">
+      <div class="panel-head"><h2>Потвърждение на поръчки</h2></div>
+      <p class="hint">Разписването потвърждава единствено броя изпълнени поръчки за седмицата — не паричната сума.</p>
+      <div class="error-box" id="signError"></div>
+      <div class="field"><label>Име на подписващия *</label><input id="signName" value="${CURRENT_USER.full_name}"></div>
+      <canvas id="signCanvas" width="320" height="130" style="display:block;border:1px solid var(--line);border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;max-width:100%;"></canvas>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="signClearBtn">Изчисти</button>
+        <button type="button" class="btn btn-primary btn-sm" id="signSubmitBtn">Подпиши</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="signCancelBtn">Откажи</button>
+      </div>
+    </div>`;
+  const sig = setupSignatureCanvas(document.getElementById('signCanvas'));
+  document.getElementById('signClearBtn').addEventListener('click', () => sig.clear());
+  document.getElementById('signCancelBtn').addEventListener('click', () => { modalHost.innerHTML = ''; });
+  document.getElementById('signSubmitBtn').addEventListener('click', async () => {
+    const errorBox = document.getElementById('signError');
+    const name = document.getElementById('signName').value.trim();
+    if (!name) { errorBox.textContent = 'Въведете име.'; errorBox.classList.add('show'); return; }
+    try {
+      const body = { signer_name: name };
+      if (sig.hasSignature()) body.signature_image = sig.toDataUrl();
+      await Api.post(`/api/hr/payroll/${entryId}/sign`, body);
+      modalHost.innerHTML = '';
+      await loadEntries();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result); // "data:<mime>;base64,...."
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderImportRows(rows, { matched }) {
+  if (!rows.length) return '<p class="hint">няма</p>';
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Куриер</th><th>Телефон</th>${matched ? '<th>Съпоставен профил</th>' : ''}<th>Поръчки</th><th>Заработка</th><th></th></tr></thead>
+    <tbody>${rows.map(r => `
+      <tr>
+        <td>${r.name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || (r.courier_uid || r.courier_id)}</td>
+        <td>${r.phone ? '+359' + r.phone : '<span class="hint">няма</span>'}</td>
+        ${matched ? `<td>${r.profile_name}</td>` : ''}
+        <td>${r.order_count_unknown ? '<span class="hint">няма данни</span>' : (r.order_count ?? 0)}</td>
+        <td>${Number(r.gross_earnings || 0).toFixed(2)} лв.</td>
+        <td>${r.needs_review ? '<span class="badge badge-warn">за проверка</span>' : ''}</td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function initImportPanel() {
+  const platformSelect = document.getElementById('importPlatform');
+  const weekFields = document.getElementById('importWeekFields');
+  const previewBtn = document.getElementById('importPreviewBtn');
+  const previewHost = document.getElementById('importPreviewHost');
+  const errorBox = document.getElementById('importError');
+
+  function syncWeekFieldsVisibility() {
+    weekFields.style.display = platformSelect.value === 'bolt' ? 'flex' : 'none';
+  }
+  platformSelect.addEventListener('change', syncWeekFieldsVisibility);
+  syncWeekFieldsVisibility();
+
+  try {
+    const { available } = await Api.get('/api/hr/payroll/import/status');
+    if (!available) {
+      document.getElementById('importUnavailable').style.display = 'block';
+      document.getElementById('importControls').style.display = 'none';
+      weekFields.style.display = 'none';
+      previewBtn.style.display = 'none';
+    }
+  } catch (e) { /* при грешка оставяме контролите достъпни, ще гръмне ясно при опит */ }
+
+  let lastFileBase64 = null;
+  let lastPlatform = null;
+
+  previewBtn.addEventListener('click', async () => {
+    errorBox.classList.remove('show');
+    const fileInput = document.getElementById('importFile');
+    if (!fileInput.files[0]) { errorBox.textContent = 'Изберете файл.'; errorBox.classList.add('show'); return; }
+    previewBtn.disabled = true;
+    previewHost.innerHTML = '<div class="loading">Разчитане на файла…</div>';
+    try {
+      lastFileBase64 = await fileToBase64(fileInput.files[0]);
+      lastPlatform = platformSelect.value;
+      const result = await Api.post('/api/hr/payroll/import/preview', { platform: lastPlatform, file_base64: lastFileBase64 });
+      previewHost.innerHTML = result.weeks.map((wk, idx) => `
+        <div class="panel" style="margin-top:10px;">
+          <div class="panel-head"><h3>${wk.week_start ? `${fmtDate(wk.week_start)} — ${fmtDate(wk.week_end)}` : 'Седмица (въведете начало/край по-горе)'}</h3></div>
+          ${wk.errors && wk.errors.length ? `<p class="hint" style="color:var(--warn,#c99);">⚠️ ${wk.errors.length} ред(а) с повредени/нечислови данни в оригиналния файл — маркирани по-долу, изискват ръчна проверка спрямо оригиналната фактура.</p>` : ''}
+          <p><strong>Съпоставени по телефон (${wk.matched.length}):</strong></p>
+          ${renderImportRows(wk.matched, { matched: true })}
+          <p style="margin-top:10px;"><strong>Несъпоставени (${wk.unmatched.length}):</strong></p>
+          ${renderImportRows(wk.unmatched, { matched: false })}
+        </div>`).join('') + `
+        <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:10px;">
+          <input type="checkbox" id="importCreateMissing"> Създай нови профили (шофьор) за несъпоставените куриери
+        </label>
+        <button type="button" class="btn btn-primary btn-sm" id="importApplyBtn" style="margin-top:8px;">Приложи импорта</button>
+      `;
+      document.getElementById('importApplyBtn').addEventListener('click', async () => {
+        const applyBtn = document.getElementById('importApplyBtn');
+        applyBtn.disabled = true;
+        errorBox.classList.remove('show');
+        try {
+          const body = {
+            platform: lastPlatform, file_base64: lastFileBase64,
+            create_missing_profiles: document.getElementById('importCreateMissing').checked,
+          };
+          if (lastPlatform === 'bolt') {
+            body.week_start = document.getElementById('importWeekStart').value;
+            body.week_end = document.getElementById('importWeekEnd').value;
+            if (!body.week_start || !body.week_end) { throw new Error('Въведете начало и край на седмицата за Bolt файла.'); }
+          }
+          const res = await Api.post('/api/hr/payroll/import/apply', body);
+          previewHost.innerHTML = `<p class="hint">Готово: записани ${res.written_entries} седмични записа, създадени ${res.created_profiles.length} нови профила, останали несъпоставени ${res.unmatched.length}.</p>`;
+          if (selectedProfileId) await loadEntries();
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.classList.add('show');
+        } finally {
+          applyBtn.disabled = false;
+        }
+      });
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+      previewHost.innerHTML = '';
+    } finally {
+      previewBtn.disabled = false;
+    }
+  });
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  const isAdmin = ['admin', 'manager'].includes(CURRENT_USER.role);
+
+  const { users } = await Api.get('/api/wallet/directory');
+  // включва и мениджъри — мениджър може едновременно да изпълнява и шофьорска
+  // работа (виж партньорските комисионни), затова не ограничаваме само до role==='driver'
+  DIRECTORY = users.filter(u => u.role !== 'admin');
+
+  document.getElementById('app-content').innerHTML = `
+    ${isAdmin ? `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>Избери служител</h2></div>
+        <div class="field"><select id="employeeSelect">
+          <option value="">— избери —</option>
+          ${DIRECTORY.map(u => `<option value="${u.id}">${u.full_name}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Въведи седмица</h2></div>
+        <div class="error-box" id="entryError"></div>
+        <form id="entryForm">
+          <div class="field-row">
+            <div class="field"><label>Начало на седмица *</label><input name="week_start" type="date" required></div>
+            <div class="field"><label>Край на седмица *</label><input name="week_end" type="date" required></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Брой поръчки *</label><input name="order_count" type="number" min="0" required></div>
+            <div class="field"><label>Заработка (лв.)</label><input name="gross_earnings" type="number" step="0.01" min="0"></div>
+          </div>
+          <div class="field"><label>Удръжка (лв.) — по подразбиране от трудовия договор, може да се промени ръчно</label><input name="deduction_amount" type="number" step="0.01" min="0"></div>
+          <button type="submit" class="btn btn-primary btn-sm">Запази седмицата</button>
+        </form>
+      </div>
+    </div>` : ''}
+
+    ${isAdmin ? `
+    <div class="panel" id="importPanel">
+      <div class="panel-head"><h2>Импорт от Bolt / Glovo (реален седмичен файл)</h2></div>
+      <p class="hint">Качете оригиналния .xlsx експорт от Bolt Food или Glovo (Freestreets BG) за дадена седмица — системата ще опита да съпостави куриерите със съществуващи профили по телефон и ще предложи преглед преди запис. Заработката се изчислява като сумата, изкарана от шофьора вкл. бакшишите, без ДДС.</p>
+      <div class="error-box" id="importError"></div>
+      <div id="importUnavailable" class="hint" style="display:none;color:var(--warn,#c99);">Импортът не е наличен в момента (липсва пакетът за четене на Excel файлове в тази среда).</div>
+      <div id="importControls" class="field-row">
+        <div class="field"><label>Платформа *</label>
+          <select id="importPlatform"><option value="glovo">Glovo</option><option value="bolt">Bolt Food</option></select>
+        </div>
+        <div class="field"><label>Файл (.xlsx) *</label><input id="importFile" type="file" accept=".xlsx,.xls"></div>
+      </div>
+      <div class="field-row" id="importWeekFields" style="display:none;">
+        <div class="field"><label>Начало на седмица *</label><input id="importWeekStart" type="date"></div>
+        <div class="field"><label>Край на седмица *</label><input id="importWeekEnd" type="date"></div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="importPreviewBtn">Прегледай файла</button>
+      <div id="importPreviewHost" style="margin-top:14px;"></div>
+    </div>` : ''}
+
+    <div class="panel">
+      <div class="panel-head"><h2>${isAdmin ? 'Седмици на избрания служител' : 'Моите седмици'}</h2></div>
+      <div id="entriesHost" class="loading">${isAdmin ? 'Изберете служител отгоре.' : 'Зареждане…'}</div>
+    </div>
+    <div id="signModalHost"></div>
+  `;
+
+  if (isAdmin) {
+    await initImportPanel();
+    const select = document.getElementById('employeeSelect');
+    select.addEventListener('change', async () => {
+      selectedProfileId = select.value || null;
+      if (!selectedProfileId) { document.getElementById('entriesHost').innerHTML = `<p class="hint">Изберете служител.</p>`; return; }
+      document.getElementById('entriesHost').innerHTML = `<div class="loading">Зареждане…</div>`;
+      // предложи удръжка по подразбиране от активния трудов договор на избрания служител
+      try {
+        const { employment_contracts } = await Api.get(`/api/hr/personnel/${selectedProfileId}`);
+        const active = employment_contracts.find(c => c.status === 'active') || employment_contracts[0];
+        const deductionField = document.querySelector('#entryForm input[name="deduction_amount"]');
+        if (active && deductionField && !deductionField.value) deductionField.value = active.weekly_deduction_amount || 0;
+      } catch (e) { /* незадължително */ }
+      await loadEntries();
+    });
+
+    const startField = document.querySelector('#entryForm input[name="week_start"]');
+    const endField = document.querySelector('#entryForm input[name="week_end"]');
+    startField.addEventListener('change', () => {
+      if (startField.value && !endField.value) endField.value = addDays(startField.value, 6);
+    });
+
+    document.getElementById('entryForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById('entryError');
+      errorBox.classList.remove('show');
+      if (!selectedProfileId) { errorBox.textContent = 'Изберете служител.'; errorBox.classList.add('show'); return; }
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      data.profile_id = selectedProfileId;
+      try {
+        await Api.post('/api/hr/payroll', data);
+        await loadEntries();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  } else {
+    await loadEntries();
+  }
+}
+init();
+</script>
+</body>
+</html>

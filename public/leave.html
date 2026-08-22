@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отпуски — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/leave.html" data-title="Отпуски"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const LEAVE_TYPE_LABELS = { annual: 'Платен годишен', sick: 'Болничен', unpaid: 'Неплатен', other: 'Друго' };
+const LEAVE_STATUS_BADGES = {
+  pending: ['Чакаща', 'badge-warn'],
+  approved: ['Одобрена', 'badge-green'],
+  rejected: ['Отхвърлена', 'badge-danger'],
+  cancelled: ['Отменена', 'badge-muted'],
+};
+function leaveStatusBadge(status) {
+  const [label, cls] = LEAVE_STATUS_BADGES[status] || [status, 'badge-muted'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+let CURRENT_USER = null;
+
+function requestsTable(requests, opts) {
+  const { showEmployee, showActions } = opts;
+  if (!requests.length) return `<p class="hint">Няма заявки.</p>`;
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr>
+        ${showEmployee ? '<th>Служител</th>' : ''}
+        <th>Вид</th><th>Период</th><th>Дни</th><th>Статус</th><th>Бележка</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${requests.map(r => `
+          <tr>
+            ${showEmployee ? `<td>${r.employee_name || r.profile_id}</td>` : ''}
+            <td>${LEAVE_TYPE_LABELS[r.type] || r.type}</td>
+            <td>${fmtDate(r.start_date)} — ${fmtDate(r.end_date)}</td>
+            <td><strong>${r.days}</strong></td>
+            <td>${leaveStatusBadge(r.status)}${r.decision_note ? `<div class="hint" style="font-size:.74rem;">${r.decision_note}</div>` : ''}</td>
+            <td>${r.note || '—'}</td>
+            <td style="white-space:nowrap;">
+              ${(showActions && r.status === 'pending') ? `
+                <button type="button" class="btn btn-primary btn-sm decide-btn" data-id="${r.id}" data-approve="1">Одобри</button>
+                <button type="button" class="btn btn-ghost btn-sm decide-btn" data-id="${r.id}" data-approve="0">Отхвърли</button>` : ''}
+              ${(!showEmployee && r.status === 'pending') ? `<button type="button" class="btn btn-ghost btn-sm cancel-btn" data-id="${r.id}">Отмени</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+async function loadOwnBalance() {
+  const host = document.getElementById('balanceHost');
+  const data = await Api.get('/api/hr/leave/balance');
+  host.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">Полагащи се дни</div><div class="value">${data.balance.entitled_days}</div></div>
+      <div class="stat-card"><div class="label">Пренесени от предх. година</div><div class="value">${data.balance.carried_over_days}</div></div>
+      <div class="stat-card"><div class="label">Използвани</div><div class="value">${data.used_annual_days}</div></div>
+      <div class="stat-card"><div class="label">Остатък</div><div class="value ${data.remaining_days >= 0 ? 'green' : 'warn'}">${data.remaining_days}</div></div>
+    </div>`;
+}
+
+async function loadOwnRequests() {
+  const host = document.getElementById('ownRequestsHost');
+  const { requests } = await Api.get(`/api/hr/leave/requests?profile_id=${CURRENT_USER.id}`);
+  host.innerHTML = requestsTable(requests, { showEmployee: false, showActions: false });
+  host.querySelectorAll('.cancel-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try { await Api.post(`/api/hr/leave/requests/${btn.dataset.id}/cancel`, {}); await refreshAll(); }
+      catch (err) { alert(err.message); }
+    });
+  });
+}
+
+async function loadTeamRequests() {
+  const host = document.getElementById('teamRequestsHost');
+  if (!host) return;
+  const isAdmin = CURRENT_USER.role === 'admin';
+  const url = isAdmin ? '/api/hr/leave/requests' : '/api/hr/leave/requests?scope=team';
+  const { requests } = await Api.get(url);
+  const { users } = await Api.get('/api/wallet/directory');
+  const nameById = Object.fromEntries(users.map(u => [u.id, u.full_name]));
+  requests.forEach(r => { r.employee_name = nameById[r.profile_id] || r.profile_id; });
+  host.innerHTML = requestsTable(requests, { showEmployee: true, showActions: true });
+  host.querySelectorAll('.decide-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await Api.post(`/api/hr/leave/requests/${btn.dataset.id}/decide`, { approve: btn.dataset.approve === '1' });
+        await refreshAll();
+      } catch (err) { alert(err.message); }
+    });
+  });
+}
+
+async function refreshAll() {
+  await loadOwnBalance();
+  await Promise.all([loadOwnRequests(), loadTeamRequests()]);
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  const isAdminOrManager = ['admin', 'manager'].includes(CURRENT_USER.role);
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>Моят баланс за ${new Date().getFullYear()} г.</h2></div>
+      <div id="balanceHost" class="loading">Зареждане…</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Нова заявка за отпуск</h2></div>
+      <div class="error-box" id="reqError"></div>
+      <form id="leaveForm">
+        <div class="field"><label>Вид отпуск</label>
+          <select name="type">
+            <option value="annual">Платен годишен</option>
+            <option value="sick">Болничен</option>
+            <option value="unpaid">Неплатен</option>
+            <option value="other">Друго</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Начална дата *</label><input name="start_date" type="date" required></div>
+          <div class="field"><label>Крайна дата *</label><input name="end_date" type="date" required></div>
+        </div>
+        <div class="field"><label>Брой работни дни *</label><input name="days" type="number" step="0.5" min="0.5" required></div>
+        <div class="field"><label>Бележка</label><input name="note"></div>
+        <button type="submit" class="btn btn-primary btn-sm">Изпрати заявка</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Моите заявки</h2></div>
+      <div id="ownRequestsHost" class="loading">Зареждане…</div>
+    </div>
+
+    ${isAdminOrManager ? `
+    <div class="panel">
+      <div class="panel-head"><h2>${CURRENT_USER.role === 'admin' ? 'Всички заявки' : 'Заявки на моя екип'}</h2></div>
+      <div id="teamRequestsHost" class="loading">Зареждане…</div>
+    </div>` : ''}
+  `;
+
+  document.getElementById('leaveForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('reqError');
+    errorBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await Api.post('/api/hr/leave/requests', data);
+      e.target.reset();
+      await refreshAll();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  await refreshAll();
+}
+init();
+</script>
+</body>
+</html>

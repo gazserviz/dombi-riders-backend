@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Нова кола — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/vehicles.html" data-title="Нова кола"></div>
+
+<script src="/js/app.js"></script>
+<script>
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin','manager'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да добавяте коли.</div>`;
+    return;
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>Снимка на талон</h2></div>
+        <p>Качете снимка на свидетелството за регистрация — системата ще се опита автоматично да разчете данните.</p>
+        <div class="photo-upload-btn" id="talonUploadBtn">📷 Качи снимка на талон / кликни за избор</div>
+        <input type="file" id="talonFile" accept="image/*" style="display:none;">
+        <div id="talonPreview"></div>
+        <div id="talonStatus" class="hint"></div>
+        <div id="talonFields" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Данни за колата</h2></div>
+        <div class="error-box" id="errorBox"></div>
+        <div class="success-box" id="successBox"></div>
+        <form id="vehicleForm">
+          <div class="field-row">
+            <div class="field"><label>Рег. номер *</label><input name="plate_number" required placeholder="CA1234HK"></div>
+            <div class="field"><label>Рама / VIN</label><input name="vin"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Марка *</label><input name="make" required></div>
+            <div class="field"><label>Модел *</label><input name="model" required></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Година</label><input name="year" type="number" min="1990" max="2030"></div>
+            <div class="field"><label>Цвят</label><input name="color"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Категория</label>
+              <select name="category">
+                <option value="economy">Икономична</option>
+                <option value="comfort">Комфортна</option>
+                <option value="hybrid_electric">Хибрид/Електро</option>
+                <option value="moto">Мотор</option>
+                <option value="scooter">Скутер</option>
+                <option value="bike">Е-колело</option>
+              </select>
+            </div>
+            <div class="field"><label>Гориво</label>
+              <select name="fuel">
+                <option value="petrol">Бензин</option>
+                <option value="diesel">Дизел</option>
+                <option value="hybrid">Хибрид</option>
+                <option value="electric">Електрическа</option>
+                <option value="lpg">Газ</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Скоростна кутия</label>
+              <select name="transmission"><option value="manual">Ръчна</option><option value="automatic">Автоматична</option></select>
+            </div>
+            <div class="field"><label>Места</label><input name="seats" type="number" min="1" max="9" value="5"></div>
+          </div>
+
+          <h3 style="margin-top:20px;">Пробег и сервизен интервал</h3>
+          <div class="field-row">
+            <div class="field"><label>Начален пробег (км)</label><input name="initial_odometer_km" type="number" min="0" value="0"></div>
+            <div class="field"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Сервизен интервал (месеци)</label><input name="service_interval_months" type="number" min="1" value="6"></div>
+            <div class="field"><label>Сервизен интервал (км)</label><input name="service_interval_km" type="number" min="0" value="10000"></div>
+          </div>
+
+          <h3 style="margin-top:20px;">Себестойност</h3>
+          <div class="field-row">
+            <div class="field"><label>Покупна цена (лв.)</label><input name="purchase_price" type="number" step="0.01"></div>
+            <div class="field"><label>Дата на покупка</label><input name="purchase_date" type="date"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Амортизация (месеци)</label><input name="depreciation_months" type="number" value="60"></div>
+            <div class="field"><label>Остатъчна стойност (лв.)</label><input name="residual_value" type="number" step="0.01" value="0"></div>
+          </div>
+
+          <h3 style="margin-top:20px;">Документи и срокове</h3>
+          <div class="field-row">
+            <div class="field"><label>Годна регистрация до</label><input name="registration_expiry" type="date"></div>
+            <div class="field"><label>Винетка до</label><input name="vignette_expiry" type="date"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Технически преглед до</label><input name="inspection_expiry" type="date"></div>
+            <div class="field"></div>
+          </div>
+
+          <h3 style="margin-top:20px;">Гражданска отговорност</h3>
+          <div class="field-row">
+            <div class="field"><label>Валидна до</label><input name="insurance_expiry" type="date"></div>
+            <div class="field"><label>Застраховател</label><input name="insurance_insurer" placeholder="напр. Армеец"></div>
+          </div>
+          <div class="field"><label>№ на полица</label><input name="insurance_policy_number"></div>
+
+          <h3 style="margin-top:20px;">Каско</h3>
+          <div class="field-row">
+            <div class="field"><label>Валидно до</label><input name="casco_expiry" type="date"></div>
+            <div class="field"><label>Застраховател</label><input name="casco_insurer" placeholder="напр. Булстрад"></div>
+          </div>
+          <div class="field"><label>№ на полица</label><input name="casco_policy_number"></div>
+
+          <div class="field"><label>Бележки</label><textarea name="notes" rows="2"></textarea></div>
+
+          <button type="submit" class="btn btn-primary btn-block">Запази колата</button>
+        </form>
+      </div>
+    </div>
+  `;
+
+  let talonPhotoDataUrl = null;
+
+  document.getElementById('talonUploadBtn').addEventListener('click', () => document.getElementById('talonFile').click());
+  document.getElementById('talonFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    talonPhotoDataUrl = await readFileAsDataUrl(file);
+    document.getElementById('talonPreview').innerHTML = `<div class="photo-grid"><img src="${talonPhotoDataUrl}"></div>`;
+    const statusEl = document.getElementById('talonStatus');
+    statusEl.textContent = 'Разчитане на данните… (може да отнеме няколко секунди)';
+
+    try {
+      const result = await Api.post('/api/talon-scan-preview', { photo: talonPhotoDataUrl });
+      renderTalonFields(result.extracted, result.warning);
+    } catch (err) {
+      statusEl.textContent = '';
+      renderTalonFields(null, err.message);
+    }
+  });
+
+  function renderTalonFields(extracted, warning) {
+    const statusEl = document.getElementById('talonStatus');
+    const fieldsEl = document.getElementById('talonFields');
+    statusEl.textContent = warning ? warning : (extracted ? 'Разчетени данни — прегледайте и потвърдете:' : '');
+    if (!extracted) { fieldsEl.innerHTML = ''; return; }
+    const rows = Object.entries(extracted).filter(([,v]) => v != null && v !== '');
+    fieldsEl.innerHTML = `
+      <div class="table-wrap"><table>${rows.map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table></div>
+      <button type="button" class="btn btn-ghost btn-sm" id="applyTalonBtn" style="margin-top:10px;">Приложи в полетата вляво →</button>
+    `;
+    document.getElementById('applyTalonBtn').addEventListener('click', () => {
+      const map = { plate_number:'plate_number', vin:'vin', make:'make', model:'model', year:'year', color:'color', fuel:'fuel', seats:'seats' };
+      const form = document.getElementById('vehicleForm');
+      Object.entries(map).forEach(([src, dst]) => {
+        if (extracted[src] != null && extracted[src] !== '' && form[dst]) form[dst].value = extracted[src];
+      });
+    });
+  }
+
+  document.getElementById('vehicleForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const form = e.target;
+    const data = Object.fromEntries(new FormData(form).entries());
+    if (data.year) data.year = Number(data.year);
+    if (data.seats) data.seats = Number(data.seats);
+    if (data.purchase_price) data.purchase_price = Number(data.purchase_price);
+    if (data.residual_value) data.residual_value = Number(data.residual_value);
+    if (data.depreciation_months) data.depreciation_months = Number(data.depreciation_months);
+    if (data.initial_odometer_km !== undefined) data.initial_odometer_km = Number(data.initial_odometer_km || 0);
+    if (data.service_interval_months) data.service_interval_months = Number(data.service_interval_months);
+    if (data.service_interval_km) data.service_interval_km = Number(data.service_interval_km);
+
+    try {
+      const { vehicle } = await Api.post('/api/vehicles', data);
+      if (talonPhotoDataUrl) {
+        try { await Api.post(`/api/vehicles/${vehicle.id}/talon-scan`, { photo: talonPhotoDataUrl }); } catch (e) {}
+      }
+      successBox.textContent = 'Колата е добавена успешно.';
+      successBox.classList.add('show');
+      setTimeout(() => { window.location.href = `/vehicle-detail.html?id=${vehicle.id}`; }, 700);
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>

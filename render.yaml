@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: dombi-riders-backend
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: false
+    healthCheckPath: /
+    # ⚠️ Free план в Render НЯМА постоянен диск — данните НЕ могат да живеят
+    # само в data/db.json на локалния файлов система (изтрива се при всеки
+    # redeploy/рестарт). Затова lib/db.js вече поддържа Postgres (Supabase)
+    # чрез DATABASE_URL по-долу — виж коментара в lib/db.js и DEPLOYMENT.md,
+    # секция "Постоянност на данните". Без DATABASE_URL сървърът пада обратно
+    # на локалния файл (работи, но НЕ е безопасно на free план).
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PORT се задава автоматично от Render — server.js вече чете process.env.PORT
+      #
+      # ⚠️ добавете РЪЧНО от Render Dashboard → Environment (като Secret, не в repo):
+      #   DATABASE_URL          — Postgres връзка от Supabase Dashboard → Project
+      #                           Settings → Database → Connection string → URI
+      #                           (форма "postgresql://postgres:ПАРОЛА@...")
+      #                           ⚠️ ЗАДЪЛЖИТЕЛНО за реални данни на free план!
+      #   ANTHROPIC_API_KEY     — за lib/talon-scan.js (авто-разчитане на лична
+      #                           карта/книжка при качване); без него системата
+      #                           работи нормално, просто без авто-попълване.
+      #   SIGNNOW_ACCESS_TOKEN  — за lib/esign.js (дистанционно подписване през
+      #                           SignNow); без него е наличен само подпис "на
+      #                           място" (canvas в браузъра), което е ОК за старт.
+      #   SIGNNOW_SENDER_EMAIL  — имейл подател за SignNow покани (по избор).

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Картотека на талони — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .talon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+  .talon-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .talon-card .photo{height:150px;background:#00000040;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.8rem;overflow:hidden;}
+  .talon-card .photo img{width:100%;height:100%;object-fit:cover;}
+  .talon-card .body{padding:14px 16px;}
+  .talon-card .plate{font-family:'Anton',sans-serif;font-size:1.05rem;letter-spacing:.03em;}
+  .talon-card .meta{font-size:.78rem;color:var(--muted);margin:4px 0 10px;}
+  .talon-card table{width:100%;font-size:.78rem;}
+  .talon-card table td{padding:3px 0;border:none;white-space:normal;}
+  .talon-card table td:first-child{color:var(--muted);width:40%;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/talons.html" data-title="Картотека на талони"></div>
+
+<script src="/js/app.js"></script>
+<script>
+let ALL_VEHICLES = [];
+
+function talonCard(v) {
+  const data = v.talon_data || {};
+  const rows = Object.entries(data).filter(([,val]) => val != null && val !== '');
+  const statusBadge = !v.talon_photo_url
+    ? '<span class="badge badge-muted">Няма снимка</span>'
+    : v.talon_confirmed
+      ? '<span class="badge badge-green">Потвърден</span>'
+      : '<span class="badge badge-warn">За потвърждение</span>';
+  return `
+    <div class="talon-card">
+      <div class="photo">${v.talon_photo_url ? `<img src="${v.talon_photo_url}">` : '📄 Няма качена снимка'}</div>
+      <div class="body">
+        <div class="plate">${v.plate_number}</div>
+        <div class="meta">${v.make} ${v.model} · ${v.year||'—'} ${statusBadge}</div>
+        ${rows.length ? `<table>${rows.map(([k,val]) => `<tr><td>${k}</td><td>${val}</td></tr>`).join('')}</table>` : '<p class="hint">Няма разчетени данни от талон.</p>'}
+        <a href="/vehicle-detail.html?id=${v.id}#talon" class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%;">Отвори картона на колата</a>
+      </div>
+    </div>`;
+}
+
+function render(vehicles) {
+  if (!vehicles.length) return `<div class="empty-state">Няма коли в автопарка.</div>`;
+  return `<div class="talon-grid">${vehicles.map(talonCard).join('')}</div>`;
+}
+
+function applyFilter() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const onlyMissing = document.getElementById('missingOnly').checked;
+  let filtered = ALL_VEHICLES.filter(v => !q || `${v.plate_number} ${v.make} ${v.model} ${v.vin||''}`.toLowerCase().includes(q));
+  if (onlyMissing) filtered = filtered.filter(v => !v.talon_photo_url || !v.talon_confirmed);
+  document.getElementById('gridHost').innerHTML = render(filtered);
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin','manager'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате картотеката на талони.</div>`;
+    return;
+  }
+  const content = document.getElementById('app-content');
+  content.innerHTML = `
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="Търси по номер, марка, VIN…" style="min-width:260px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);">
+        <input type="checkbox" id="missingOnly" style="width:auto;"> само без потвърдени данни
+      </label>
+      <div class="spacer"></div>
+    </div>
+    <div id="gridHost" class="loading">Зареждане…</div>`;
+
+  document.getElementById('searchInput').addEventListener('input', applyFilter);
+  document.getElementById('missingOnly').addEventListener('change', applyFilter);
+
+  try {
+    const { vehicles } = await Api.get('/api/vehicles');
+    ALL_VEHICLES = vehicles;
+    document.getElementById('gridHost').innerHTML = render(vehicles);
+  } catch (err) {
+    document.getElementById('gridHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>

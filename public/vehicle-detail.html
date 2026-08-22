@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кола — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/vehicles.html" data-title="Кола"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const vehicleId = params.get('id');
+let CURRENT_USER = null;
+let VEHICLE = null;
+const canEdit = () => ['admin','manager'].includes(CURRENT_USER.role);
+
+const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', hybrid_electric:'Хибрид/Електро', moto:'Мотор', scooter:'Скутер', bike:'Е-колело' };
+const FUEL_LABELS = { petrol:'Бензин', diesel:'Дизел', hybrid:'Хибрид', electric:'Електрическа', lpg:'Газ' };
+const SERVICE_TYPE_LABELS = { maintenance:'Профилактика', repair:'Ремонт', inspection:'Преглед', tires:'Гуми', wash:'Измиване', other:'Друго' };
+const COST_TYPE_LABELS = { insurance_civil:'Гражданска отговорност', insurance_casco:'Каско', vignette:'Винетка', tax:'Данък', parking:'Паркинг', fine:'Глоба', other_recurring:'Друго' };
+const PURPOSE_LABELS = { dombi_courier:'Куриер на Dombi Riders', other_platform:'Друга платформа', personal_use:'Лично ползване' };
+
+function tabsHtml() {
+  return `
+    <div class="tabs">
+      <div class="tab active" data-tab="overview">Преглед</div>
+      <div class="tab" data-tab="service">Сервизна книжка</div>
+      <div class="tab" data-tab="odometer">Пробег</div>
+      <div class="tab" data-tab="equipment">Оборудване</div>
+      <div class="tab" data-tab="assignments">Зачисления</div>
+      <div class="tab" data-tab="protocols">Протоколи</div>
+      <div class="tab" data-tab="talon">Талон</div>
+    </div>`;
+}
+
+function overviewTab(v) {
+  return `
+    <div class="tab-panel active" id="tab-overview">
+      <div class="grid-3">
+        <div class="stat-card"><div class="label">Себестойност (покупна цена)</div><div class="value">${fmtMoney(v.purchase_price)}</div></div>
+        <div class="stat-card"><div class="label">Категория</div><div class="value" style="font-size:1.1rem;">${CAT_LABELS[v.category]||v.category||'—'}</div></div>
+        <div class="stat-card"><div class="label">Статус</div><div class="value" style="font-size:1.1rem;">${vehicleStatusBadge(v.status)}</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Основни данни</h3>
+          <table>
+            <tr><td>Марка / Модел</td><td><strong>${v.make} ${v.model}</strong></td></tr>
+            <tr><td>Година</td><td>${v.year||'—'}</td></tr>
+            <tr><td>Цвят</td><td>${v.color||'—'}</td></tr>
+            <tr><td>VIN / Рама</td><td>${v.vin||'—'}</td></tr>
+            <tr><td>Гориво</td><td>${FUEL_LABELS[v.fuel]||v.fuel||'—'}</td></tr>
+            <tr><td>Скоростна кутия</td><td>${v.transmission==='automatic'?'Автоматична':'Ръчна'}</td></tr>
+            <tr><td>Места</td><td>${v.seats||'—'}</td></tr>
+          </table>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3 style="margin:0;">Документи и застраховки</h3>${canEdit() ? `<button class="btn btn-ghost btn-sm" id="editDocsBtn">Редактирай</button>` : ''}</div>
+          <div id="docsView">
+            <table>
+              <tr><td>Годна регистрация</td><td>${fmtDate(v.registration_expiry)}</td></tr>
+              <tr><td>Винетка</td><td>${fmtDate(v.vignette_expiry)}</td></tr>
+              <tr><td>Технически преглед</td><td>${fmtDate(v.inspection_expiry)}</td></tr>
+            </table>
+            <h3 style="margin-top:16px;">Гражданска отговорност</h3>
+            <table>
+              <tr><td>Валидна до</td><td>${fmtDate(v.insurance_expiry)}</td></tr>
+              <tr><td>Застраховател</td><td>${v.insurance_insurer||'—'}</td></tr>
+              <tr><td>№ на полица</td><td>${v.insurance_policy_number||'—'}</td></tr>
+            </table>
+            <h3 style="margin-top:16px;">Каско</h3>
+            <table>
+              <tr><td>Валидно до</td><td>${fmtDate(v.casco_expiry)}</td></tr>
+              <tr><td>Застраховател</td><td>${v.casco_insurer||'—'}</td></tr>
+              <tr><td>№ на полица</td><td>${v.casco_policy_number||'—'}</td></tr>
+            </table>
+          </div>
+          ${canEdit() ? `
+          <form id="docsForm" style="display:none;margin-top:6px;">
+            <div class="field-row">
+              <div class="field"><label>Годна регистрация до</label><input name="registration_expiry" type="date" value="${v.registration_expiry||''}"></div>
+              <div class="field"><label>Винетка до</label><input name="vignette_expiry" type="date" value="${v.vignette_expiry||''}"></div>
+            </div>
+            <div class="field"><label>Технически преглед до</label><input name="inspection_expiry" type="date" value="${v.inspection_expiry||''}"></div>
+            <h3 style="margin-top:16px;">Гражданска отговорност</h3>
+            <div class="field-row">
+              <div class="field"><label>Валидна до</label><input name="insurance_expiry" type="date" value="${v.insurance_expiry||''}"></div>
+              <div class="field"><label>Застраховател</label><input name="insurance_insurer" value="${v.insurance_insurer||''}"></div>
+            </div>
+            <div class="field"><label>№ на полица</label><input name="insurance_policy_number" value="${v.insurance_policy_number||''}"></div>
+            <h3 style="margin-top:16px;">Каско</h3>
+            <div class="field-row">
+              <div class="field"><label>Валидно до</label><input name="casco_expiry" type="date" value="${v.casco_expiry||''}"></div>
+              <div class="field"><label>Застраховател</label><input name="casco_insurer" value="${v.casco_insurer||''}"></div>
+            </div>
+            <div class="field"><label>№ на полица</label><input name="casco_policy_number" value="${v.casco_policy_number||''}"></div>
+            <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+          </form>` : ''}
+        </div>
+      </div>
+      ${recurringCostsPanel(v)}
+      ${v.notes ? `<div class="panel"><h3>Бележки</h3><p>${v.notes}</p></div>` : ''}
+    </div>`;
+}
+
+function recurringCostsPanel(v) {
+  const canWrite = canEdit();
+  const costs = v._recurringCosts || [];
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>Периодични разходи (застраховки, винетка, данък…)</h2>${canWrite ? `<button class="btn btn-primary btn-sm" id="addCostBtn">+ Разход</button>` : ''}</div>
+      ${canWrite ? `
+      <form id="costForm" style="display:none;margin-bottom:18px;padding:16px;background:var(--panel-2);border-radius:10px;">
+        <div class="field-row">
+          <div class="field"><label>Вид</label>
+            <select name="type">${Object.entries(COST_TYPE_LABELS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Сума (лв.) *</label><input name="amount" type="number" step="0.01" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Период от</label><input name="period_start" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
+          <div class="field"><label>Период до</label><input name="period_end" type="date"></div>
+        </div>
+        <div class="field"><label>Бележки</label><input name="notes"></div>
+        <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+      </form>` : ''}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Вид</th><th>Период</th><th>Сума</th><th>Бележки</th></tr></thead>
+          <tbody>
+            ${costs.length ? costs.map(c => `
+              <tr><td>${COST_TYPE_LABELS[c.type]||c.type}</td>
+              <td>${fmtDate(c.period_start)} — ${c.period_end?fmtDate(c.period_end):'—'}</td>
+              <td>${fmtMoney(c.amount)}</td><td>${c.notes||'—'}</td></tr>`).join('')
+            : `<tr><td colspan="4" class="empty-state">Няма въведени периодични разходи.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function serviceTab(records) {
+  const canWrite = canEdit();
+  return `
+    <div class="tab-panel" id="tab-service">
+      <div class="panel">
+        <div class="panel-head"><h2>Сервизна книжка</h2>${canWrite ? `<button class="btn btn-primary btn-sm" id="addServiceBtn">+ Запис</button>` : ''}</div>
+        ${canWrite ? `
+        <form id="serviceForm" style="display:none;margin-bottom:18px;padding:16px;background:var(--panel-2);border-radius:10px;">
+          <div class="field-row">
+            <div class="field"><label>Дата</label><input name="service_date" type="date" required></div>
+            <div class="field"><label>Пробег (км)</label><input name="odometer_km" type="number"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Тип</label>
+              <select name="type">${Object.entries(SERVICE_TYPE_LABELS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+            </div>
+            <div class="field"><label>Цена (лв.)</label><input name="cost" type="number" step="0.01" required></div>
+          </div>
+          <div class="field"><label>Описание *</label><input name="description" required></div>
+          <div class="field"><label>Сервиз / доставчик</label><input name="vendor"></div>
+          <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+        </form>` : ''}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Дата</th><th>Тип</th><th>Описание</th><th>Пробег</th><th>Сервиз</th><th>Цена</th></tr></thead>
+            <tbody>
+              ${records.length ? records.map(r => `
+                <tr><td>${fmtDate(r.service_date)}</td><td>${SERVICE_TYPE_LABELS[r.type]||r.type}</td>
+                <td>${r.description}</td><td>${r.odometer_km ? r.odometer_km+' км' : '—'}</td>
+                <td>${r.vendor||'—'}</td><td>${fmtMoney(r.cost)}</td></tr>`).join('')
+              : `<tr><td colspan="6" class="empty-state">Няма записи в сервизната книжка.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+function odometerTab(v, odo) {
+  const canWrite = canEdit();
+  const currentKm = odo.current_km;
+  const intervalMonths = v.service_interval_months || 6;
+  const intervalKm = v.service_interval_km || 10000;
+  const lastServiceKm = odo.last_service_km;
+  const kmSinceService = lastServiceKm != null ? currentKm - lastServiceKm : null;
+  return `
+    <div class="tab-panel" id="tab-odometer">
+      <div class="grid-3">
+        <div class="stat-card"><div class="label">Текущ пробег</div><div class="value">${currentKm.toLocaleString('bg-BG')} км</div></div>
+        <div class="stat-card"><div class="label">От последен сервиз</div><div class="value" style="font-size:1.3rem;">${kmSinceService != null ? kmSinceService.toLocaleString('bg-BG') + ' км' : '—'}</div></div>
+        <div class="stat-card"><div class="label">Сервизен интервал</div><div class="value" style="font-size:1.1rem;">${intervalMonths} мес. / ${intervalKm.toLocaleString('bg-BG')} км</div></div>
+      </div>
+
+      ${canWrite ? `
+      <div class="panel">
+        <div class="panel-head"><h2>Сервизен интервал за тази кола</h2><button class="btn btn-ghost btn-sm" id="editIntervalBtn">Редактирай</button></div>
+        <div id="intervalView"><p class="hint">Дължимо е, ако измине ПОНЕ единия от двата критерия — дни или километри.</p></div>
+        <form id="intervalForm" style="display:none;margin-top:6px;">
+          <div class="field-row">
+            <div class="field"><label>Интервал (месеци)</label><input name="service_interval_months" type="number" min="1" value="${intervalMonths}"></div>
+            <div class="field"><label>Интервал (км)</label><input name="service_interval_km" type="number" min="0" value="${intervalKm}"></div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Ръчно въвеждане на пробег</h2><button class="btn btn-primary btn-sm" id="addOdoBtn">+ Показание</button></div>
+        <form id="odoForm" style="display:none;margin-bottom:18px;padding:16px;background:var(--panel-2);border-radius:10px;">
+          <div class="field-row">
+            <div class="field"><label>Пробег (км) *</label><input name="km" type="number" min="0" required value="${currentKm}"></div>
+            <div class="field"><label>Бележка</label><input name="note" placeholder="напр. проверка на място"></div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+        </form>
+      </div>` : ''}
+
+      <div class="panel">
+        <div class="panel-head"><h2>История на показанията</h2></div>
+        <p class="hint">Обединява всички източници — ръчно въведени, протоколи, сервизна книжка, зачисления и договори за наем. Текущият пробег е най-високата известна стойност.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Дата</th><th>Пробег</th><th>Източник</th><th>Бележка</th></tr></thead>
+            <tbody>
+              ${odo.logs.length ? odo.logs.map(l => `
+                <tr><td>${fmtDate(l.date)}</td><td><strong>${Number(l.km).toLocaleString('bg-BG')} км</strong></td>
+                <td>${l.source_label}</td><td>${l.note || '—'}</td></tr>`).join('')
+              : `<tr><td colspan="4" class="empty-state">Няма записани показания.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+function equipmentTab(items) {
+  const canWrite = canEdit();
+  return `
+    <div class="tab-panel" id="tab-equipment">
+      <div class="panel">
+        <div class="panel-head"><h2>Оборудване</h2>${canWrite ? `<button class="btn btn-primary btn-sm" id="addEquipmentBtn">+ Добави</button>` : ''}</div>
+        ${canWrite ? `
+        <form id="equipmentForm" style="display:none;margin-bottom:18px;padding:16px;background:var(--panel-2);border-radius:10px;">
+          <div class="field-row">
+            <div class="field"><label>Наименование *</label><input name="name" required placeholder="напр. GPS тракер"></div>
+            <div class="field"><label>Сериен номер</label><input name="serial_number"></div>
+          </div>
+          <div class="field"><label>Бележки</label><input name="notes"></div>
+          <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+        </form>` : ''}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Наименование</th><th>Сериен №</th><th>Добавено на</th><th>Бележки</th></tr></thead>
+            <tbody>
+              ${items.length ? items.map(i => `
+                <tr><td>${i.name}</td><td>${i.serial_number||'—'}</td><td>${fmtDate(i.added_at)}</td><td>${i.notes||'—'}</td></tr>`).join('')
+              : `<tr><td colspan="4" class="empty-state">Няма добавено оборудване.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+function assignmentsTab(list) {
+  const canWrite = canEdit();
+  return `
+    <div class="tab-panel" id="tab-assignments">
+      <div class="panel">
+        <div class="panel-head"><h2>История на зачисленията</h2>
+          <div style="display:flex;gap:8px;">
+            ${(canWrite && VEHICLE && VEHICLE.status === 'available') ? `<button type="button" class="btn btn-primary btn-sm" id="oneClickAssignBtn">⚡ Зачисли с 1 клик</button>` : ''}
+            ${canWrite ? `<a class="btn btn-ghost btn-sm" href="/assignments.html?vehicle_id=${vehicleId}">Управление на зачисления →</a>` : ''}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Период</th><th>Шофьор</th><th>Цел</th><th>Статус</th><th>Пробег нач./кр.</th></tr></thead>
+            <tbody>
+              ${list.length ? list.map(a => `
+                <tr>
+                  <td>${fmtDate(a.start_date)} — ${a.end_date ? fmtDate(a.end_date) : 'сега'}</td>
+                  <td>${a.driver_id ? (a.driver_name || a.driver_id) : (a.external_name + ' (външен)')}</td>
+                  <td>${PURPOSE_LABELS[a.purpose]||a.purpose}</td>
+                  <td>${a.status === 'active' ? '<span class="badge badge-green">Активно</span>' : '<span class="badge badge-muted">Приключено</span>'}</td>
+                  <td>${a.start_odometer_km||'—'} / ${a.end_odometer_km||'—'}</td>
+                </tr>`).join('')
+              : `<tr><td colspan="5" class="empty-state">Няма история на зачисления.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+function protocolsTab(list) {
+  const canWrite = canEdit();
+  return `
+    <div class="tab-panel" id="tab-protocols">
+      <div class="panel">
+        <div class="panel-head"><h2>Приемо-предавателни протоколи</h2>
+          ${canWrite ? `<a class="btn btn-primary btn-sm" href="/protocol-new.html?vehicle_id=${vehicleId}">+ Нов протокол</a>` : ''}
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>№</th><th>Дата</th><th>Тип</th><th>Пробег</th><th>Гориво</th><th>Снимки</th><th></th></tr></thead>
+            <tbody>
+              ${list.length ? list.map(p => `
+                <tr><td>${p.protocol_number}</td><td>${fmtDateTime(p.date)}</td>
+                <td>${p.type === 'handover' ? 'Предаване' : 'Приемане'}</td>
+                <td>${p.odometer_km||'—'} км</td><td>${p.fuel_level_pct!=null?p.fuel_level_pct+'%':'—'}</td>
+                <td>${(p.photos||[]).length} бр.</td>
+                <td><a class="btn btn-ghost btn-sm" href="/protocol-print.html?id=${p.id}">🖨 Печат</a></td></tr>`).join('')
+              : `<tr><td colspan="7" class="empty-state">Няма протоколи за тази кола.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+function talonTab(v) {
+  const canWrite = canEdit();
+  return `
+    <div class="tab-panel" id="tab-talon">
+      <div class="panel">
+        <h2>Данни от талон</h2>
+        ${v.talon_photo_url ? `<div class="photo-grid" style="max-width:220px;"><img src="${v.talon_photo_url}"></div>` : `<p>Няма качена снимка на талон.</p>`}
+        ${v.talon_data && Object.keys(v.talon_data).length ? `
+          <div class="table-wrap" style="margin-top:14px;"><table>
+            ${Object.entries(v.talon_data).filter(([,val])=>val!=null&&val!=='').map(([k,val])=>`<tr><td>${k}</td><td>${val}</td></tr>`).join('')}
+          </table></div>
+          <div style="margin-top:10px;">${v.talon_confirmed ? '<span class="badge badge-green">Потвърдени</span>' : '<span class="badge badge-warn">Очаква потвърждение</span>'}</div>
+        ` : ''}
+        ${canWrite ? `
+        <div style="margin-top:16px;">
+          <div class="photo-upload-btn" id="talonUploadBtn2">📷 ${v.talon_photo_url ? 'Качи нова снимка' : 'Качи снимка на талон'}</div>
+          <input type="file" id="talonFile2" accept="image/*" style="display:none;">
+          <div id="talonStatus2" class="hint"></div>
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function activateTab(name) {
+  const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (!tab) return;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+function bindTabs() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => activateTab(tab.dataset.tab));
+  });
+  const hashTab = location.hash.replace('#', '');
+  if (hashTab) activateTab(hashTab);
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  const content = document.getElementById('app-content');
+  content.innerHTML = `<div class="loading">Зареждане…</div>`;
+
+  try {
+    const promises = [
+      Api.get(`/api/vehicles/${vehicleId}`),
+      Api.get(`/api/vehicles/${vehicleId}/service-records`),
+      Api.get(`/api/vehicles/${vehicleId}/equipment`),
+      Api.get(`/api/assignments?vehicle_id=${vehicleId}`),
+      Api.get(`/api/protocols?vehicle_id=${vehicleId}`),
+      Api.get(`/api/vehicles/${vehicleId}/odometer`),
+    ];
+    if (['admin','manager'].includes(CURRENT_USER.role)) {
+      promises.push(Api.get(`/api/vehicles/${vehicleId}/recurring-costs`));
+    }
+    const [{ vehicle }, { records }, { equipment }, { assignments }, { protocols }, odo, costsRes] = await Promise.all(promises);
+    VEHICLE = vehicle;
+    vehicle._recurringCosts = costsRes ? costsRes.costs : [];
+
+    let usersById = {};
+    if (['admin','manager'].includes(CURRENT_USER.role)) {
+      try { const { users } = await Api.get('/api/users'); usersById = Object.fromEntries(users.map(u=>[u.id,u.full_name])); } catch(e){}
+    }
+    assignments.forEach(a => { if (a.driver_id) a.driver_name = usersById[a.driver_id]; });
+
+    content.innerHTML = `
+      <div class="breadcrumb"><a href="/vehicles.html">← Всички коли</a></div>
+      <h1 style="margin-top:6px;">${vehicle.plate_number} — ${vehicle.make} ${vehicle.model}</h1>
+      ${tabsHtml()}
+      ${overviewTab(vehicle)}
+      ${serviceTab(records)}
+      ${odometerTab(vehicle, odo)}
+      ${equipmentTab(equipment)}
+      ${assignmentsTab(assignments)}
+      ${protocolsTab(protocols)}
+      ${talonTab(vehicle)}
+      <div id="oneClickModalHost"></div>
+    `;
+    bindTabs();
+    bindForms();
+    bindOneClickAssign();
+  } catch (err) {
+    content.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+function setBusy(busy) {
+  const content = document.getElementById('app-content');
+  if (!content) return;
+  content.style.pointerEvents = busy ? 'none' : '';
+  content.style.opacity = busy ? '0.6' : '';
+}
+
+function bindForms() {
+  const editDocsBtn = document.getElementById('editDocsBtn');
+  if (editDocsBtn) editDocsBtn.addEventListener('click', () => {
+    const view = document.getElementById('docsView');
+    const form = document.getElementById('docsForm');
+    const editing = form.style.display !== 'none';
+    form.style.display = editing ? 'none' : 'block';
+    view.style.display = editing ? 'block' : 'none';
+    editDocsBtn.textContent = editing ? 'Редактирай' : 'Отказ';
+  });
+  const docsForm = document.getElementById('docsForm');
+  if (docsForm) docsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await Api.put(`/api/vehicles/${vehicleId}`, data);
+      await init();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const addCostBtn = document.getElementById('addCostBtn');
+  if (addCostBtn) addCostBtn.addEventListener('click', () => {
+    const f = document.getElementById('costForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  const costForm = document.getElementById('costForm');
+  if (costForm) costForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    data.amount = Number(data.amount);
+    if (!data.period_end) delete data.period_end;
+    try {
+      await Api.post(`/api/vehicles/${vehicleId}/recurring-costs`, data);
+      await init();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const addServiceBtn = document.getElementById('addServiceBtn');
+  if (addServiceBtn) addServiceBtn.addEventListener('click', () => {
+    const f = document.getElementById('serviceForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  const serviceForm = document.getElementById('serviceForm');
+  if (serviceForm) serviceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    data.cost = Number(data.cost);
+    if (data.odometer_km) data.odometer_km = Number(data.odometer_km);
+    try {
+      await Api.post(`/api/vehicles/${vehicleId}/service-records`, data);
+      await init();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const editIntervalBtn = document.getElementById('editIntervalBtn');
+  if (editIntervalBtn) editIntervalBtn.addEventListener('click', () => {
+    const f = document.getElementById('intervalForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  const intervalForm = document.getElementById('intervalForm');
+  if (intervalForm) intervalForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    data.service_interval_months = Number(data.service_interval_months);
+    data.service_interval_km = Number(data.service_interval_km);
+    try {
+      await Api.put(`/api/vehicles/${vehicleId}`, data);
+      await init();
+      activateTab('odometer');
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const addOdoBtn = document.getElementById('addOdoBtn');
+  if (addOdoBtn) addOdoBtn.addEventListener('click', () => {
+    const f = document.getElementById('odoForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  const odoForm = document.getElementById('odoForm');
+  if (odoForm) odoForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    data.km = Number(data.km);
+    if (!data.note) delete data.note;
+    try {
+      await Api.post(`/api/vehicles/${vehicleId}/odometer`, data);
+      await init();
+      activateTab('odometer');
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const addEquipmentBtn = document.getElementById('addEquipmentBtn');
+  if (addEquipmentBtn) addEquipmentBtn.addEventListener('click', () => {
+    const f = document.getElementById('equipmentForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  const equipmentForm = document.getElementById('equipmentForm');
+  if (equipmentForm) equipmentForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await Api.post(`/api/vehicles/${vehicleId}/equipment`, data);
+      await init();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const talonBtn2 = document.getElementById('talonUploadBtn2');
+  if (talonBtn2) talonBtn2.addEventListener('click', () => document.getElementById('talonFile2').click());
+  const talonFile2 = document.getElementById('talonFile2');
+  if (talonFile2) talonFile2.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const dataUrl = await readFileAsDataUrl(file);
+    document.getElementById('talonStatus2').textContent = 'Разчитане на данните…';
+    setBusy(true);
+    try {
+      const result = await Api.post(`/api/vehicles/${vehicleId}/talon-scan`, { photo: dataUrl });
+      document.getElementById('talonStatus2').textContent = result.warning || 'Готово.';
+      await init();
+    } catch (err) {
+      document.getElementById('talonStatus2').textContent = err.message;
+    } finally { setBusy(false); }
+  });
+}
+
+function closeOneClickModal() {
+  const host = document.getElementById('oneClickModalHost');
+  if (host) host.innerHTML = '';
+}
+
+async function bindOneClickAssign() {
+  const btn = document.getElementById('oneClickAssignBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const host = document.getElementById('oneClickModalHost');
+    host.innerHTML = `<div class="panel" style="max-width:480px;margin:20px auto;"><div class="loading">Зареждане на шофьори…</div></div>`;
+    let drivers = [];
+    try {
+      const { users } = await Api.get('/api/wallet/directory');
+      drivers = users.filter(u => u.role === 'driver');
+    } catch (e) { /* ignore */ }
+
+    host.innerHTML = `
+      <div class="panel" style="max-width:480px;margin:20px auto;">
+        <div class="panel-head"><h2>Зачисли с 1 клик — ${VEHICLE.plate_number}</h2></div>
+        <p class="hint">Автоматично се създават: зачисление, договор за наем и приемо-предавателен протокол, готови за разписване.</p>
+        <div class="error-box" id="oneClickError"></div>
+        <form id="oneClickForm">
+          <div class="field"><label>Шофьор *</label>
+            <select name="driver_id" required>
+              <option value="">— избери —</option>
+              ${drivers.map(d => `<option value="${d.id}">${d.full_name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Наемна вноска (лв.)</label><input name="rate_amount" type="number" step="0.01" min="0"></div>
+            <div class="field"><label>Период</label>
+              <select name="rate_period"><option value="week">Седмично</option><option value="month">Месечно</option></select>
+            </div>
+          </div>
+          <div class="field"><label>Депозит (лв.)</label><input name="deposit_amount" type="number" step="0.01" min="0"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button type="submit" class="btn btn-primary btn-sm">Зачисли</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="oneClickCancelBtn">Откажи</button>
+          </div>
+        </form>
+      </div>`;
+
+    document.getElementById('oneClickCancelBtn').addEventListener('click', closeOneClickModal);
+    document.getElementById('oneClickForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById('oneClickError');
+      errorBox.classList.remove('show');
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      data.vehicle_id = vehicleId;
+      try {
+        const result = await Api.post('/api/assignments/one-click', data);
+        closeOneClickModal();
+        window.location.href = `/contract-print.html?id=${result.contract.id}`;
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>

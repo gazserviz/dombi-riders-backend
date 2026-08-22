@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кандидатури — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/applications.html" data-title="Кандидатури"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const APP_STATUS = {
+  pending: ['Чака преглед', 'badge-warn'],
+  approved: ['Одобрена', 'badge-green'],
+  rejected: ['Отхвърлена', 'badge-danger'],
+};
+function appStatusBadge(s) { const [label, cls] = APP_STATUS[s] || [s, 'badge-muted']; return `<span class="badge ${cls}">${label}</span>`; }
+const EC_TYPE_LABELS = { labor: 'Трудов', civil: 'Граждански' };
+
+let CURRENT_USER = null;
+let MANAGERS = [];
+let activeStatus = 'pending';
+let expandedId = null;
+
+function applicationDetailHtml(app, isAdmin) {
+  const suggestedEmail = app.email || '';
+  return `
+    <tr><td colspan="6">
+      <div class="panel" style="margin:0;background:var(--panel-2);">
+        <div class="grid-2">
+          <div>
+            <div class="table-wrap"><table>
+              <tr><td><strong>ЕГН</strong></td><td>${app.egn || '—'}</td></tr>
+              <tr><td><strong>Адрес</strong></td><td>${app.address || '—'}</td></tr>
+              <tr><td><strong>Лична карта №</strong></td><td>${app.id_card_number || '—'} ${app.id_card_expiry ? '· валидна до ' + fmtDate(app.id_card_expiry) : ''}</td></tr>
+              <tr><td><strong>Снимка ЛК</strong></td><td>${app.id_card_photo_url ? `<a href="${app.id_card_photo_url}" target="_blank">Преглед</a>` : '—'}</td></tr>
+              <tr><td><strong>Книжка №</strong></td><td>${app.driver_license_number || '—'} ${app.driver_license_expiry ? '· валидна до ' + fmtDate(app.driver_license_expiry) : ''}</td></tr>
+              <tr><td><strong>Снимка книжка</strong></td><td>${app.driver_license_photo_url ? `<a href="${app.driver_license_photo_url}" target="_blank">Преглед</a>` : '—'}</td></tr>
+              <tr><td><strong>Бележки</strong></td><td>${app.notes || '—'}</td></tr>
+            </table></div>
+          </div>
+          ${(isAdmin && app.status === 'pending') ? `
+          <div>
+            <h3>Одобри кандидатурата</h3>
+            <p class="hint">Създава реален профил (роля: шофьор) и чернова на договор, готова за разписване.</p>
+            <div class="error-box" id="approveError-${app.id}"></div>
+            <form class="approve-form" data-id="${app.id}">
+              <div class="field"><label>Имейл за новия профил *</label><input name="email" type="email" required value="${suggestedEmail}"></div>
+              <div class="field"><label>Временна парола (по избор — генерира се автоматично, ако е празно)</label><input name="temp_password"></div>
+              <div class="field"><label>Мениджър</label>
+                <select name="manager_id">
+                  <option value="">— няма —</option>
+                  ${MANAGERS.map(m => `<option value="${m.id}">${m.full_name} (${ROLE_LABELS[m.role] || m.role})</option>`).join('')}
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">Одобри и създай профил</button>
+            </form>
+          </div>` : ''}
+          ${(!isAdmin && app.status === 'pending') ? `<div><p class="hint">Само администратор може да одобрява кандидатури и да създава профили.</p></div>` : ''}
+        </div>
+        ${app.status === 'pending' ? `
+        <div style="margin-top:14px;">
+          <button type="button" class="btn btn-ghost btn-sm reject-btn" data-id="${app.id}">Отхвърли кандидатурата</button>
+        </div>` : ''}
+        ${app.status === 'rejected' && app.decision_note ? `<p class="hint" style="margin-top:10px;">Причина: ${app.decision_note}</p>` : ''}
+      </div>
+    </td></tr>`;
+}
+
+function applicationsTable(apps, isAdmin) {
+  if (!apps.length) return `<p class="hint">Няма кандидатури в тази категория.</p>`;
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Дата</th><th>Име</th><th>Телефон</th><th>Договор</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+          ${apps.map(a => `
+            <tr>
+              <td>${fmtDate(a.created_at)}</td>
+              <td><strong>${a.full_name}</strong>${a.email ? `<div class="sub" style="color:var(--muted);font-size:.78rem;">${a.email}</div>` : ''}</td>
+              <td>${a.phone}</td>
+              <td>${EC_TYPE_LABELS[a.desired_contract_type] || a.desired_contract_type}${a.desired_hours_per_day ? ' · ' + a.desired_hours_per_day + 'ч' : ''}</td>
+              <td>${appStatusBadge(a.status)}</td>
+              <td><button type="button" class="btn btn-ghost btn-sm toggle-detail-btn" data-id="${a.id}">${expandedId === a.id ? 'Скрий' : 'Преглед'}</button></td>
+            </tr>
+            ${expandedId === a.id ? applicationDetailHtml(a, isAdmin) : ''}
+          `).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function refresh() {
+  const host = document.getElementById('tableHost');
+  const { applications } = await Api.get(`/api/hr/applications?status=${activeStatus}`);
+  const isAdmin = CURRENT_USER.role === 'admin';
+  host.innerHTML = applicationsTable(applications, isAdmin);
+
+  host.querySelectorAll('.toggle-detail-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      expandedId = expandedId === btn.dataset.id ? null : btn.dataset.id;
+      refresh();
+    });
+  });
+  host.querySelectorAll('.approve-form').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById(`approveError-${form.dataset.id}`);
+      errorBox.classList.remove('show');
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      if (!data.manager_id) delete data.manager_id;
+      if (!data.temp_password) delete data.temp_password;
+      try {
+        const result = await Api.post(`/api/hr/applications/${form.dataset.id}/approve`, data);
+        alert(`Профилът е създаден.\n\nИмейл: ${result.profile.email}\nВременна парола: ${result.temp_password}\n\nЗапишете паролата сега — няма да бъде показана отново (може да се смени от „Потребители и роли“).`);
+        expandedId = null;
+        await refresh();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  });
+  host.querySelectorAll('.reject-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const note = prompt('Причина за отхвърляне (по избор):') || '';
+      try {
+        await Api.post(`/api/hr/applications/${btn.dataset.id}/reject`, { decision_note: note });
+        expandedId = null;
+        await refresh();
+      } catch (err) { alert(err.message); }
+    });
+  });
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (!['admin', 'manager'].includes(CURRENT_USER.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате кандидатурите.</div>`;
+    return;
+  }
+
+  try {
+    const { users } = await Api.get('/api/users');
+    MANAGERS = users.filter(u => ['admin', 'manager'].includes(u.role));
+  } catch (e) { MANAGERS = []; }
+
+  document.getElementById('app-content').innerHTML = `
+    <p class="hint" style="margin-bottom:16px;">
+      Кандидатури от публичната форма за самокандидатстване (<code>/apply.html</code>).
+      Одобрението създава реален потребителски профил и чернова на трудов/граждански договор.
+    </p>
+    <div class="tabs">
+      <div class="tab active" data-status="pending">Чакащи</div>
+      <div class="tab" data-status="approved">Одобрени</div>
+      <div class="tab" data-status="rejected">Отхвърлени</div>
+    </div>
+    <div class="panel">
+      <div id="tableHost" class="loading">Зареждане…</div>
+    </div>`;
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeStatus = tab.dataset.status;
+      expandedId = null;
+      refresh();
+    });
+  });
+
+  await refresh();
+}
+init();
+</script>
+</body>
+</html>

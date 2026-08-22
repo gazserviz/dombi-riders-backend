@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Потребители — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/users.html" data-title="Потребители и роли"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const ROLE_DESC = {
+  admin: 'Пълен достъп — управлява потребители, роли и всички модули.',
+  manager: 'Оперативен достъп — коли, договори, протоколи, статистики.',
+  driver: 'Достъп само до собствените си зачисления и протоколи.',
+};
+
+function usersTable(users) {
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Име</th><th>Имейл</th><th>Телефон</th><th>Роля</th><th>Статус</th><th title="Право да одобрява преводи между портфейли">Одобрява преводи</th><th title="Право да вижда собствената си заработка в модул Заплати">Вижда заработка</th><th></th></tr></thead>
+        <tbody>
+          ${users.map(u => `
+            <tr>
+              <td><strong>${u.full_name}</strong></td>
+              <td>${u.email}</td>
+              <td>${u.phone||'—'}</td>
+              <td>
+                <select class="role-select" data-id="${u.id}">
+                  <option value="admin" ${u.role==='admin'?'selected':''}>Администратор</option>
+                  <option value="manager" ${u.role==='manager'?'selected':''}>Мениджър</option>
+                  <option value="driver" ${u.role==='driver'?'selected':''}>Шофьор</option>
+                </select>
+              </td>
+              <td>${u.status==='active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}</td>
+              <td>${u.role === 'admin'
+                  ? '<span class="hint">Винаги (админ)</span>'
+                  : `<input type="checkbox" class="approve-transfers-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_approve_transfers ? 'checked' : ''}>`}</td>
+              <td>${['admin','manager'].includes(u.role)
+                  ? '<span class="hint">Винаги</span>'
+                  : `<input type="checkbox" class="view-earnings-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_view_earnings ? 'checked' : ''}>`}</td>
+              <td><button class="btn btn-ghost btn-sm toggle-status-btn" data-id="${u.id}" data-status="${u.status}">${u.status==='active'?'Спри':'Активирай'}</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (user.role !== 'admin') {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Само администратор може да управлява потребители и роли.</div>`;
+    return;
+  }
+  const content = document.getElementById('app-content');
+  content.innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>Нов потребител</h2></div>
+        <div class="error-box" id="errorBox"></div>
+        <div class="success-box" id="successBox"></div>
+        <form id="userForm">
+          <div class="field"><label>Пълно име *</label><input name="full_name" required></div>
+          <div class="field"><label>Имейл *</label><input name="email" type="email" required></div>
+          <div class="field"><label>Телефон</label><input name="phone"></div>
+          <div class="field"><label>Първоначална парола *</label><input name="password" required minlength="4"></div>
+          <div class="field"><label>Роля *</label>
+            <select name="role" id="roleSelect">
+              <option value="driver">Шофьор</option>
+              <option value="manager">Мениджър</option>
+              <option value="admin">Администратор</option>
+            </select>
+          </div>
+          <p class="hint" id="roleDesc">${ROLE_DESC.driver}</p>
+          <button type="submit" class="btn btn-primary btn-block">Създай потребител</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Роли в системата</h2>
+        <div class="table-wrap"><table>
+          <tr><td><span class="badge badge-green">Админ</span></td><td>${ROLE_DESC.admin}</td></tr>
+          <tr><td><span class="badge badge-warn">Мениджър</span></td><td>${ROLE_DESC.manager}</td></tr>
+          <tr><td><span class="badge badge-muted">Шофьор</span></td><td>${ROLE_DESC.driver}</td></tr>
+        </table></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Всички потребители</h2></div>
+      <div id="tableHost" class="loading">Зареждане…</div>
+    </div>`;
+
+  document.getElementById('roleSelect').addEventListener('change', (e) => {
+    document.getElementById('roleDesc').textContent = ROLE_DESC[e.target.value];
+  });
+
+  async function refreshTable() {
+    const { users } = await Api.get('/api/users');
+    document.getElementById('tableHost').innerHTML = usersTable(users);
+    document.querySelectorAll('.role-select').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        try { await Api.put(`/api/users/${sel.dataset.id}`, { role: sel.value }); }
+        catch (err) { alert(err.message); }
+      });
+    });
+    document.querySelectorAll('.toggle-status-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const newStatus = btn.dataset.status === 'active' ? 'suspended' : 'active';
+        try { await Api.put(`/api/users/${btn.dataset.id}`, { status: newStatus }); refreshTable(); }
+        catch (err) { alert(err.message); }
+      });
+    });
+    document.querySelectorAll('.approve-transfers-toggle').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const target = users.find(u => u.id === chk.dataset.id);
+        const permissions = { ...(target.permissions || {}), can_approve_transfers: chk.checked };
+        try { await Api.put(`/api/users/${chk.dataset.id}`, { permissions }); }
+        catch (err) { alert(err.message); chk.checked = !chk.checked; }
+      });
+    });
+    document.querySelectorAll('.view-earnings-toggle').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const target = users.find(u => u.id === chk.dataset.id);
+        const permissions = { ...(target.permissions || {}), can_view_earnings: chk.checked };
+        try { await Api.put(`/api/users/${chk.dataset.id}`, { permissions }); }
+        catch (err) { alert(err.message); chk.checked = !chk.checked; }
+      });
+    });
+  }
+
+  document.getElementById('userForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await Api.post('/api/users', data);
+      successBox.textContent = 'Потребителят е създаден.';
+      successBox.classList.add('show');
+      e.target.reset();
+      refreshTable();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  refreshTable();
+}
+init();
+</script>
+</body>
+</html>

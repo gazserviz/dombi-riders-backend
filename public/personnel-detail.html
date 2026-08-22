@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Досие на служител — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/personnel.html" data-title="Досие на служител"></div>
+
+<script src="/js/app.js"></script>
+<script src="/js/esign-ui.js"></script>
+<script>
+const EC_STATUS = {
+  draft: ['Чернова', 'badge-muted'],
+  active: ['Активен', 'badge-green'],
+  terminated: ['Прекратен', 'badge-danger'],
+};
+function ecStatusBadge(s) { const [label, cls] = EC_STATUS[s] || [s, 'badge-muted']; return `<span class="badge ${cls}">${label}</span>`; }
+const EC_TYPE_LABELS = { labor: 'Трудов', civil: 'Граждански' };
+
+function qs(name) { return new URLSearchParams(location.search).get(name); }
+function daysLeftLabel(n) {
+  if (n < 0) return `Просрочено с ${Math.abs(n)} дни`;
+  if (n === 0) return 'Изтича днес';
+  return `След ${n} дни`;
+}
+
+let CURRENT_USER = null;
+let TARGET_ID = null;
+let IS_SELF = false;
+let CAN_EDIT = false;
+let MANAGERS = [];
+
+function docFieldRow(label, value, expiry, photoUrl) {
+  let expiryHtml = '—';
+  if (expiry) {
+    const diff = new Date(expiry) - new Date();
+    const daysLeft = Math.round(diff / 86400000);
+    const soon = daysLeft < 30;
+    expiryHtml = `${fmtDate(expiry)} ${soon ? `<span class="badge ${daysLeft < 0 ? 'badge-danger' : 'badge-warn'}" style="margin-left:6px;">${daysLeftLabel(daysLeft)}</span>` : ''}`;
+  }
+  return `
+    <tr>
+      <td><strong>${label}</strong></td>
+      <td>${value || '<span class="hint">—</span>'}</td>
+      <td>${expiryHtml}</td>
+      <td>${photoUrl ? `<a href="${photoUrl}" target="_blank">Преглед снимка</a>` : '<span class="hint">няма</span>'}</td>
+    </tr>`;
+}
+
+async function loadFile() {
+  const host = document.getElementById('fileHost');
+  const { profile, manager, employment_contracts, rental_contracts, protocols, assignments } = await Api.get(`/api/hr/personnel/${TARGET_ID}`);
+
+  document.getElementById('pageTitle') && (document.getElementById('pageTitle').textContent = profile.full_name);
+
+  host.innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>${profile.full_name}</h2><span class="badge ${profile.status === 'active' ? 'badge-green' : 'badge-muted'}">${profile.status === 'active' ? 'Активен' : 'Спрян'}</span></div>
+        <div class="table-wrap"><table>
+          <tr><td><strong>Имейл</strong></td><td>${profile.email}</td></tr>
+          <tr><td><strong>Телефон</strong></td><td>${profile.phone || '—'}</td></tr>
+          <tr><td><strong>Роля</strong></td><td>${ROLE_LABELS[profile.role] || profile.role}</td></tr>
+          <tr><td><strong>Мениджър</strong></td><td>${manager ? manager.full_name : '<span class="hint">не е зададен</span>'}</td></tr>
+          <tr><td><strong>ЕГН</strong></td><td>${profile.egn ? `<span id="egnMasked">${'•'.repeat(Math.max(profile.egn.length - 4, 0))}${profile.egn.slice(-4)}</span><span id="egnFull" style="display:none;">${profile.egn}</span> <button type="button" class="btn btn-ghost btn-sm" id="egnToggleBtn" style="padding:2px 8px;font-size:.68rem;">Покажи</button>` : '<span class="hint">—</span>'}</td></tr>
+          <tr><td><strong>Адрес</strong></td><td>${profile.address || '<span class="hint">—</span>'}</td></tr>
+        </table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Лични документи</h2></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Документ</th><th>Номер</th><th>Валиден до</th><th>Снимка</th></tr></thead>
+          <tbody>
+            ${docFieldRow('Лична карта', profile.id_card_number, profile.id_card_expiry, profile.id_card_photo_url)}
+            ${docFieldRow('Шофьорска книжка', profile.driver_license_number, profile.driver_license_expiry, profile.driver_license_photo_url)}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+
+    ${CAN_EDIT ? `
+    <div class="panel">
+      <div class="panel-head"><h2>Редактиране на документи</h2></div>
+      <div class="success-box" id="editSuccess"></div>
+      <div class="error-box" id="editError"></div>
+      <form id="editForm">
+        <div class="field-row">
+          <div class="field"><label>ЕГН</label><input name="egn" value="${profile.egn || ''}"></div>
+          <div class="field"><label>Адрес</label><input name="address" value="${profile.address || ''}"></div>
+        </div>
+        <div class="field"><label>Мениджър</label>
+          <select name="manager_id">
+            <option value="">— няма —</option>
+            ${MANAGERS.filter(m => m.id !== profile.id).map(m => `<option value="${m.id}" ${profile.manager_id === m.id ? 'selected' : ''}>${m.full_name} (${ROLE_LABELS[m.role] || m.role})</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Номер на лична карта</label><input name="id_card_number" value="${profile.id_card_number || ''}"></div>
+          <div class="field"><label>Валидна до</label><input name="id_card_expiry" type="date" value="${profile.id_card_expiry || ''}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Номер на шофьорска книжка</label><input name="driver_license_number" value="${profile.driver_license_number || ''}"></div>
+          <div class="field"><label>Валидна до</label><input name="driver_license_expiry" type="date" value="${profile.driver_license_expiry || ''}"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Запази промените</button>
+      </form>
+      <div class="field-row" style="margin-top:16px;">
+        <div>
+          <div class="photo-upload-btn" id="uploadIdCardBtn">🪪 Качи снимка на лична карта</div>
+          <input type="file" id="idCardFile" accept="image/*" style="display:none;">
+        </div>
+        <div>
+          <div class="photo-upload-btn" id="uploadLicenseBtn">🚗 Качи снимка на шофьорска книжка</div>
+          <input type="file" id="licenseFile" accept="image/*" style="display:none;">
+        </div>
+      </div>
+      <div class="hint" id="photoMsg"></div>
+    </div>` : ''}
+
+    <div class="panel">
+      <div class="panel-head"><h2>Трудови / граждански договори</h2></div>
+      ${employment_contracts.length ? `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Номер</th><th>Вид</th><th>Часове/ден</th><th>От</th><th>До</th><th>Седмична удръжка</th><th>Разписване</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+          ${employment_contracts.map(c => `
+            <tr>
+              <td>${c.contract_number}</td>
+              <td>${EC_TYPE_LABELS[c.contract_type] || c.contract_type}</td>
+              <td>${c.hours_per_day || '—'}</td>
+              <td>${fmtDate(c.start_date)}</td>
+              <td>${c.end_date ? fmtDate(c.end_date) : '—'}</td>
+              <td>${fmtMoney(c.weekly_deduction_amount)}</td>
+              <td>${esignStatusBadge(c.signature_status)}</td>
+              <td>${CAN_EDIT ? `
+                <select class="ec-status-select" data-id="${c.id}">
+                  <option value="draft" ${c.status==='draft'?'selected':''}>Чернова</option>
+                  <option value="active" ${c.status==='active'?'selected':''}>Активен</option>
+                  <option value="terminated" ${c.status==='terminated'?'selected':''}>Прекратен</option>
+                </select>` : ecStatusBadge(c.status)}</td>
+              <td><a class="btn btn-ghost btn-sm" href="/employment-contract-print.html?id=${c.id}&profile_id=${TARGET_ID}">Отвори →</a></td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>` : `<p class="hint">Няма договори все още.</p>`}
+
+      ${CAN_EDIT ? `
+      <h3 style="margin-top:20px;">Нов договор</h3>
+      <div class="error-box" id="ecError"></div>
+      <form id="ecForm">
+        <div class="field-row">
+          <div class="field"><label>Вид *</label>
+            <select name="contract_type" id="ecTypeSelect" required>
+              <option value="labor">Трудов</option>
+              <option value="civil">Граждански</option>
+            </select>
+          </div>
+          <div class="field" id="ecHoursField"><label>Часове на ден *</label>
+            <select name="hours_per_day">
+              <option value="2">2</option>
+              <option value="4">4</option>
+              <option value="6">6</option>
+              <option value="8">8</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Начална дата *</label><input name="start_date" type="date" required></div>
+          <div class="field"><label>Крайна дата</label><input name="end_date" type="date"></div>
+        </div>
+        <div class="field"><label>Седмична удръжка (лв.) — по подразбиране от вида, може да се промени ръчно</label><input name="weekly_deduction_amount" type="number" step="0.01" placeholder="оставете празно за стойността по подразбиране"></div>
+        <button type="submit" class="btn btn-primary btn-sm">Създай договор</button>
+      </form>` : ''}
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>Договори за наем на кола</h2></div>
+        ${rental_contracts.length ? `
+        <div class="table-wrap"><table>
+          <thead><tr><th>Номер</th><th>От</th><th>До</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            ${rental_contracts.map(c => `
+              <tr><td>${c.contract_number}</td><td>${fmtDate(c.start_date)}</td><td>${c.end_date ? fmtDate(c.end_date) : '—'}</td>
+              <td>${c.status}</td><td><a class="btn btn-ghost btn-sm" href="/contract-print.html?id=${c.id}">Отвори →</a></td></tr>`).join('')}
+          </tbody>
+        </table></div>` : `<p class="hint">Няма договори за наем.</p>`}
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Приемо-предавателни протоколи</h2></div>
+        ${protocols.length ? `
+        <div class="table-wrap"><table>
+          <thead><tr><th>Номер</th><th>Дата</th><th>Вид</th><th></th></tr></thead>
+          <tbody>
+            ${protocols.map(p => `
+              <tr><td>${p.protocol_number}</td><td>${fmtDate(p.date)}</td><td>${p.type === 'handover' ? 'Предаване' : 'Приемане'}</td>
+              <td><a class="btn btn-ghost btn-sm" href="/protocol-print.html?id=${p.id}">Отвори →</a></td></tr>`).join('')}
+          </tbody>
+        </table></div>` : `<p class="hint">Няма протоколи.</p>`}
+      </div>
+    </div>
+  `;
+
+  const editForm = document.getElementById('editForm');
+  if (editForm) editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('editError');
+    const successBox = document.getElementById('editSuccess');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    if (!data.manager_id) data.manager_id = null;
+    try {
+      await Api.put(`/api/hr/personnel/${TARGET_ID}`, data);
+      await loadFile();
+      const sb = document.getElementById('editSuccess');
+      sb.textContent = 'Запазено успешно.';
+      sb.classList.add('show');
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  const idCardBtn = document.getElementById('uploadIdCardBtn');
+  if (idCardBtn) idCardBtn.addEventListener('click', () => document.getElementById('idCardFile').click());
+  const idCardFile = document.getElementById('idCardFile');
+  if (idCardFile) idCardFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById('photoMsg');
+    msg.textContent = 'Качване…';
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await Api.post(`/api/hr/personnel/${TARGET_ID}/id-card-photo`, { photo: dataUrl });
+      await loadFile();
+      const m = document.getElementById('photoMsg');
+      if (m) m.textContent = 'Снимката на личната карта е качена.';
+    } catch (err) { msg.textContent = err.message; }
+  });
+
+  const licenseBtn = document.getElementById('uploadLicenseBtn');
+  if (licenseBtn) licenseBtn.addEventListener('click', () => document.getElementById('licenseFile').click());
+  const licenseFile = document.getElementById('licenseFile');
+  if (licenseFile) licenseFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById('photoMsg');
+    msg.textContent = 'Качване…';
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await Api.post(`/api/hr/personnel/${TARGET_ID}/license-photo`, { photo: dataUrl });
+      await loadFile();
+      const m = document.getElementById('photoMsg');
+      if (m) m.textContent = 'Снимката на книжката е качена.';
+    } catch (err) { msg.textContent = err.message; }
+  });
+
+  const ecTypeSelect = document.getElementById('ecTypeSelect');
+  const ecHoursField = document.getElementById('ecHoursField');
+  function syncHoursField() { if (ecHoursField) ecHoursField.style.display = ecTypeSelect.value === 'labor' ? '' : 'none'; }
+  if (ecTypeSelect) { ecTypeSelect.addEventListener('change', syncHoursField); syncHoursField(); }
+
+  const ecForm = document.getElementById('ecForm');
+  if (ecForm) ecForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('ecError');
+    errorBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    data.profile_id = TARGET_ID;
+    if (data.contract_type !== 'labor') delete data.hours_per_day;
+    else data.hours_per_day = Number(data.hours_per_day);
+    if (!data.end_date) delete data.end_date;
+    if (!data.weekly_deduction_amount) delete data.weekly_deduction_amount;
+    else data.weekly_deduction_amount = Number(data.weekly_deduction_amount);
+    try {
+      await Api.post('/api/hr/employment-contracts', data);
+      await loadFile();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  document.querySelectorAll('.ec-status-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      try { await Api.put(`/api/hr/employment-contracts/${sel.dataset.id}`, { status: sel.value }); }
+      catch (err) { alert(err.message); }
+    });
+  });
+
+  const egnToggleBtn = document.getElementById('egnToggleBtn');
+  if (egnToggleBtn) egnToggleBtn.addEventListener('click', () => {
+    const masked = document.getElementById('egnMasked');
+    const full = document.getElementById('egnFull');
+    const showing = full.style.display !== 'none';
+    masked.style.display = showing ? '' : 'none';
+    full.style.display = showing ? 'none' : '';
+    egnToggleBtn.textContent = showing ? 'Покажи' : 'Скрий';
+  });
+}
+
+async function init() {
+  // "Моите досие" (шофьор, без ?id=) е отделен nav елемент от "Досиета на
+  // служители" (админ/мениджър списък) — маркираме правилния активен линк
+  // в sidebar-а, преди mountShell() да прочете data-active атрибута.
+  const shellEl = document.getElementById('app-shell');
+  if (shellEl) shellEl.dataset.active = qs('id') ? '/personnel.html' : '/personnel-detail.html';
+
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+
+  TARGET_ID = qs('id') || CURRENT_USER.id;
+  IS_SELF = TARGET_ID === CURRENT_USER.id;
+  CAN_EDIT = ['admin', 'manager'].includes(CURRENT_USER.role);
+
+  if (!IS_SELF && !CAN_EDIT) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате това досие.</div>`;
+    return;
+  }
+
+  if (CAN_EDIT) {
+    try {
+      const { users } = await Api.get('/api/users');
+      MANAGERS = users;
+    } catch (e) { MANAGERS = []; }
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <div style="margin-bottom:12px;"><a href="/personnel.html" class="btn btn-ghost btn-sm">← Всички служители</a></div>
+    <div id="fileHost" class="loading">Зареждане…</div>`;
+
+  try {
+    await loadFile();
+  } catch (err) {
+    document.getElementById('fileHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>

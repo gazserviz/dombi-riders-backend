@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Договори за наем — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/contracts.html" data-title="Договори за наем"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const STATUS_LABELS = { draft:['Чернова','badge-muted'], active:['Активен','badge-green'], completed:['Приключен','badge-muted'], terminated:['Прекратен','badge-danger'] };
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin','manager'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате договори.</div>`;
+    return;
+  }
+  const content = document.getElementById('app-content');
+  content.innerHTML = `<div class="loading">Зареждане…</div>`;
+
+  const [{ contracts }, { vehicles }] = await Promise.all([Api.get('/api/contracts'), Api.get('/api/vehicles')]);
+  const vehiclesById = Object.fromEntries(vehicles.map(v => [v.id, v]));
+
+  const canEdit = ['admin','manager'].includes(user.role);
+
+  content.innerHTML = `
+    <div class="toolbar no-print"><div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="printBtn">🖨 Принтирай списъка</button>
+      <a href="/contract-new.html" class="btn btn-primary btn-sm">+ Нов договор</a>
+    </div>
+    <div class="print-header"><h1>Dombi Riders — Договори за наем</h1><p>Генерирано на ${fmtDateTime(new Date())} от ${user.full_name}</p></div>
+    <div class="panel">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>№</th><th>Кола</th><th>Наемател</th><th>Период</th><th>Наем</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            ${contracts.length ? contracts.map(c => {
+              const v = vehiclesById[c.vehicle_id];
+              const [label, cls] = STATUS_LABELS[c.status] || [c.status, 'badge-muted'];
+              return `<tr>
+                <td><strong>${c.contract_number}</strong></td>
+                <td>${v ? v.plate_number+' — '+v.make+' '+v.model : c.vehicle_id}</td>
+                <td>${c.renter_name||'—'}</td>
+                <td>${fmtDate(c.start_date)} — ${c.end_date?fmtDate(c.end_date):'—'}</td>
+                <td>${fmtMoney(c.rate_amount)} / ${c.rate_period==='week'?'седмица':c.rate_period==='month'?'месец':'ден'}</td>
+                <td>${canEdit ? `
+                  <select class="statusSelect no-print" data-id="${c.id}" style="width:auto;padding:5px 8px;font-size:.76rem;">
+                    ${Object.entries(STATUS_LABELS).map(([val,[lbl]]) => `<option value="${val}" ${c.status===val?'selected':''}>${lbl}</option>`).join('')}
+                  </select>
+                  <span class="badge ${cls} print-only">${label}</span>
+                ` : `<span class="badge ${cls}">${label}</span>`}</td>
+                <td><a class="btn btn-ghost btn-sm no-print" href="/contract-print.html?id=${c.id}">🖨 Печат</a></td>
+              </tr>`;
+            }).join('') : `<tr><td colspan="7" class="empty-state">Няма договори за наем.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  document.getElementById('printBtn')?.addEventListener('click', () => window.print());
+  document.querySelectorAll('.statusSelect').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      sel.disabled = true;
+      try {
+        await Api.put(`/api/contracts/${sel.dataset.id}`, { status: sel.value });
+        init();
+      } catch (err) {
+        alert(err.message);
+        sel.disabled = false;
+      }
+    });
+  });
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Партньорски комисионни — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/partners.html" data-title="Партньорски комисионни"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const COMP_TYPE_LABELS = { percentage: 'Процент', fixed: 'Фиксирана сума' };
+const PERIOD_LABELS = { week: 'седмица', month: 'месец' };
+
+let CURRENT_USER = null;
+let PARTNERS = [];
+let selectedId = null;
+
+function compSummary(c) {
+  if (!c || !c.active) return '<span class="badge badge-muted">Не е зададена</span>';
+  if (c.comp_type === 'fixed' && c.fixed_amount) {
+    return `<span class="badge badge-green">${fmtMoney(c.fixed_amount)} / ${PERIOD_LABELS[c.fixed_period] || c.fixed_period}</span>`;
+  }
+  if (c.comp_type === 'percentage' && c.percentage) {
+    return `<span class="badge badge-green">${c.percentage}%</span>`;
+  }
+  return '<span class="badge badge-muted">Не е зададена</span>';
+}
+
+async function loadPartners() {
+  const host = document.getElementById('partnersHost');
+  const { partners } = await Api.get('/api/hr/partners');
+  PARTNERS = partners;
+  if (!partners.length) {
+    host.innerHTML = `<p class="hint">Няма потребители с роля „Мениджър“. Партньорите/посредниците се задават като мениджърски профили в „Потребители и роли“.</p>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Партньор</th><th>Имейл</th><th>Екип (шофьори)</th><th>Комисионна</th><th></th></tr></thead>
+      <tbody>
+        ${partners.map(p => `
+          <tr>
+            <td><strong>${p.full_name}</strong></td>
+            <td>${p.email}</td>
+            <td>${p.team_size}</td>
+            <td>${compSummary(p.commission)}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm select-partner-btn" data-id="${p.id}">Настрой →</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  host.querySelectorAll('.select-partner-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectPartner(btn.dataset.id));
+  });
+}
+
+function fillCommissionForm(c) {
+  const form = document.getElementById('commissionForm');
+  form.comp_type.value = (c && c.comp_type) || 'percentage';
+  form.percentage.value = (c && c.percentage != null) ? c.percentage : '';
+  form.fixed_amount.value = (c && c.fixed_amount != null) ? c.fixed_amount : '';
+  form.fixed_period.value = (c && c.fixed_period) || 'month';
+  form.notes.value = (c && c.notes) || '';
+  form.active.checked = c ? c.active !== false : true;
+  toggleCompFields();
+}
+
+function toggleCompFields() {
+  const form = document.getElementById('commissionForm');
+  const type = form.comp_type.value;
+  document.getElementById('percentageField').style.display = type === 'percentage' ? '' : 'none';
+  document.getElementById('fixedFields').style.display = type === 'fixed' ? '' : 'none';
+}
+
+async function loadStats() {
+  const statsHost = document.getElementById('statsHost');
+  statsHost.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const from = document.getElementById('statsFrom').value;
+  const to = document.getElementById('statsTo').value;
+  const qs = new URLSearchParams();
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  const stats = await Api.get(`/api/hr/partners/${selectedId}/stats?${qs.toString()}`);
+  statsHost.innerHTML = `
+    <p class="hint">⚠️ Базата за изчисление засега е заработката (заплати) на екипа за периода — приблизителна демонстрационна стойност, докато не бъде готов импортът на реалните таблици с поръчки/приходи. Не е окончателна счетоводна сума.</p>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">Шофьори в екипа</div><div class="value">${stats.team_size}</div></div>
+      <div class="stat-card"><div class="label">Отчетени седмици</div><div class="value">${stats.weeks_covered}</div></div>
+      <div class="stat-card"><div class="label">Общо поръчки</div><div class="value">${stats.total_orders}</div></div>
+      <div class="stat-card"><div class="label">Заработка на екипа</div><div class="value">${fmtMoney(stats.total_gross_earnings)}</div></div>
+      <div class="stat-card"><div class="label">Дължима комисионна</div><div class="value green">${fmtMoney(stats.commission_owed)}</div></div>
+    </div>`;
+}
+
+async function selectPartner(id) {
+  selectedId = id;
+  const partner = PARTNERS.find(p => p.id === id);
+  document.getElementById('detailHost').style.display = '';
+  document.getElementById('detailTitle').textContent = `Партньор: ${partner.full_name}`;
+  fillCommissionForm(partner.commission);
+  await loadStats();
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (CURRENT_USER.role !== 'admin') {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Само администратор управлява партньорските комисионни.</div>`;
+    return;
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <p class="hint">Реферални/посреднически партньори — профили с роля „Мениджър“ (могат едновременно да работят и като шофьори). Компенсацията им е процент или фиксирана сума на период, изчислена от екипа шофьори, зачислени към тях.</p>
+    <div class="panel">
+      <div class="panel-head"><h2>Партньори</h2></div>
+      <div id="partnersHost" class="loading">Зареждане…</div>
+    </div>
+
+    <div class="panel" id="detailHost" style="display:none;">
+      <div class="panel-head"><h2 id="detailTitle">Партньор</h2></div>
+      <div class="error-box" id="commissionError"></div>
+      <div class="success-box" id="commissionSuccess"></div>
+      <form id="commissionForm">
+        <div class="field"><label>Тип компенсация</label>
+          <select name="comp_type" id="compTypeSelect">
+            <option value="percentage">Процент от заработката на екипа</option>
+            <option value="fixed">Фиксирана сума на период</option>
+          </select>
+        </div>
+        <div class="field" id="percentageField"><label>Процент (%)</label><input name="percentage" type="number" step="0.01" min="0" max="100"></div>
+        <div class="field-row" id="fixedFields">
+          <div class="field"><label>Фиксирана сума (лв.)</label><input name="fixed_amount" type="number" step="0.01" min="0"></div>
+          <div class="field"><label>Период</label>
+            <select name="fixed_period"><option value="week">Седмично</option><option value="month">Месечно</option></select>
+          </div>
+        </div>
+        <div class="field"><label>Бележки</label><input name="notes"></div>
+        <div class="field"><label><input type="checkbox" name="active" style="width:auto;display:inline-block;margin-right:6px;">Активна комисионна</label></div>
+        <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+      </form>
+
+      <div class="panel-head" style="margin-top:22px;"><h2>Статистика за период</h2></div>
+      <div class="field-row">
+        <div class="field"><label>От (седмица, начало)</label><input type="date" id="statsFrom"></div>
+        <div class="field"><label>До (седмица, начало)</label><input type="date" id="statsTo"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="statsRefreshBtn">Обнови статистиката</button>
+      <div id="statsHost" style="margin-top:14px;"></div>
+    </div>
+  `;
+
+  document.getElementById('compTypeSelect').addEventListener('change', toggleCompFields);
+  document.getElementById('statsRefreshBtn').addEventListener('click', loadStats);
+
+  document.getElementById('commissionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('commissionError');
+    const successBox = document.getElementById('commissionSuccess');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const form = e.target;
+    const patch = {
+      comp_type: form.comp_type.value,
+      percentage: form.percentage.value ? Number(form.percentage.value) : null,
+      fixed_amount: form.fixed_amount.value ? Number(form.fixed_amount.value) : null,
+      fixed_period: form.fixed_period.value,
+      notes: form.notes.value || null,
+      active: form.active.checked,
+    };
+    try {
+      const { commission } = await Api.put(`/api/hr/partners/${selectedId}`, patch);
+      const idx = PARTNERS.findIndex(p => p.id === selectedId);
+      if (idx !== -1) PARTNERS[idx].commission = commission;
+      successBox.textContent = 'Комисионната е запазена.';
+      successBox.classList.add('show');
+      await loadPartners();
+      await loadStats();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  await loadPartners();
+}
+init();
+</script>
+</body>
+</html>

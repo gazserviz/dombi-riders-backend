@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Договор за наем — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .doc-wrap{max-width:820px;margin:0 auto;padding:30px 28px 60px;}
+  .doc-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--line);padding-bottom:16px;margin-bottom:20px;}
+  @media print{.doc-header{border-bottom:2px solid #000;}}
+  .doc-header h1{margin:0 0 4px;}
+  .doc-meta{font-size:.82rem;color:var(--muted);}
+  .doc-section{margin-bottom:20px;}
+  .doc-section h3{margin-bottom:8px;}
+  .kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:.9rem;}
+  .kv div span{color:var(--muted);}
+  .sign-row{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:50px;}
+  .sign-line{border-top:1px solid var(--muted);padding-top:8px;font-size:.8rem;color:var(--muted);text-align:center;}
+  .doc-actions{max-width:820px;margin:20px auto 0;padding:0 28px;display:flex;gap:10px;align-items:center;}
+  .terms{font-size:.84rem;color:var(--muted);line-height:1.6;}
+  @media print{ .topbar,.sidebar{display:none !important;} .content{padding:0;} }
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/contracts.html" data-title="Договор за наем"></div>
+
+<script src="/js/app.js"></script>
+<script src="/js/esign-ui.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const contractId = params.get('id');
+const RATE_PERIOD_LABELS = { day: 'ден', week: 'седмица', month: 'месец' };
+const STATUS_LABELS = { draft: 'Чернова', active: 'Активен', completed: 'Приключен', terminated: 'Прекратен' };
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin','manager'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате договори.</div>`;
+    return;
+  }
+  const content = document.getElementById('app-content');
+  content.innerHTML = `<div class="loading">Зареждане…</div>`;
+
+  try {
+    const { contract } = await Api.get(`/api/contracts/${contractId}`);
+    const { vehicle } = await Api.get(`/api/vehicles/${contract.vehicle_id}`);
+    let renterName = contract.renter_name || '—';
+    if (contract.renter_type === 'dombi_courier' && contract.renter_driver_id) {
+      try {
+        const { users } = await Api.get('/api/users');
+        const u = users.find(x => x.id === contract.renter_driver_id);
+        if (u) renterName = u.full_name;
+      } catch (e) { /* игнорираме */ }
+    }
+
+    content.innerHTML = `
+      <div class="doc-actions no-print">
+        <button class="btn btn-ghost btn-sm" onclick="history.back()">← Назад</button>
+        <button class="btn btn-primary btn-sm" onclick="window.print()">🖨 Принтирай / запази като PDF</button>
+      </div>
+      <div class="doc-wrap">
+        <div class="doc-header">
+          <div>
+            <h1>Договор за наем на автомобил</h1>
+            <div class="doc-meta">№ ${contract.contract_number} · Статус: ${STATUS_LABELS[contract.status] || contract.status}</div>
+          </div>
+          <div class="doc-meta" style="text-align:right;">
+            <strong>Dombi Riders ЕООД</strong><br>
+            Дата на съставяне: ${fmtDate(contract.created_at)}
+          </div>
+        </div>
+
+        <div class="doc-section">
+          <h3>Наемодател</h3>
+          <p>Dombi Riders ЕООД, гр. София, действащ чрез оправомощен представител.</p>
+        </div>
+
+        <div class="doc-section">
+          <h3>Наемател</h3>
+          <div class="kv">
+            <div><span>Име: </span><strong>${renterName}</strong></div>
+            <div><span>Тип: </span>${contract.renter_type === 'dombi_courier' ? 'Куриер на Dombi Riders' : contract.renter_type === 'other_platform' ? 'Друга платформа' : 'Лично ползване'}</div>
+            ${contract.renter_egn ? `<div><span>ЕГН: </span>${contract.renter_egn}</div>` : ''}
+            ${contract.renter_phone ? `<div><span>Телефон: </span>${contract.renter_phone}</div>` : ''}
+            ${contract.renter_email ? `<div><span>Имейл: </span>${contract.renter_email}</div>` : ''}
+            ${contract.renter_address ? `<div><span>Адрес: </span>${contract.renter_address}</div>` : ''}
+            ${contract.renter_license_number ? `<div><span>№ на книжка: </span>${contract.renter_license_number}</div>` : ''}
+          </div>
+        </div>
+
+        <div class="doc-section">
+          <h3>Предмет на договора</h3>
+          <div class="kv">
+            <div><span>Рег. номер: </span><strong>${vehicle ? vehicle.plate_number : contract.vehicle_id}</strong></div>
+            <div><span>Марка / Модел: </span>${vehicle ? vehicle.make + ' ' + vehicle.model : '—'}</div>
+            <div><span>VIN / Рама: </span>${vehicle ? (vehicle.vin || '—') : '—'}</div>
+            <div><span>Година: </span>${vehicle ? (vehicle.year || '—') : '—'}</div>
+          </div>
+        </div>
+
+        <div class="doc-section">
+          <h3>Условия на наема</h3>
+          <div class="kv">
+            <div><span>Начална дата: </span><strong>${fmtDate(contract.start_date)}</strong></div>
+            <div><span>Крайна дата: </span>${contract.end_date ? fmtDate(contract.end_date) : 'безсрочен'}</div>
+            <div><span>Наемна цена: </span><strong>${fmtMoney(contract.rate_amount)} / ${RATE_PERIOD_LABELS[contract.rate_period] || contract.rate_period}</strong></div>
+            <div><span>Депозит: </span>${fmtMoney(contract.deposit_amount || 0)}</div>
+            <div><span>Пробег при предаване: </span>${contract.start_odometer_km != null ? contract.start_odometer_km + ' км' : '—'}</div>
+            <div><span>Пробег при връщане: </span>${contract.end_odometer_km != null ? contract.end_odometer_km + ' км' : '—'}</div>
+          </div>
+          ${user.role === 'admin' || user.role === 'manager' ? `
+          <form id="odoEditForm" class="no-print" style="margin-top:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="field" style="margin:0;"><label>Пробег при предаване (км)</label><input name="start_odometer_km" type="number" min="0" value="${contract.start_odometer_km ?? ''}"></div>
+            <div class="field" style="margin:0;"><label>Пробег при връщане (км)</label><input name="end_odometer_km" type="number" min="0" value="${contract.end_odometer_km ?? ''}"></div>
+            <button type="submit" class="btn btn-ghost btn-sm">Запази пробега</button>
+          </form>` : ''}
+        </div>
+
+        <div class="doc-section">
+          <h3>Общи условия</h3>
+          <p class="terms">
+            Наемателят се задължава да ползва автомобила грижливо, по предназначение и в съответствие с
+            Закона за движение по пътищата. Всички глоби, свързани с ползването на автомобила през периода
+            на наема, са за сметка на наемателя. Автомобилът се предава и приема с приемо-предавателен
+            протокол, който е неразделна част от настоящия договор. Депозитът се възстановява при връщане
+            на автомобила в изправно състояние, освен ако не е договорено друго.
+          </p>
+        </div>
+
+        <div class="sign-row">
+          <div class="sign-line">Наемодател (подпис)</div>
+          <div class="sign-line">Наемател (подпис)</div>
+        </div>
+      </div>
+
+      ${esignPanelHtml('contract', contractId, contract)}
+    `;
+    bindEsignPanel('contract', contractId, init);
+    const odoEditForm = document.getElementById('odoEditForm');
+    if (odoEditForm) odoEditForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      Object.keys(data).forEach(k => { data[k] = data[k] === '' ? null : Number(data[k]); if (data[k] === null) delete data[k]; });
+      try {
+        await Api.put(`/api/contracts/${contractId}`, data);
+        await init();
+      } catch (err) { alert(err.message); }
+    });
+  } catch (err) {
+    content.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Начало — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .home-list{display:flex;flex-direction:column;gap:0;}
+  .home-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);}
+  .home-row:last-child{border-bottom:none;}
+  .home-row .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .home-row .dot.danger{background:var(--danger);box-shadow:0 0 8px 1px #ff6b6b88;}
+  .home-row .dot.warn{background:var(--warn);box-shadow:0 0 8px 1px #ffcf4d88;}
+  .home-row .main{flex:1;min-width:0;}
+  .home-row .main a{color:var(--text);font-weight:600;}
+  .home-row .sub{font-size:.76rem;color:var(--muted);}
+  .home-row .when{font-size:.78rem;font-weight:700;white-space:nowrap;}
+  .quick-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/home.html" data-title="Начало"></div>
+
+<script src="/js/app.js"></script>
+<script>
+function daysLeftLabel(n) {
+  if (n < 0) return `Просрочено с ${Math.abs(n)} дни`;
+  if (n === 0) return 'Изтича днес';
+  return `След ${n} дни`;
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (user.role === 'driver') {
+    window.location.href = '/vehicles.html';
+    return;
+  }
+  const content = document.getElementById('app-content');
+  content.innerHTML = `<div class="loading">Зареждане…</div>`;
+
+  try {
+    const data = await Api.get('/api/dashboard');
+
+    content.innerHTML = `
+      <div class="quick-actions">
+        <a href="/vehicle-new.html" class="btn btn-primary btn-sm">+ Нова кола</a>
+        <a href="/protocol-new.html" class="btn btn-ghost btn-sm">+ Нов протокол</a>
+        <a href="/contract-new.html" class="btn btn-ghost btn-sm">+ Нов договор</a>
+        <a href="/stats.html" class="btn btn-ghost btn-sm">📊 Статистики</a>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Коли в автопарка</div><div class="value">${data.fleet_count}</div>
+          <div class="sub">${data.available} свободни · ${data.assigned} зачислени · ${data.rented} под наем · ${data.in_service} на сервиз</div></div>
+        <div class="stat-card"><div class="label">Активни зачисления</div><div class="value">${data.active_assignments}</div></div>
+        <div class="stat-card"><div class="label">Активни договори за наем</div><div class="value">${data.active_contracts}</div></div>
+        <div class="stat-card"><div class="label">Изтичащи документи (30 дни)</div><div class="value ${data.expiring_docs_total ? 'warn' : ''}">${data.expiring_docs_total}</div></div>
+        <div class="stat-card"><div class="label">Изтичащи документи на служители (30 дни)</div><div class="value ${data.expiring_employee_docs_total ? 'warn' : ''}">${data.expiring_employee_docs_total}</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head"><h2>Изтичащи документи (коли)</h2><a href="/vehicles.html" class="btn btn-ghost btn-sm">Всички коли →</a></div>
+          <div class="home-list">
+            ${data.expiring_docs.length ? data.expiring_docs.map(d => `
+              <div class="home-row">
+                <span class="dot ${d.days_left < 0 ? 'danger' : 'warn'}"></span>
+                <div class="main">
+                  <a href="/vehicle-detail.html?id=${d.vehicle_id}#overview">${d.plate_number} — ${d.make} ${d.model}</a>
+                  <div class="sub">${d.label} · ${fmtDate(d.date)}</div>
+                </div>
+                <div class="when" style="color:${d.days_left < 0 ? 'var(--danger)' : 'var(--warn)'};">${daysLeftLabel(d.days_left)}</div>
+              </div>`).join('') : `<p class="hint">Няма изтичащи документи в следващите 30 дни.</p>`}
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Изтичащи документи (служители)</h2><a href="/personnel.html" class="btn btn-ghost btn-sm">Всички досиета →</a></div>
+          <div class="home-list">
+            ${data.expiring_employee_docs.length ? data.expiring_employee_docs.map(d => `
+              <div class="home-row">
+                <span class="dot ${d.days_left < 0 ? 'danger' : 'warn'}"></span>
+                <div class="main">
+                  <a href="/personnel-detail.html?id=${d.profile_id}">${d.full_name}</a>
+                  <div class="sub">${d.label}${d.contract_number ? ' · ' + d.contract_number : ''} · ${fmtDate(d.date)}</div>
+                </div>
+                <div class="when" style="color:${d.days_left < 0 ? 'var(--danger)' : 'var(--warn)'};">${daysLeftLabel(d.days_left)}</div>
+              </div>`).join('') : `<p class="hint">Няма изтичащи документи на служители в следващите 30 дни.</p>`}
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Предстоящ сервиз</h2></div>
+        <div class="home-list">
+          ${data.service_due.length ? data.service_due.map(v => `
+            <div class="home-row">
+              <span class="dot warn"></span>
+              <div class="main">
+                <a href="/vehicle-detail.html?id=${v.vehicle_id}#service">${v.plate_number} — ${v.make} ${v.model}</a>
+                <div class="sub">
+                  ${v.days_since_service == null ? 'Няма регистриран сервизен запис' : `Последен сервиз преди ${v.days_since_service} дни`}
+                  ${v.km_since_service != null ? ` · ${v.km_since_service.toLocaleString('bg-BG')} км от последния сервиз` : ''}
+                  ${v.due_by_km ? ' <span class="badge badge-warn" style="margin-left:4px;">по км</span>' : ''}
+                  ${v.due_by_days ? ' <span class="badge badge-warn" style="margin-left:4px;">по дни</span>' : ''}
+                </div>
+              </div>
+            </div>`).join('') : `<p class="hint">Всички коли имат скорошен сервизен запис.</p>`}
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>

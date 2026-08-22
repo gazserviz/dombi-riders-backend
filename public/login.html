@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Вход — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo"><span class="dot"></span><span>Dombi Riders</span></div>
+    <h2 style="margin-bottom:4px;">Вход в системата</h2>
+    <p style="margin-bottom:22px;">Автопарк · HR · Финанси</p>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>Имейл</label>
+        <input type="email" id="email" required placeholder="admin@dombi.bg" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Парола</label>
+        <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Вход</button>
+    </form>
+
+    <div class="demo-users">
+      Демо режим — примерни акаунти:<br>
+      Админ: <code>admin@dombi.bg</code> / <code>admin123</code><br>
+      Мениджър: <code>manager@dombi.bg</code> / <code>manager123</code><br>
+      Шофьор: <code>georgi@dombi.bg</code> / <code>driver123</code>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('errorBox');
+  errorBox.classList.remove('show');
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    await Api.post('/api/login', { email, password });
+    window.location.href = '/home.html';
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.add('show');
+  }
+});
+
+// ако вече е логнат, пренасочваме директно
+Api.get('/api/me').then(({ user }) => { if (user) window.location.href = '/home.html'; }).catch(()=>{});
+</script>
+</body>
+</html>

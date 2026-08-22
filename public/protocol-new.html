@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Нов протокол — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/protocol-new.html" data-title="Нов приемо-предавателен протокол"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const preselectedVehicle = params.get('vehicle_id');
+let photoDataUrls = [];
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin','manager'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да съставяте протоколи.</div>`;
+    return;
+  }
+
+  const [{ vehicles }, { assignments }] = await Promise.all([Api.get('/api/vehicles'), Api.get('/api/assignments')]);
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="panel" style="max-width:720px;">
+      <div class="error-box" id="errorBox"></div>
+      <div class="success-box" id="successBox"></div>
+      <form id="protoForm">
+        <div class="field-row">
+          <div class="field"><label>Кола *</label>
+            <select name="vehicle_id" id="vehicleSelect" required>
+              <option value="">— избери —</option>
+              ${vehicles.map(v => `<option value="${v.id}" ${v.id===preselectedVehicle?'selected':''}>${v.plate_number} — ${v.make} ${v.model}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Тип протокол *</label>
+            <select name="type" required>
+              <option value="handover">Предаване на шофьор</option>
+              <option value="return">Приемане обратно</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>Свързано зачисляване</label>
+          <select name="assignment_id" id="assignmentSelect"><option value="">— без връзка —</option></select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Пробег (км) *</label><input name="odometer_km" type="number" required></div>
+          <div class="field"><label>Ниво на гориво (%)</label><input name="fuel_level_pct" type="number" min="0" max="100" value="100"></div>
+        </div>
+        <div class="field"><label>Външно състояние — забележки</label><textarea name="exterior_notes" rows="2" placeholder="напр. драскотина на задна лява врата"></textarea></div>
+        <div class="field"><label>Вътрешно състояние — забележки</label><textarea name="interior_notes" rows="2"></textarea></div>
+
+        <div class="field">
+          <label>Снимки на състоянието</label>
+          <div class="photo-upload-btn" id="photoUploadBtn">📷 Добави снимки</div>
+          <input type="file" id="photoFiles" accept="image/*" multiple style="display:none;">
+          <div class="photo-grid" id="photoPreview"></div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Генерирай протокол</button>
+      </form>
+    </div>`;
+
+  function refreshAssignmentOptions() {
+    const vId = document.getElementById('vehicleSelect').value;
+    const sel = document.getElementById('assignmentSelect');
+    const relevant = assignments.filter(a => a.vehicle_id === vId);
+    sel.innerHTML = `<option value="">— без връзка —</option>` +
+      relevant.map(a => `<option value="${a.id}">${fmtDate(a.start_date)} — ${a.driver_id ? 'вътрешен шофьор' : a.external_name}</option>`).join('');
+  }
+  document.getElementById('vehicleSelect').addEventListener('change', refreshAssignmentOptions);
+  refreshAssignmentOptions();
+
+  document.getElementById('photoUploadBtn').addEventListener('click', () => document.getElementById('photoFiles').click());
+  document.getElementById('photoFiles').addEventListener('change', async (e) => {
+    for (const file of e.target.files) {
+      const dataUrl = await readFileAsDataUrl(file);
+      photoDataUrls.push(dataUrl);
+    }
+    document.getElementById('photoPreview').innerHTML = photoDataUrls.map(u => `<img src="${u}">`).join('');
+  });
+
+  document.getElementById('protoForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    data.odometer_km = Number(data.odometer_km);
+    data.fuel_level_pct = Number(data.fuel_level_pct);
+    if (!data.assignment_id) delete data.assignment_id;
+    data.photos = photoDataUrls;
+    try {
+      const { protocol } = await Api.post('/api/protocols', data);
+      successBox.textContent = `Протокол ${protocol.protocol_number} е генериран успешно.`;
+      successBox.classList.add('show');
+      setTimeout(() => { window.location.href = `/vehicle-detail.html?id=${data.vehicle_id}`; }, 900);
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>

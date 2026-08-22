@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Коли — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/vehicles.html" data-title="Автопарк — коли"></div>
+
+<script src="/js/app.js"></script>
+<script>
+let CURRENT_USER = null;
+let ALL_VEHICLES = [];
+let VISIBLE_VEHICLES = [];
+const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', hybrid_electric:'Хибрид/Електро', moto:'Мотор', scooter:'Скутер', bike:'Е-колело' };
+const CAT_LABELS_REV = Object.fromEntries(Object.entries(CAT_LABELS).map(([k,v]) => [v.toLowerCase(), k]));
+
+// нормализира дата от CSV (поддържа ISO 2026-01-31 и bg формат 31.01.2026)
+function normalizeCsvDate(s) {
+  if (!s) return '';
+  s = s.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(s);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  return '';
+}
+
+async function importVehiclesCsv(file) {
+  const statusEl = document.getElementById('importStatus');
+  statusEl.textContent = 'Обработка на файла…';
+  const text = await file.text();
+  const rows = parseCsv(text);
+  if (rows.length < 2) {
+    statusEl.textContent = 'Файлът не съдържа редове за импорт.';
+    return;
+  }
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const idx = (name) => header.findIndex(h => h === name);
+  const iPlate = idx('рег. номер'), iMake = idx('марка'), iModel = idx('модел'),
+    iYear = idx('година'), iCat = idx('категория'), iPrice = idx('себестойност'),
+    iReg = idx('рег. до'), iIns = idx('гражд. отг. до'), iCasco = idx('каско до'), iVign = idx('винетка до');
+
+  if (iPlate === -1 || iMake === -1 || iModel === -1) {
+    statusEl.textContent = 'CSV файлът трябва да съдържа поне колоните "Рег. номер", "Марка", "Модел" (както е в експортирания шаблон).';
+    return;
+  }
+
+  let ok = 0, failed = 0;
+  const errors = [];
+  for (const row of rows.slice(1)) {
+    const plate = (row[iPlate] || '').trim();
+    if (!plate) continue;
+    const payload = {
+      plate_number: plate,
+      make: (row[iMake] || '').trim(),
+      model: (row[iModel] || '').trim(),
+    };
+    if (iYear !== -1 && row[iYear]) payload.year = Number(row[iYear]) || undefined;
+    if (iCat !== -1 && row[iCat]) payload.category = CAT_LABELS_REV[(row[iCat] || '').trim().toLowerCase()] || undefined;
+    if (iPrice !== -1 && row[iPrice]) payload.purchase_price = Number(String(row[iPrice]).replace(/[^\d.]/g, '')) || undefined;
+    if (iReg !== -1) payload.registration_expiry = normalizeCsvDate(row[iReg]) || undefined;
+    if (iIns !== -1) payload.insurance_expiry = normalizeCsvDate(row[iIns]) || undefined;
+    if (iCasco !== -1) payload.casco_expiry = normalizeCsvDate(row[iCasco]) || undefined;
+    if (iVign !== -1) payload.vignette_expiry = normalizeCsvDate(row[iVign]) || undefined;
+    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+
+    try {
+      await Api.post('/api/vehicles', payload);
+      ok++;
+    } catch (err) {
+      failed++;
+      errors.push(`${plate}: ${err.message}`);
+    }
+  }
+  const summary = `Импортирани ${ok} коли${failed ? `, ${failed} с грешка (${errors.slice(0,3).join('; ')})` : ''}.`;
+  if (ok) {
+    await init();
+    const freshStatusEl = document.getElementById('importStatus');
+    if (freshStatusEl) freshStatusEl.textContent = summary;
+  } else {
+    statusEl.textContent = summary;
+  }
+}
+
+function renderToolbar() {
+  const canAdd = ['admin','manager'].includes(CURRENT_USER.role);
+  return `
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="Търси по номер, марка, модел…" style="min-width:240px;">
+      <select id="statusFilter">
+        <option value="">Всички статуси</option>
+        <option value="available">Свободна</option>
+        <option value="assigned">Зачислена</option>
+        <option value="rented">Отдадена под наем</option>
+        <option value="in_service">На сервиз</option>
+        <option value="inactive">Неактивна</option>
+      </select>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm no-print" id="printBtn">🖨 Принтирай</button>
+      <button class="btn btn-ghost btn-sm no-print" id="exportCsvBtn">⬇ Експорт CSV</button>
+      ${canAdd ? `<button class="btn btn-ghost btn-sm no-print" id="importCsvBtn">⬆ Импорт CSV</button>
+      <input type="file" id="importCsvFile" accept=".csv" style="display:none;">` : ''}
+      ${canAdd ? `<a href="/vehicle-new.html" class="btn btn-primary btn-sm">+ Нова кола</a>` : ''}
+    </div>
+    <div id="importStatus" class="hint no-print"></div>
+    <div class="print-header">
+      <h1>Dombi Riders — Автопарк</h1>
+      <p>Генерирано на ${fmtDateTime(new Date())} от ${CURRENT_USER.full_name}</p>
+    </div>`;
+}
+
+function renderTable(vehicles) {
+  if (!vehicles.length) {
+    return `<div class="empty-state">Няма коли, отговарящи на филтъра.</div>`;
+  }
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Рег. номер</th><th>Марка / Модел</th><th>Година</th><th>Категория</th>
+          <th>Статус</th><th>Себестойност</th><th>Документи</th>
+        </tr></thead>
+        <tbody>
+          ${vehicles.map(v => `
+            <tr class="clickable" onclick="window.location='/vehicle-detail.html?id=${v.id}'">
+              <td><strong>${v.plate_number}</strong></td>
+              <td>${v.make} ${v.model}</td>
+              <td>${v.year || '—'}</td>
+              <td>${CAT_LABELS[v.category] || v.category || '—'}</td>
+              <td>${vehicleStatusBadge(v.status)}</td>
+              <td>${fmtMoney(v.purchase_price)}</td>
+              <td>${docExpiryChips(v)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function docExpiryChips(v) {
+  const items = [
+    ['Рег.', v.registration_expiry],
+    ['Гражд. отг.', v.insurance_expiry],
+    ['Каско', v.casco_expiry],
+    ['Винетка', v.vignette_expiry],
+  ];
+  const soon = 30 * 86400000;
+  return `<div class="chip-row">` + items.map(([label, date]) => {
+    if (!date) return '';
+    const diff = new Date(date) - new Date();
+    const cls = diff < 0 ? 'badge-danger' : diff < soon ? 'badge-warn' : 'badge-muted';
+    return `<span class="badge ${cls}">${label} ${fmtDate(date)}</span>`;
+  }).join('') + `</div>`;
+}
+
+function applyFilters() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+  const filtered = ALL_VEHICLES.filter(v => {
+    const matchesQ = !q || `${v.plate_number} ${v.make} ${v.model}`.toLowerCase().includes(q);
+    const matchesStatus = !status || v.status === status;
+    return matchesQ && matchesStatus;
+  });
+  VISIBLE_VEHICLES = filtered;
+  document.getElementById('tableHost').innerHTML = renderTable(filtered);
+}
+
+function exportVehiclesCsv() {
+  const headers = ['Рег. номер','Марка','Модел','Година','Категория','Статус','Себестойност','Рег. до','Гражд. отг. до','Каско до','Винетка до'];
+  const rows = (VISIBLE_VEHICLES.length ? VISIBLE_VEHICLES : ALL_VEHICLES).map(v => [
+    v.plate_number, v.make, v.model, v.year || '',
+    CAT_LABELS[v.category] || v.category || '',
+    (VEHICLE_STATUS_LABELS[v.status] || [v.status])[0],
+    v.purchase_price, v.registration_expiry || '', v.insurance_expiry || '', v.casco_expiry || '', v.vignette_expiry || '',
+  ]);
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadCsv(`dombi-riders-avtopark-${stamp}.csv`, headers, rows);
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  const content = document.getElementById('app-content');
+  content.innerHTML = `${renderToolbar()}<div class="panel"><div id="tableHost" class="loading">Зареждане…</div></div>`;
+
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.getElementById('statusFilter').addEventListener('change', applyFilters);
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
+  document.getElementById('exportCsvBtn').addEventListener('click', exportVehiclesCsv);
+  document.getElementById('importCsvBtn')?.addEventListener('click', () => document.getElementById('importCsvFile').click());
+  document.getElementById('importCsvFile')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) importVehiclesCsv(file);
+    e.target.value = '';
+  });
+
+  try {
+    const { vehicles } = await Api.get('/api/vehicles');
+    ALL_VEHICLES = vehicles;
+    VISIBLE_VEHICLES = vehicles;
+    document.getElementById('tableHost').innerHTML = renderTable(vehicles);
+  } catch (err) {
+    document.getElementById('tableHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>

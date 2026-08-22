@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Нов договор — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/contracts.html" data-title="Нов договор за наем"></div>
+
+<script src="/js/app.js"></script>
+<script>
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin','manager'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да съставяте договори.</div>`;
+    return;
+  }
+  const [{ vehicles }, { users }] = await Promise.all([Api.get('/api/vehicles'), Api.get('/api/users')]);
+  const drivers = users.filter(u => u.role === 'driver');
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="panel" style="max-width:760px;">
+      <div class="error-box" id="errorBox"></div>
+      <div class="success-box" id="successBox"></div>
+      <form id="contractForm">
+        <div class="field-row">
+          <div class="field"><label>Кола *</label>
+            <select name="vehicle_id" required>
+              <option value="">— избери —</option>
+              ${vehicles.map(v => `<option value="${v.id}">${v.plate_number} — ${v.make} ${v.model}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Тип наемател *</label>
+            <select name="renter_type" id="renterType" required>
+              <option value="dombi_courier">Куриер на Dombi Riders</option>
+              <option value="other_platform">Друга платформа за доставки</option>
+              <option value="personal_use">Лично ползване</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="internalRenterField" class="field">
+          <label>Служител (шофьор)</label>
+          <select name="renter_driver_id"><option value="">— избери —</option>
+            ${drivers.map(d => `<option value="${d.id}">${d.full_name}</option>`).join('')}
+          </select>
+        </div>
+
+        <div id="externalRenterFields">
+          <div class="field-row">
+            <div class="field"><label>Име на наемателя *</label><input name="renter_name"></div>
+            <div class="field"><label>ЕГН</label><input name="renter_egn"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Телефон</label><input name="renter_phone"></div>
+            <div class="field"><label>Имейл</label><input name="renter_email" type="email"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Адрес</label><input name="renter_address"></div>
+            <div class="field"><label>№ на книжка</label><input name="renter_license_number"></div>
+          </div>
+        </div>
+
+        <h3 style="margin-top:14px;">Условия на наема</h3>
+        <div class="field-row">
+          <div class="field"><label>Начална дата *</label><input name="start_date" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
+          <div class="field"><label>Крайна дата</label><input name="end_date" type="date"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Сума на наема (лв.) *</label><input name="rate_amount" type="number" step="0.01" required></div>
+          <div class="field"><label>Период</label>
+            <select name="rate_period"><option value="week">На седмица</option><option value="month">На месец</option><option value="day">На ден</option></select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Депозит (лв.)</label><input name="deposit_amount" type="number" step="0.01" value="0"></div>
+          <div class="field"><label>Пробег при предаване (км)</label><input name="start_odometer_km" type="number" min="0" placeholder="напр. 41500"></div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Създай договор</button>
+      </form>
+    </div>`;
+
+  function toggleRenterFields() {
+    const isInternal = document.getElementById('renterType').value === 'dombi_courier';
+    document.getElementById('internalRenterField').style.display = isInternal ? 'block' : 'none';
+    document.getElementById('externalRenterFields').style.display = isInternal ? 'none' : 'block';
+  }
+  document.getElementById('renterType').addEventListener('change', toggleRenterFields);
+  toggleRenterFields();
+
+  document.getElementById('contractForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    data.rate_amount = Number(data.rate_amount);
+    data.deposit_amount = Number(data.deposit_amount || 0);
+    if (data.start_odometer_km) data.start_odometer_km = Number(data.start_odometer_km); else delete data.start_odometer_km;
+    if (!data.end_date) delete data.end_date;
+    Object.keys(data).forEach(k => { if (data[k] === '') delete data[k]; });
+    try {
+      const { contract } = await Api.post('/api/contracts', data);
+      successBox.textContent = `Договор ${contract.contract_number} е създаден.`;
+      successBox.classList.add('show');
+      setTimeout(() => { window.location.href = '/contracts.html'; }, 800);
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>
