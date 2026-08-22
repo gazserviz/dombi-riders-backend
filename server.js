@@ -244,7 +244,24 @@ function serveStatic(req, res, urlPath) {
 // ---------------------------------------------------------------------------
 // API рутер
 // ---------------------------------------------------------------------------
+// Публичните "кандидатствай"-ендпойнти трябва да са викаеми и от маркетинг
+// сайта (отделен домейн — Render Static Site), затова тук им слагаме CORS.
+// Умишлено НЕ слагаме CORS глобално — всички останали /api/* ендпойнти
+// изискват сесийна бисквитка (HttpOnly, SameSite=Lax) и остават достъпни
+// само от същия произход, за да не отваряме излишна повърхност за атака.
+const PUBLIC_CORS_PATHS = new Set(['/api/apply', '/api/apply/id-card-scan', '/api/apply/license-scan']);
+
 async function handleApi(req, res, pathname, query) {
+  if (PUBLIC_CORS_PATHS.has(pathname)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+  }
   try {
     // ---- AUTH ------------------------------------------------------------
     if (pathname === '/api/login' && req.method === 'POST') {
