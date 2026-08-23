@@ -13,7 +13,7 @@
 
 <script src="/js/app.js"></script>
 <script>
-const COMP_TYPE_LABELS = { percentage: 'Процент', fixed: 'Фиксирана сума' };
+const COMP_TYPE_LABELS = { percentage: 'Процент', fixed: 'Фиксирана сума', per_active_driver: 'На активен шофьор' };
 const PERIOD_LABELS = { week: 'седмица', month: 'месец' };
 
 let CURRENT_USER = null;
@@ -27,6 +27,9 @@ function compSummary(c) {
   }
   if (c.comp_type === 'percentage' && c.percentage) {
     return `<span class="badge badge-green">${c.percentage}%</span>`;
+  }
+  if (c.comp_type === 'per_active_driver' && c.per_driver_amount) {
+    return `<span class="badge badge-green">${fmtMoney(c.per_driver_amount)} / активен шофьор (&gt; ${c.qualifying_threshold != null ? c.qualifying_threshold : 30} € седмично)</span>`;
   }
   return '<span class="badge badge-muted">Не е зададена</span>';
 }
@@ -64,6 +67,8 @@ function fillCommissionForm(c) {
   form.percentage.value = (c && c.percentage != null) ? c.percentage : '';
   form.fixed_amount.value = (c && c.fixed_amount != null) ? c.fixed_amount : '';
   form.fixed_period.value = (c && c.fixed_period) || 'month';
+  form.per_driver_amount.value = (c && c.per_driver_amount != null) ? c.per_driver_amount : '';
+  form.qualifying_threshold.value = (c && c.qualifying_threshold != null) ? c.qualifying_threshold : 30;
   form.notes.value = (c && c.notes) || '';
   form.active.checked = c ? c.active !== false : true;
   toggleCompFields();
@@ -74,6 +79,8 @@ function toggleCompFields() {
   const type = form.comp_type.value;
   document.getElementById('percentageField').style.display = type === 'percentage' ? '' : 'none';
   document.getElementById('fixedFields').style.display = type === 'fixed' ? '' : 'none';
+  document.getElementById('perActiveDriverFields').style.display = type === 'per_active_driver' ? '' : 'none';
+  document.getElementById('perActiveDriverHint').style.display = type === 'per_active_driver' ? '' : 'none';
 }
 
 async function loadStats() {
@@ -85,6 +92,7 @@ async function loadStats() {
   if (from) qs.set('from', from);
   if (to) qs.set('to', to);
   const stats = await Api.get(`/api/hr/partners/${selectedId}/stats?${qs.toString()}`);
+  const isPerActiveDriver = stats.commission && stats.commission.comp_type === 'per_active_driver';
   statsHost.innerHTML = `
     <p class="hint">⚠️ Базата за изчисление засега е заработката (заплати) на екипа за периода — приблизителна демонстрационна стойност, докато не бъде готов импортът на реалните таблици с поръчки/приходи. Не е окончателна счетоводна сума.</p>
     <div class="stat-grid">
@@ -92,8 +100,23 @@ async function loadStats() {
       <div class="stat-card"><div class="label">Отчетени седмици</div><div class="value">${stats.weeks_covered}</div></div>
       <div class="stat-card"><div class="label">Общо поръчки</div><div class="value">${stats.total_orders}</div></div>
       <div class="stat-card"><div class="label">Заработка на екипа</div><div class="value">${fmtMoney(stats.total_gross_earnings)}</div></div>
+      ${isPerActiveDriver ? `<div class="stat-card"><div class="label">Активни шофьор-седмици (&gt; ${stats.qualifying_threshold} €)</div><div class="value">${stats.total_qualifying_driver_weeks}</div></div>` : ''}
       <div class="stat-card"><div class="label">Дължима комисионна</div><div class="value green">${fmtMoney(stats.commission_owed)}</div></div>
-    </div>`;
+    </div>
+    ${isPerActiveDriver && stats.per_active_driver_breakdown && stats.per_active_driver_breakdown.length ? `
+    <div class="table-wrap" style="margin-top:14px;">
+      <table>
+        <thead><tr><th>Седмица (начало)</th><th>Шофьори в екипа тази седмица</th><th>Активни (&gt; ${stats.qualifying_threshold} €)</th></tr></thead>
+        <tbody>
+          ${stats.per_active_driver_breakdown.map(w => `
+            <tr>
+              <td>${fmtDate(w.week_start)}</td>
+              <td>${w.team_size_that_week}</td>
+              <td><strong>${w.qualifying_count}</strong></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}`;
 }
 
 async function selectPartner(id) {
@@ -129,6 +152,7 @@ async function init() {
           <select name="comp_type" id="compTypeSelect">
             <option value="percentage">Процент от заработката на екипа</option>
             <option value="fixed">Фиксирана сума на период</option>
+            <option value="per_active_driver">На активен шофьор (седмично)</option>
           </select>
         </div>
         <div class="field" id="percentageField"><label>Процент (%)</label><input name="percentage" type="number" step="0.01" min="0" max="100"></div>
@@ -138,6 +162,11 @@ async function init() {
             <select name="fixed_period"><option value="week">Седмично</option><option value="month">Месечно</option></select>
           </div>
         </div>
+        <div class="field-row" id="perActiveDriverFields">
+          <div class="field"><label>Сума на активен шофьор (€)</label><input name="per_driver_amount" type="number" step="0.01" min="0"></div>
+          <div class="field"><label>Праг за "активен" (€ за седмицата)</label><input name="qualifying_threshold" type="number" step="0.01" min="0" value="30"></div>
+        </div>
+        <p class="hint" id="perActiveDriverHint" style="display:none;">За всяка седмица от периода се брои по един служител от екипа на партньора, направил <strong>повече от</strong> зададения праг за тази седмица — комисионната е (брой активни шофьор-седмици) × (сума на активен шофьор). Тази сума обичайно е част от седмичната удръжка/такса, която фирмата събира от съответния шофьор, а не допълнителен разход.</p>
         <div class="field"><label>Бележки</label><input name="notes"></div>
         <div class="field"><label><input type="checkbox" name="active" style="width:auto;display:inline-block;margin-right:6px;">Активна комисионна</label></div>
         <button type="submit" class="btn btn-primary btn-sm">Запази</button>
@@ -178,6 +207,8 @@ async function init() {
       percentage: form.percentage.value ? Number(form.percentage.value) : null,
       fixed_amount: form.fixed_amount.value ? Number(form.fixed_amount.value) : null,
       fixed_period: form.fixed_period.value,
+      per_driver_amount: form.per_driver_amount.value ? Number(form.per_driver_amount.value) : null,
+      qualifying_threshold: form.qualifying_threshold.value ? Number(form.qualifying_threshold.value) : 30,
       notes: form.notes.value || null,
       active: form.active.checked,
     };

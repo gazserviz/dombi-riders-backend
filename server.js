@@ -1281,7 +1281,7 @@ async function handleApi(req, res, pathname, query) {
       const profile = db.findUserById(targetId);
       if (!profile || profile.role !== 'manager') return sendJson(res, 404, { error: 'Партньорът не е намерен' });
       const body = await readJsonBody(req);
-      const allowed = ['comp_type', 'percentage', 'fixed_amount', 'fixed_period', 'comp_base', 'active', 'notes'];
+      const allowed = ['comp_type', 'percentage', 'fixed_amount', 'fixed_period', 'comp_base', 'per_driver_amount', 'qualifying_threshold', 'active', 'notes'];
       const patch = {};
       allowed.forEach(k => { if (k in body) patch[k] = body[k]; });
       const rec = db.setPartnerCommissionProfile(targetId, patch);
