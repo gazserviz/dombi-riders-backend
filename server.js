@@ -396,6 +396,28 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 201, { record: rec });
     }
 
+    // месечен преглед (задължителен чек лист: външно/вътрешно/техническо
+    // състояние + отговорник)
+    const inspListMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/inspections$/);
+    if (inspListMatch && req.method === 'GET') {
+      if (!requireAuth(req, res)) return;
+      return sendJson(res, 200, { inspections: db.listInspections(inspListMatch[1]) });
+    }
+    if (inspListMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      if (!body.inspector_id) {
+        return sendJson(res, 400, { error: 'Липсва отговорник (inspector_id) за прегледа' });
+      }
+      try {
+        const rec = db.createInspection(inspListMatch[1], body);
+        return sendJson(res, 201, { inspection: rec });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // recurring costs
     const rcListMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/recurring-costs$/);
     if (rcListMatch && req.method === 'GET') {
@@ -479,8 +501,16 @@ async function handleApi(req, res, pathname, query) {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
       const body = await readJsonBody(req);
-      const rec = db.createAssignment({ ...body, created_by: user.id });
-      return sendJson(res, 201, { assignment: rec });
+      // Протоколът и договорът за наем са ЗАДЪЛЖИТЕЛНИ при всяко зачисляване
+      // на кола (не само през "1 клик" бутона) — затова минаваме винаги през
+      // createAssignmentWithPaperwork, което ги създава атомарно и връща
+      // и трите записа накуп.
+      try {
+        const result = db.createAssignmentWithPaperwork({ ...body, created_by: user.id });
+        return sendJson(res, 201, result);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
     const endAssignMatch = pathname.match(/^\/api\/assignments\/([\w-]+)\/end$/);
     if (endAssignMatch && req.method === 'POST') {

@@ -112,6 +112,39 @@ async function init() {
             </div>`).join('') : `<p class="hint">Всички коли имат скорошен сервизен запис.</p>`}
         </div>
       </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Масло / Ангренажен ремък (ГРМ)</h2></div>
+        <div class="home-list">
+          ${data.type_service_due.length ? data.type_service_due.map(v => `
+            <div class="home-row">
+              <span class="dot warn"></span>
+              <div class="main">
+                <a href="/vehicle-detail.html?id=${v.vehicle_id}#service">${v.plate_number} — ${v.make} ${v.model}</a>
+                <div class="sub">
+                  ${v.label} — ${v.days_since_service == null ? 'няма регистриран запис' : `последна смяна преди ${v.days_since_service} дни`}
+                  ${v.km_since_service != null ? ` · ${v.km_since_service.toLocaleString('bg-BG')} км оттогава` : ''}
+                  ${v.due_by_km ? ' <span class="badge badge-warn" style="margin-left:4px;">по км</span>' : ''}
+                  ${v.due_by_days ? ' <span class="badge badge-warn" style="margin-left:4px;">по дни</span>' : ''}
+                </div>
+              </div>
+            </div>`).join('') : `<p class="hint">Всички коли са в рамките на интервала за масло и ГРМ.</p>`}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Липсващ месечен преглед</h2></div>
+        <div class="home-list">
+          ${data.missing_inspections.length ? data.missing_inspections.map(v => `
+            <div class="home-row">
+              <span class="dot danger"></span>
+              <div class="main">
+                <a href="/vehicle-detail.html?id=${v.vehicle_id}#inspections">${v.plate_number} — ${v.make} ${v.model}</a>
+                <div class="sub">Няма нанесен преглед за ${v.month}</div>
+              </div>
+            </div>`).join('') : `<p class="hint">Всички коли имат нанесен преглед за текущия месец.</p>`}
+        </div>
+      </div>
     `;
   } catch (err) {
     content.innerHTML = `<div class="error-box show">${err.message}</div>`;

@@ -103,8 +103,16 @@ create table vehicles (
 
   -- пробег и сервизни интервали (виж таблица odometer_logs за пълна история)
   initial_odometer_km int default 0,             -- пробег при въвеждане в системата
-  service_interval_km int default 10000,          -- на колко км се очаква следващ сервиз
+  service_interval_km int default 10000,          -- на колко км се очаква следващ сервиз (общ, тип "other")
   service_interval_months int default 6,           -- или на колко месеца — което дойде първо
+
+  -- отделни интервали за масло и ангренажен (ГРМ) ремък — проследяват се
+  -- самостоятелно от общия сервизен интервал, защото периодите им са много
+  -- по-различни (масло: чести смени; ГРМ: рядко, но критично при просрочване)
+  oil_interval_km int default 10000,
+  oil_interval_months int default 12,
+  timing_belt_interval_km int default 90000,
+  timing_belt_interval_months int default 60,
 
   notes text,
   created_by uuid references profiles(id),
@@ -127,7 +135,7 @@ comment on table vehicle_equipment is 'Оборудване, монтирано/
 -- ---------------------------------------------------------------------------
 -- СЕРВИЗНА КНИЖКА И РАЗХОДИ
 -- ---------------------------------------------------------------------------
-create type service_type as enum ('maintenance', 'repair', 'inspection', 'tires', 'wash', 'other');
+create type service_type as enum ('maintenance', 'repair', 'inspection', 'tires', 'wash', 'oil_change', 'timing_belt', 'other');
 
 create table service_records (
   id uuid primary key default uuid_generate_v4(),
@@ -159,6 +167,35 @@ create table vehicle_recurring_costs (
   created_at timestamptz not null default now()
 );
 comment on table vehicle_recurring_costs is 'Периодични разходи по кола: застраховка, винетка, данък и др.';
+
+-- ---------------------------------------------------------------------------
+-- ЗАДЪЛЖИТЕЛЕН МЕСЕЧЕН ПРЕГЛЕД: външно + вътрешно + техническо състояние,
+-- всеки запис е обвързан с отговорник (inspector_id), който е извършил
+-- прегледа. Един запис на кола на календарен месец (month, формат YYYY-MM) —
+-- dashboard-ът маркира като просрочена всяка кола без запис за текущия месец.
+-- ---------------------------------------------------------------------------
+create type inspection_check_result as enum ('ok', 'issue');
+
+create table vehicle_inspections (
+  id uuid primary key default uuid_generate_v4(),
+  vehicle_id uuid not null references vehicles(id) on delete cascade,
+  month text not null,                            -- 'YYYY-MM' — календарният месец, за който важи прегледът
+  inspection_date date not null default current_date,
+  inspector_id uuid not null references profiles(id),   -- отговорник, извършил прегледа
+
+  exterior_result inspection_check_result not null default 'ok',
+  exterior_notes text,
+  interior_result inspection_check_result not null default 'ok',
+  interior_notes text,
+  technical_result inspection_check_result not null default 'ok',
+  technical_notes text,
+
+  photos jsonb default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+
+  unique (vehicle_id, month)
+);
+comment on table vehicle_inspections is 'Задължителен месечен чек лист (външно/вътрешно/техническо състояние) с отговорник';
 
 -- ---------------------------------------------------------------------------
 -- ПРОБЕГ: пълна история на всички отчетени показания на километража,
@@ -230,7 +267,9 @@ create table handover_protocols (
   protocol_number text unique,                  -- напр. HP-2026-000123
   date timestamptz not null default now(),
   odometer_km int,
-  fuel_level_pct int,                           -- ниво на гориво в %
+  fuel_type text,                               -- petrol | diesel | gas_petrol | electric | hybrid
+  fuel_level_pct int,                           -- ниво на основното гориво в %
+  fuel_level_secondary_pct int,                 -- ниво на допълнителното гориво в % (само при fuel_type='gas_petrol' — газов инсталация)
   exterior_notes text,
   interior_notes text,
   damages jsonb default '[]'::jsonb,             -- [{x,y,description}] точки върху схема на колата

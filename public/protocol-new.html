@@ -51,7 +51,19 @@ async function init() {
         </div>
         <div class="field-row">
           <div class="field"><label>Пробег (км) *</label><input name="odometer_km" type="number" required></div>
-          <div class="field"><label>Ниво на гориво (%)</label><input name="fuel_level_pct" type="number" min="0" max="100" value="100"></div>
+          <div class="field"><label>Вид гориво</label>
+            <select name="fuel_type" id="fuelTypeSelect">
+              <option value="petrol">Бензин</option>
+              <option value="diesel">Дизел</option>
+              <option value="gas_petrol">Газ + Бензин</option>
+              <option value="electric">Електрическа</option>
+              <option value="hybrid">Хибрид</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label id="fuelPrimaryLabel">Ниво на гориво (%)</label><input name="fuel_level_pct" type="number" min="0" max="100" value="100"></div>
+          <div class="field" id="fuelSecondaryField" style="display:none;"><label>Ниво на газ (%)</label><input name="fuel_level_secondary_pct" type="number" min="0" max="100" value="100"></div>
         </div>
         <div class="field"><label>Външно състояние — забележки</label><textarea name="exterior_notes" rows="2" placeholder="напр. драскотина на задна лява врата"></textarea></div>
         <div class="field"><label>Вътрешно състояние — забележки</label><textarea name="interior_notes" rows="2"></textarea></div>
@@ -77,6 +89,14 @@ async function init() {
   document.getElementById('vehicleSelect').addEventListener('change', refreshAssignmentOptions);
   refreshAssignmentOptions();
 
+  function syncFuelFields() {
+    const isGasPetrol = document.getElementById('fuelTypeSelect').value === 'gas_petrol';
+    document.getElementById('fuelSecondaryField').style.display = isGasPetrol ? '' : 'none';
+    document.getElementById('fuelPrimaryLabel').textContent = isGasPetrol ? 'Ниво на бензин (%)' : 'Ниво на гориво (%)';
+  }
+  document.getElementById('fuelTypeSelect').addEventListener('change', syncFuelFields);
+  syncFuelFields();
+
   document.getElementById('photoUploadBtn').addEventListener('click', () => document.getElementById('photoFiles').click());
   document.getElementById('photoFiles').addEventListener('change', async (e) => {
     for (const file of e.target.files) {
@@ -94,6 +114,11 @@ async function init() {
     const data = Object.fromEntries(new FormData(e.target).entries());
     data.odometer_km = Number(data.odometer_km);
     data.fuel_level_pct = Number(data.fuel_level_pct);
+    if (data.fuel_type === 'gas_petrol' && data.fuel_level_secondary_pct) {
+      data.fuel_level_secondary_pct = Number(data.fuel_level_secondary_pct);
+    } else {
+      delete data.fuel_level_secondary_pct;
+    }
     if (!data.assignment_id) delete data.assignment_id;
     data.photos = photoDataUrls;
     try {

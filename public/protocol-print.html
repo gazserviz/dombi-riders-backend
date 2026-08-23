@@ -90,7 +90,8 @@ async function init() {
           <h3>Състояние при предаването</h3>
           <div class="kv">
             <div><span>Пробег: </span><strong>${protocol.odometer_km ?? '—'} км</strong></div>
-            <div><span>Ниво на гориво: </span>${protocol.fuel_level_pct != null ? protocol.fuel_level_pct + '%' : '—'}</div>
+            <div><span>Вид гориво: </span>${({petrol:'Бензин',diesel:'Дизел',gas_petrol:'Газ + Бензин',electric:'Електрическа',hybrid:'Хибрид'})[protocol.fuel_type] || '—'}</div>
+            <div><span>Ниво на гориво: </span>${protocol.fuel_level_pct != null ? protocol.fuel_level_pct + '%' : '—'}${protocol.fuel_level_secondary_pct != null ? ` (+ газ ${protocol.fuel_level_secondary_pct}%)` : ''}</div>
             <div><span>Шофьор / наемател: </span>${driverLabel}</div>
           </div>
         </div>

@@ -21,9 +21,11 @@ const canEdit = () => ['admin','manager'].includes(CURRENT_USER.role);
 
 const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', hybrid_electric:'Хибрид/Електро', moto:'Мотор', scooter:'Скутер', bike:'Е-колело' };
 const FUEL_LABELS = { petrol:'Бензин', diesel:'Дизел', hybrid:'Хибрид', electric:'Електрическа', lpg:'Газ' };
-const SERVICE_TYPE_LABELS = { maintenance:'Профилактика', repair:'Ремонт', inspection:'Преглед', tires:'Гуми', wash:'Измиване', other:'Друго' };
+const SERVICE_TYPE_LABELS = { maintenance:'Профилактика', repair:'Ремонт', inspection:'Преглед', tires:'Гуми', wash:'Измиване', oil_change:'Смяна на масло', timing_belt:'Ангренажен ремък (ГРМ)', other:'Друго' };
 const COST_TYPE_LABELS = { insurance_civil:'Гражданска отговорност', insurance_casco:'Каско', vignette:'Винетка', tax:'Данък', parking:'Паркинг', fine:'Глоба', other_recurring:'Друго' };
 const PURPOSE_LABELS = { dombi_courier:'Куриер на Dombi Riders', other_platform:'Друга платформа', personal_use:'Лично ползване' };
+const FUEL_TYPE_LABELS = { petrol:'Бензин', diesel:'Дизел', gas_petrol:'Газ + Бензин', electric:'Електрическа', hybrid:'Хибрид' };
+const INSPECTION_RESULT_LABELS = { ok:'Наред', issue:'Проблем' };
 
 function tabsHtml() {
   return `
@@ -34,6 +36,7 @@ function tabsHtml() {
       <div class="tab" data-tab="equipment">Оборудване</div>
       <div class="tab" data-tab="assignments">Зачисления</div>
       <div class="tab" data-tab="protocols">Протоколи</div>
+      <div class="tab" data-tab="inspections">Месечен преглед</div>
       <div class="tab" data-tab="talon">Талон</div>
     </div>`;
 }
@@ -144,10 +147,61 @@ function recurringCostsPanel(v) {
     </div>`;
 }
 
-function serviceTab(records) {
+function lastRecordOfType(records, type) {
+  return records
+    .filter(r => r.type === type)
+    .sort((a, b) => (a.service_date < b.service_date ? 1 : -1))[0] || null;
+}
+
+function intervalStatusPanel(v, records) {
+  const canWrite = canEdit();
+  const TYPES = [
+    { key: 'oil_change', label: 'Смяна на масло', kmField: 'oil_interval_km', monthsField: 'oil_interval_months', defKm: 10000, defMonths: 12 },
+    { key: 'timing_belt', label: 'Ангренажен ремък (ГРМ)', kmField: 'timing_belt_interval_km', monthsField: 'timing_belt_interval_months', defKm: 90000, defMonths: 60 },
+  ];
+  const rows = TYPES.map(t => {
+    const last = lastRecordOfType(records, t.key);
+    const intervalKm = v[t.kmField] || t.defKm;
+    const intervalMonths = v[t.monthsField] || t.defMonths;
+    return { ...t, last, intervalKm, intervalMonths };
+  });
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>Интервали за масло и ГРМ</h2>${canWrite ? `<button class="btn btn-ghost btn-sm" id="editTypeIntervalBtn">Редактирай интервалите</button>` : ''}</div>
+      <p class="hint">Проследяват се отделно от общия сервизен интервал (виж таб „Пробег“) — просрочените се показват и на началния екран.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Тип</th><th>Последна смяна</th><th>Интервал</th></tr></thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr>
+                <td>${r.label}</td>
+                <td>${r.last ? `${fmtDate(r.last.service_date)}${r.last.odometer_km ? ' · ' + Number(r.last.odometer_km).toLocaleString('bg-BG') + ' км' : ''}` : '<span class="hint">няма запис</span>'}</td>
+                <td>${r.intervalMonths} мес. / ${r.intervalKm.toLocaleString('bg-BG')} км</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${canWrite ? `
+      <form id="typeIntervalForm" style="display:none;margin-top:14px;padding:16px;background:var(--panel-2);border-radius:10px;">
+        <div class="field-row">
+          <div class="field"><label>Масло — интервал (месеци)</label><input name="oil_interval_months" type="number" min="1" value="${rows[0].intervalMonths}"></div>
+          <div class="field"><label>Масло — интервал (км)</label><input name="oil_interval_km" type="number" min="0" value="${rows[0].intervalKm}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>ГРМ — интервал (месеци)</label><input name="timing_belt_interval_months" type="number" min="1" value="${rows[1].intervalMonths}"></div>
+          <div class="field"><label>ГРМ — интервал (км)</label><input name="timing_belt_interval_km" type="number" min="0" value="${rows[1].intervalKm}"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+      </form>` : ''}
+    </div>`;
+}
+
+function serviceTab(v, records) {
   const canWrite = canEdit();
   return `
     <div class="tab-panel" id="tab-service">
+      ${intervalStatusPanel(v, records)}
       <div class="panel">
         <div class="panel-head"><h2>Сервизна книжка</h2>${canWrite ? `<button class="btn btn-primary btn-sm" id="addServiceBtn">+ Запис</button>` : ''}</div>
         ${canWrite ? `
@@ -314,10 +368,80 @@ function protocolsTab(list) {
               ${list.length ? list.map(p => `
                 <tr><td>${p.protocol_number}</td><td>${fmtDateTime(p.date)}</td>
                 <td>${p.type === 'handover' ? 'Предаване' : 'Приемане'}</td>
-                <td>${p.odometer_km||'—'} км</td><td>${p.fuel_level_pct!=null?p.fuel_level_pct+'%':'—'}</td>
+                <td>${p.odometer_km||'—'} км</td>
+                <td>${p.fuel_level_pct!=null?`${FUEL_TYPE_LABELS[p.fuel_type]||''} ${p.fuel_level_pct}%${p.fuel_level_secondary_pct!=null?` + газ ${p.fuel_level_secondary_pct}%`:''}`:'—'}</td>
                 <td>${(p.photos||[]).length} бр.</td>
                 <td><a class="btn btn-ghost btn-sm" href="/protocol-print.html?id=${p.id}">🖨 Печат</a></td></tr>`).join('')
               : `<tr><td colspan="7" class="empty-state">Няма протоколи за тази кола.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+function resultBadge(result) {
+  return result === 'issue' ? '<span class="badge badge-danger">Проблем</span>' : '<span class="badge badge-green">Наред</span>';
+}
+
+function inspectionsTab(list, managerUsers, usersById) {
+  const canWrite = canEdit();
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const alreadyDoneThisMonth = list.some(i => i.month === thisMonth);
+  return `
+    <div class="tab-panel" id="tab-inspections">
+      <div class="panel">
+        <div class="panel-head"><h2>Задължителен месечен преглед</h2>
+          ${(canWrite && !alreadyDoneThisMonth) ? `<button type="button" class="btn btn-primary btn-sm" id="addInspectionBtn">+ Нов преглед</button>` : ''}
+        </div>
+        <p class="hint">Всеки месец се изисква проверка на външно, вътрешно и техническо състояние, извършена от посочен отговорник. Системата отбелязва на началния екран колите без преглед за текущия месец.</p>
+        ${(canWrite && alreadyDoneThisMonth) ? `<p class="hint" style="color:var(--green);">✓ Прегледът за ${thisMonth} вече е нанесен.</p>` : ''}
+        ${canWrite ? `
+        <form id="inspectionForm" style="display:none;margin:14px 0;padding:16px;background:var(--panel-2);border-radius:10px;">
+          <div class="field-row">
+            <div class="field"><label>Месец *</label><input name="month" type="month" required value="${thisMonth}"></div>
+            <div class="field"><label>Дата на преглед</label><input name="inspection_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          </div>
+          <div class="field"><label>Отговорник (извършил прегледа) *</label>
+            <select name="inspector_id" required>
+              <option value="">— избери —</option>
+              ${managerUsers.map(u => `<option value="${u.id}" ${u.id===CURRENT_USER.id?'selected':''}>${u.full_name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Външно състояние</label>
+              <select name="exterior_result"><option value="ok">Наред</option><option value="issue">Проблем</option></select>
+            </div>
+            <div class="field"><label>Бележки (външно)</label><input name="exterior_notes"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Вътрешно състояние</label>
+              <select name="interior_result"><option value="ok">Наред</option><option value="issue">Проблем</option></select>
+            </div>
+            <div class="field"><label>Бележки (вътрешно)</label><input name="interior_notes"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Техническо състояние</label>
+              <select name="technical_result"><option value="ok">Наред</option><option value="issue">Проблем</option></select>
+            </div>
+            <div class="field"><label>Бележки (техническо)</label><input name="technical_notes"></div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Запази прегледа</button>
+        </form>` : ''}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Месец</th><th>Дата</th><th>Отговорник</th><th>Външно</th><th>Вътрешно</th><th>Техническо</th></tr></thead>
+            <tbody>
+              ${list.length ? list.map(i => `
+                <tr>
+                  <td><strong>${i.month}</strong></td>
+                  <td>${fmtDate(i.inspection_date)}</td>
+                  <td>${usersById[i.inspector_id] || i.inspector_id}</td>
+                  <td>${resultBadge(i.exterior_result)}${i.exterior_notes ? `<div class="hint">${i.exterior_notes}</div>` : ''}</td>
+                  <td>${resultBadge(i.interior_result)}${i.interior_notes ? `<div class="hint">${i.interior_notes}</div>` : ''}</td>
+                  <td>${resultBadge(i.technical_result)}${i.technical_notes ? `<div class="hint">${i.technical_notes}</div>` : ''}</td>
+                </tr>`).join('')
+              : `<tr><td colspan="6" class="empty-state">Няма нанесени месечни прегледи.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -379,17 +503,25 @@ async function init() {
       Api.get(`/api/assignments?vehicle_id=${vehicleId}`),
       Api.get(`/api/protocols?vehicle_id=${vehicleId}`),
       Api.get(`/api/vehicles/${vehicleId}/odometer`),
+      Api.get(`/api/vehicles/${vehicleId}/inspections`),
     ];
     if (['admin','manager'].includes(CURRENT_USER.role)) {
       promises.push(Api.get(`/api/vehicles/${vehicleId}/recurring-costs`));
     }
-    const [{ vehicle }, { records }, { equipment }, { assignments }, { protocols }, odo, costsRes] = await Promise.all(promises);
+    const [{ vehicle }, { records }, { equipment }, { assignments }, { protocols }, odo, { inspections }, costsRes] = await Promise.all(promises);
     VEHICLE = vehicle;
     vehicle._recurringCosts = costsRes ? costsRes.costs : [];
 
     let usersById = {};
+    let managerUsers = [];
     if (['admin','manager'].includes(CURRENT_USER.role)) {
-      try { const { users } = await Api.get('/api/users'); usersById = Object.fromEntries(users.map(u=>[u.id,u.full_name])); } catch(e){}
+      try {
+        const { users } = await Api.get('/api/users');
+        usersById = Object.fromEntries(users.map(u=>[u.id,u.full_name]));
+        managerUsers = users.filter(u => ['admin','manager'].includes(u.role));
+      } catch(e){}
+    } else {
+      usersById[CURRENT_USER.id] = CURRENT_USER.full_name;
     }
     assignments.forEach(a => { if (a.driver_id) a.driver_name = usersById[a.driver_id]; });
 
@@ -398,11 +530,12 @@ async function init() {
       <h1 style="margin-top:6px;">${vehicle.plate_number} — ${vehicle.make} ${vehicle.model}</h1>
       ${tabsHtml()}
       ${overviewTab(vehicle)}
-      ${serviceTab(records)}
+      ${serviceTab(vehicle, records)}
       ${odometerTab(vehicle, odo)}
       ${equipmentTab(equipment)}
       ${assignmentsTab(assignments)}
       ${protocolsTab(protocols)}
+      ${inspectionsTab(inspections, managerUsers, usersById)}
       ${talonTab(vehicle)}
       <div id="oneClickModalHost"></div>
     `;
@@ -497,6 +630,44 @@ function bindForms() {
       await Api.put(`/api/vehicles/${vehicleId}`, data);
       await init();
       activateTab('odometer');
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const editTypeIntervalBtn = document.getElementById('editTypeIntervalBtn');
+  if (editTypeIntervalBtn) editTypeIntervalBtn.addEventListener('click', () => {
+    const f = document.getElementById('typeIntervalForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  const typeIntervalForm = document.getElementById('typeIntervalForm');
+  if (typeIntervalForm) typeIntervalForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    ['oil_interval_months','oil_interval_km','timing_belt_interval_months','timing_belt_interval_km'].forEach(k => { data[k] = Number(data[k]); });
+    try {
+      await Api.put(`/api/vehicles/${vehicleId}`, data);
+      await init();
+      activateTab('service');
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const addInspectionBtn = document.getElementById('addInspectionBtn');
+  if (addInspectionBtn) addInspectionBtn.addEventListener('click', () => {
+    const f = document.getElementById('inspectionForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  const inspectionForm = document.getElementById('inspectionForm');
+  if (inspectionForm) inspectionForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    ['exterior_notes','interior_notes','technical_notes'].forEach(k => { if (!data[k]) delete data[k]; });
+    try {
+      await Api.post(`/api/vehicles/${vehicleId}/inspections`, data);
+      await init();
+      activateTab('inspections');
     } catch (err) { alert(err.message); }
     finally { setBusy(false); }
   });
