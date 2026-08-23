@@ -42,6 +42,46 @@
           <div class="field"><label>ЕГН</label><input name="egn" maxlength="10"></div>
           <div class="field"><label>Адрес</label><input name="address"></div>
         </div>
+        <div class="field"><label>Град *</label>
+          <select name="city" required>
+            <option value="">— изберете —</option>
+            <option value="sofia">София</option>
+            <option value="plovdiv">Пловдив</option>
+            <option value="varna">Варна</option>
+            <option value="burgas">Бургас</option>
+          </select>
+        </div>
+
+        <h3 style="margin-top:20px;">Гражданство</h3>
+        <div class="field-row">
+          <div class="field"><label>Националност *</label>
+            <select name="nationality" id="nationalitySelect" required>
+              <option value="bulgarian">България</option>
+              <option value="ukrainian">Украйна</option>
+              <option value="uzbek">Узбекистан</option>
+              <option value="other">Друга</option>
+            </select>
+          </div>
+          <div class="field" id="nationalityOtherField" style="display:none;"><label>Коя националност?</label><input name="nationality_other"></div>
+        </div>
+
+        <div id="foreignDocsSection" style="display:none;margin-top:14px;">
+          <div id="ukraineDocsBlock" style="display:none;">
+            <p class="hint">Качете снимка на документ за закрила.</p>
+            <div class="photo-upload-btn" id="protectionUploadBtn">🛡️ Качи снимка на "Закрила"</div>
+            <input type="file" id="protectionFile" accept="image/*" style="display:none;">
+            <div class="scan-hint" id="protectionMsg"></div>
+          </div>
+          <div id="otherForeignDocsBlock" style="display:none;">
+            <p class="hint">Качете разрешение за пребиваване и удостоверение от НАП за право на работа.</p>
+            <div class="photo-upload-btn" id="residenceUploadBtn">🪪 Качи разрешение за пребиваване</div>
+            <input type="file" id="residenceFile" accept="image/*" style="display:none;">
+            <div class="scan-hint" id="residenceMsg"></div>
+            <div class="photo-upload-btn" id="napUploadBtn" style="margin-top:8px;">📄 Качи удостоверение от НАП за работа</div>
+            <input type="file" id="napFile" accept="image/*" style="display:none;">
+            <div class="scan-hint" id="napMsg"></div>
+          </div>
+        </div>
 
         <h3 style="margin-top:20px;">Желан вид договор</h3>
         <div class="field-row">
@@ -61,24 +101,60 @@
           </div>
         </div>
 
+        <h3 style="margin-top:20px;">С какво ще кара</h3>
+        <div class="field-row">
+          <div class="field"><label>Превозно средство *</label>
+            <select name="work_vehicle_type" id="workVehicleSelect" required>
+              <option value="">— изберете —</option>
+              <option value="own_car">Собствена кола</option>
+              <option value="company_car">Фирмена кола</option>
+              <option value="bicycle">Колело</option>
+              <option value="scooter">Скутер</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Имал ли е профил в Glovo или Bolt?</label>
+            <select name="had_glovo_bolt_account" id="glovoBoltSelect">
+              <option value="">— изберете —</option>
+              <option value="yes">Да</option>
+              <option value="no">Не</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" id="glovoBoltPlatformField" style="display:none;"><label>Коя платформа?</label><input name="glovo_bolt_platform" placeholder="Glovo / Bolt / и двете"></div>
+
         <h3 style="margin-top:20px;">Лична карта</h3>
-        <p class="hint">Качете снимка на личната си карта — данните ще се разчетат автоматично и ще попълнят формата вместо вас.</p>
-        <div class="photo-upload-btn" id="idCardUploadBtn">🪪 Качи снимка на лична карта</div>
-        <input type="file" id="idCardFile" accept="image/*" style="display:none;">
-        <div class="scan-hint" id="idCardScanMsg"></div>
+        <p class="hint">Качете снимки на личната си карта — лицевата страна се разчита автоматично.</p>
+        <div class="photo-upload-btn" id="idCardFrontUploadBtn">🪪 Качи лична карта — лице</div>
+        <input type="file" id="idCardFrontFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="idCardFrontScanMsg"></div>
+        <div class="photo-upload-btn" id="idCardBackUploadBtn" style="margin-top:8px;">🪪 Качи лична карта — гръб</div>
+        <input type="file" id="idCardBackFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="idCardBackMsg"></div>
         <div class="field-row" style="margin-top:10px;">
           <div class="field"><label>Номер на лична карта</label><input name="id_card_number"></div>
           <div class="field"><label>Валидна до</label><input name="id_card_expiry" type="date"></div>
         </div>
 
-        <h3 style="margin-top:20px;">Шофьорска книжка (по избор)</h3>
-        <p class="hint">Ако кандидатствате за позиция, изискваща книжка — качете снимка за автоматично разчитане.</p>
-        <div class="photo-upload-btn" id="licenseUploadBtn">🚗 Качи снимка на шофьорска книжка</div>
-        <input type="file" id="licenseFile" accept="image/*" style="display:none;">
-        <div class="scan-hint" id="licenseScanMsg"></div>
-        <div class="field-row" style="margin-top:10px;">
-          <div class="field"><label>Номер на книжка</label><input name="driver_license_number"></div>
-          <div class="field"><label>Валидна до</label><input name="driver_license_expiry" type="date"></div>
+        <h3 style="margin-top:20px;">Селфи</h3>
+        <p class="hint">Качете актуална своя снимка (селфи), за да ви разпознаваме.</p>
+        <div class="photo-upload-btn" id="selfieUploadBtn">🤳 Качи селфи</div>
+        <input type="file" id="selfieFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="selfieMsg"></div>
+
+        <div id="licenseSection" style="display:none;">
+          <h3 style="margin-top:20px;">Шофьорска книжка</h3>
+          <p class="hint">Задължително за кандидатстващи със собствена или фирмена кола.</p>
+          <div class="photo-upload-btn" id="licenseFrontUploadBtn">🚗 Качи книжка — лице</div>
+          <input type="file" id="licenseFrontFile" accept="image/*" style="display:none;">
+          <div class="scan-hint" id="licenseFrontScanMsg"></div>
+          <div class="photo-upload-btn" id="licenseBackUploadBtn" style="margin-top:8px;">🚗 Качи книжка — гръб</div>
+          <input type="file" id="licenseBackFile" accept="image/*" style="display:none;">
+          <div class="scan-hint" id="licenseBackMsg"></div>
+          <div class="field-row" style="margin-top:10px;">
+            <div class="field"><label>Номер на книжка</label><input name="driver_license_number"></div>
+            <div class="field"><label>Валидна до</label><input name="driver_license_expiry" type="date"></div>
+          </div>
         </div>
 
         <h3 style="margin-top:20px;">Допълнителна информация</h3>
@@ -100,8 +176,22 @@
 <script>
 const params = new URLSearchParams(location.search);
 const token = params.get('token');
-let idCardPhotoDataUrl = null;
-let licensePhotoDataUrl = null;
+const photos = {}; // bodyKey -> dataUrl (виж saveApplyPhotos в server.js)
+
+function bindPlainUpload(btnId, fileId, msgId, bodyKey, label) {
+  document.getElementById(btnId).addEventListener('click', () => document.getElementById(fileId).click());
+  document.getElementById(fileId).addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById(msgId);
+    try {
+      photos[bodyKey] = await readFileAsDataUrl(file);
+      msg.textContent = label + ' е прикачена.';
+    } catch (err) {
+      msg.textContent = 'Грешка при прикачване: ' + err.message;
+    }
+  });
+}
 
 async function init() {
   if (!token) {
@@ -130,8 +220,14 @@ async function init() {
     const form = document.getElementById('applyForm');
     if (app.egn) form.egn.value = app.egn;
     if (app.address) form.address.value = app.address;
+    if (app.city) form.city.value = app.city;
+    if (app.nationality) form.nationality.value = app.nationality;
+    if (app.nationality_other) form.nationality_other.value = app.nationality_other;
     if (app.desired_contract_type) form.desired_contract_type.value = app.desired_contract_type;
     if (app.desired_hours_per_day) form.desired_hours_per_day.value = app.desired_hours_per_day;
+    if (app.work_vehicle_type) form.work_vehicle_type.value = app.work_vehicle_type;
+    if (app.had_glovo_bolt_account) form.had_glovo_bolt_account.value = app.had_glovo_bolt_account;
+    if (app.glovo_bolt_platform) form.glovo_bolt_platform.value = app.glovo_bolt_platform;
     if (app.id_card_number) form.id_card_number.value = app.id_card_number;
     if (app.id_card_expiry) form.id_card_expiry.value = app.id_card_expiry;
     if (app.driver_license_number) form.driver_license_number.value = app.driver_license_number;
@@ -150,15 +246,44 @@ async function init() {
   contractTypeSelect.addEventListener('change', syncHoursField);
   syncHoursField();
 
-  document.getElementById('idCardUploadBtn').addEventListener('click', () => document.getElementById('idCardFile').click());
-  document.getElementById('idCardFile').addEventListener('change', async (e) => {
+  const nationalitySelect = document.getElementById('nationalitySelect');
+  const nationalityOtherField = document.getElementById('nationalityOtherField');
+  const foreignDocsSection = document.getElementById('foreignDocsSection');
+  const ukraineDocsBlock = document.getElementById('ukraineDocsBlock');
+  const otherForeignDocsBlock = document.getElementById('otherForeignDocsBlock');
+  function syncNationalityFields() {
+    const v = nationalitySelect.value;
+    nationalityOtherField.style.display = v === 'other' ? '' : 'none';
+    foreignDocsSection.style.display = v === 'bulgarian' ? 'none' : '';
+    ukraineDocsBlock.style.display = v === 'ukrainian' ? '' : 'none';
+    otherForeignDocsBlock.style.display = (v === 'uzbek' || v === 'other') ? '' : 'none';
+  }
+  nationalitySelect.addEventListener('change', syncNationalityFields);
+  syncNationalityFields();
+
+  const workVehicleSelect = document.getElementById('workVehicleSelect');
+  const licenseSection = document.getElementById('licenseSection');
+  function syncVehicleFields() {
+    licenseSection.style.display = ['own_car', 'company_car'].includes(workVehicleSelect.value) ? '' : 'none';
+  }
+  workVehicleSelect.addEventListener('change', syncVehicleFields);
+  syncVehicleFields();
+
+  const glovoBoltSelect = document.getElementById('glovoBoltSelect');
+  const glovoBoltPlatformField = document.getElementById('glovoBoltPlatformField');
+  function syncGlovoBoltField() { glovoBoltPlatformField.style.display = glovoBoltSelect.value === 'yes' ? '' : 'none'; }
+  glovoBoltSelect.addEventListener('change', syncGlovoBoltField);
+  syncGlovoBoltField();
+
+  document.getElementById('idCardFrontUploadBtn').addEventListener('click', () => document.getElementById('idCardFrontFile').click());
+  document.getElementById('idCardFrontFile').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const msg = document.getElementById('idCardScanMsg');
+    const msg = document.getElementById('idCardFrontScanMsg');
     msg.textContent = 'Разчитане на снимката…';
     try {
-      idCardPhotoDataUrl = await readFileAsDataUrl(file);
-      const result = await Api.post('/api/apply/id-card-scan', { photo: idCardPhotoDataUrl });
+      photos.id_card_photo_front = await readFileAsDataUrl(file);
+      const result = await Api.post('/api/apply/id-card-scan', { photo: photos.id_card_photo_front });
       if (result.warning) {
         msg.textContent = result.warning;
       } else if (result.extracted) {
@@ -174,16 +299,21 @@ async function init() {
       msg.textContent = 'Снимката е прикачена, но разчитането неуспешно: ' + err.message;
     }
   });
+  bindPlainUpload('idCardBackUploadBtn', 'idCardBackFile', 'idCardBackMsg', 'id_card_photo_back', 'Гърбът на личната карта');
+  bindPlainUpload('selfieUploadBtn', 'selfieFile', 'selfieMsg', 'selfie_photo', 'Селфито');
+  bindPlainUpload('protectionUploadBtn', 'protectionFile', 'protectionMsg', 'protection_status_photo', '"Закрила"');
+  bindPlainUpload('residenceUploadBtn', 'residenceFile', 'residenceMsg', 'residence_permit_photo', 'Разрешението за пребиваване');
+  bindPlainUpload('napUploadBtn', 'napFile', 'napMsg', 'nap_certificate_photo', 'Удостоверението от НАП');
 
-  document.getElementById('licenseUploadBtn').addEventListener('click', () => document.getElementById('licenseFile').click());
-  document.getElementById('licenseFile').addEventListener('change', async (e) => {
+  document.getElementById('licenseFrontUploadBtn').addEventListener('click', () => document.getElementById('licenseFrontFile').click());
+  document.getElementById('licenseFrontFile').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const msg = document.getElementById('licenseScanMsg');
+    const msg = document.getElementById('licenseFrontScanMsg');
     msg.textContent = 'Разчитане на снимката…';
     try {
-      licensePhotoDataUrl = await readFileAsDataUrl(file);
-      const result = await Api.post('/api/apply/license-scan', { photo: licensePhotoDataUrl });
+      photos.driver_license_photo_front = await readFileAsDataUrl(file);
+      const result = await Api.post('/api/apply/license-scan', { photo: photos.driver_license_photo_front });
       if (result.warning) {
         msg.textContent = result.warning;
       } else if (result.extracted) {
@@ -197,6 +327,7 @@ async function init() {
       msg.textContent = 'Снимката е прикачена, но разчитането неуспешно: ' + err.message;
     }
   });
+  bindPlainUpload('licenseBackUploadBtn', 'licenseBackFile', 'licenseBackMsg', 'driver_license_photo_back', 'Гърбът на книжката');
 
   document.getElementById('applyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -204,8 +335,9 @@ async function init() {
     errorBox.classList.remove('show');
     const data = Object.fromEntries(new FormData(e.target).entries());
     if (data.desired_contract_type !== 'labor') delete data.desired_hours_per_day;
-    if (idCardPhotoDataUrl) data.id_card_photo = idCardPhotoDataUrl;
-    if (licensePhotoDataUrl) data.driver_license_photo = licensePhotoDataUrl;
+    if (data.nationality !== 'other') delete data.nationality_other;
+    if (data.had_glovo_bolt_account !== 'yes') delete data.glovo_bolt_platform;
+    Object.assign(data, photos);
     const submitBtn = e.target.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     try {

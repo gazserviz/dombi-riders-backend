@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Счетоводство — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/finance.html" data-title="Счетоводство"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const SOURCE_LABELS = {
+  vehicle_payment: 'Плащане по кола',
+  service_record: 'Сервиз',
+  recurring_cost: 'Периодичен разход по кола',
+  payroll_deduction: 'Седмична такса от шофьор',
+  manual: 'Ръчно перо',
+  partner_commission: 'Партньорска комисионна',
+};
+const INCOME_CATEGORY_SUGGESTIONS = ['Друг приход', 'Продажба на актив', 'Възстановена сума', 'Субсидия/финансиране'];
+const EXPENSE_CATEGORY_SUGGESTIONS = ['Наем офис/склад', 'Комунални разходи', 'Реклама и маркетинг', 'Застраховки (общи)', 'Данъци и такси', 'Заплати офис персонал', 'Счетоводни/юридически услуги', 'Банкови такси', 'Друг разход'];
+
+let CURRENT_USER = null;
+let REPORT = null;
+let GRANULARITY = 'week';
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function daysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
+
+function isoWeekStart(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const day = d.getUTCDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+function bucketKey(dateStr, granularity) {
+  if (granularity === 'day') return dateStr;
+  if (granularity === 'month') return dateStr.slice(0, 7);
+  return isoWeekStart(dateStr);
+}
+const MONTH_NAMES = ['януари', 'февруари', 'март', 'април', 'май', 'юни', 'юли', 'август', 'септември', 'октомври', 'ноември', 'декември'];
+function bucketLabel(key, granularity) {
+  if (granularity === 'month') {
+    const [y, m] = key.split('-');
+    return `${MONTH_NAMES[Number(m) - 1]} ${y}`;
+  }
+  if (granularity === 'week') return `Седмица от ${fmtDate(key)}`;
+  return fmtDate(key);
+}
+
+function buildBuckets(entries, granularity) {
+  const map = new Map();
+  entries.forEach(e => {
+    const key = bucketKey(e.date, granularity);
+    if (!map.has(key)) map.set(key, { key, income: 0, expense: 0 });
+    const b = map.get(key);
+    if (e.direction === 'income') b.income += e.amount; else b.expense += e.amount;
+  });
+  return [...map.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
+}
+
+function renderSummary(totals) {
+  document.getElementById('summaryHost').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">Приходи за периода</div><div class="value green">${fmtMoney(totals.income)}</div></div>
+      <div class="stat-card"><div class="label">Разходи за периода</div><div class="value warn">${fmtMoney(totals.expense)}</div></div>
+      <div class="stat-card"><div class="label">Нетна печалба</div><div class="value ${totals.profit >= 0 ? 'green' : 'warn'}">${fmtMoney(totals.profit)}</div></div>
+    </div>`;
+}
+
+function renderBuckets(entries) {
+  const buckets = buildBuckets(entries, GRANULARITY);
+  const host = document.getElementById('bucketsHost');
+  if (!buckets.length) { host.innerHTML = `<p class="hint">Няма движения за избрания период.</p>`; return; }
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Период</th><th>Приходи</th><th>Разходи</th><th>Печалба</th></tr></thead>
+      <tbody>
+        ${buckets.map(b => `
+          <tr>
+            <td>${bucketLabel(b.key, GRANULARITY)}</td>
+            <td style="color:var(--green);">${fmtMoney(b.income)}</td>
+            <td style="color:var(--danger);">${fmtMoney(b.expense)}</td>
+            <td style="font-weight:700;color:${(b.income - b.expense) >= 0 ? 'var(--green)' : 'var(--danger)'};">${fmtMoney(b.income - b.expense)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function renderByCategory(byCategory) {
+  const host = document.getElementById('categoryHost');
+  if (!byCategory.length) { host.innerHTML = `<p class="hint">Няма данни.</p>`; return; }
+  const maxAmount = Math.max(1, ...byCategory.map(c => c.amount));
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Категория</th><th>Тип</th><th>Сума</th><th></th></tr></thead>
+      <tbody>
+        ${byCategory.map(c => `
+          <tr>
+            <td>${c.category}</td>
+            <td><span class="badge ${c.direction === 'income' ? 'badge-green' : 'badge-danger'}">${c.direction === 'income' ? 'Приход' : 'Разход'}</span></td>
+            <td>${fmtMoney(c.amount)}</td>
+            <td style="width:35%;"><div class="progress-bar"><div class="fill" style="width:${Math.max(2, c.amount / maxAmount * 100)}%;background:${c.direction === 'income' ? 'linear-gradient(90deg,#1fae4a,#4dff7a)' : 'linear-gradient(90deg,#ff6b6b,#ff9d6b)'}"></div></div></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function renderEntries(entries) {
+  const host = document.getElementById('entriesHost');
+  if (!entries.length) { host.innerHTML = `<p class="hint">Няма движения за избрания период.</p>`; return; }
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Дата</th><th>Тип</th><th>Категория</th><th>Сума</th><th>Бележка</th><th>Източник</th></tr></thead>
+      <tbody>
+        ${entries.map(e => `
+          <tr>
+            <td>${fmtDate(e.date)}</td>
+            <td><span class="badge ${e.direction === 'income' ? 'badge-green' : 'badge-danger'}">${e.direction === 'income' ? 'Приход' : 'Разход'}</span></td>
+            <td>${e.category}</td>
+            <td>${fmtMoney(e.amount)}</td>
+            <td>${e.note || '—'}</td>
+            <td>${SOURCE_LABELS[e.source] || e.source}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+async function loadManualEntries(from, to) {
+  if (CURRENT_USER.role !== 'admin') return;
+  const host = document.getElementById('manualEntriesHost');
+  const { entries } = await Api.get(`/api/finance/entries?from=${from}&to=${to}`);
+  if (!entries.length) { host.innerHTML = `<p class="hint">Няма ръчно въведени пера за периода.</p>`; return; }
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Дата</th><th>Тип</th><th>Категория</th><th>Сума</th><th>Бележка</th><th></th></tr></thead>
+      <tbody>
+        ${entries.map(e => `
+          <tr>
+            <td>${fmtDate(e.entry_date)}</td>
+            <td><span class="badge ${e.direction === 'income' ? 'badge-green' : 'badge-danger'}">${e.direction === 'income' ? 'Приход' : 'Разход'}</span></td>
+            <td>${e.category}</td>
+            <td>${fmtMoney(e.amount)}</td>
+            <td>${e.note || '—'}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm delete-entry-btn" data-id="${e.id}">Изтрий</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  host.querySelectorAll('.delete-entry-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Да се изтрие ли перото?')) return;
+      try {
+        await Api.del(`/api/finance/entries/${btn.dataset.id}`);
+        await loadReport();
+      } catch (err) { alert(err.message); }
+    });
+  });
+}
+
+async function loadReport() {
+  const from = document.getElementById('fromInput').value;
+  const to = document.getElementById('toInput').value;
+  document.getElementById('summaryHost').innerHTML = `<div class="loading">Зареждане…</div>`;
+  const report = await Api.get(`/api/finance/report?from=${from}&to=${to}`);
+  REPORT = report;
+  renderSummary(report.totals);
+  renderBuckets(report.entries);
+  renderByCategory(report.by_category);
+  renderEntries(report.entries);
+  await loadManualEntries(from, to);
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (!['admin', 'manager'].includes(CURRENT_USER.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате счетоводния отчет.</div>`;
+    return;
+  }
+  const isAdmin = CURRENT_USER.role === 'admin';
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="toolbar no-print">
+      <div class="field"><label>От</label><input type="date" id="fromInput" value="${daysAgoStr(30)}"></div>
+      <div class="field"><label>До</label><input type="date" id="toInput" value="${todayStr()}"></div>
+      <div class="field"><label>Групиране</label>
+        <select id="granularitySelect">
+          <option value="day">Дневно</option>
+          <option value="week" selected>Седмично</option>
+          <option value="month">Месечно</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-sm" id="applyBtn" style="align-self:flex-end;">Приложи</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="printBtn">🖨 Принтирай</button>
+      <button class="btn btn-ghost btn-sm" id="exportCsvBtn">⬇ Експорт CSV</button>
+    </div>
+    <div class="print-header">
+      <h1>Dombi Riders — Счетоводен отчет</h1>
+      <p id="printRangeLabel"></p>
+    </div>
+
+    <div id="summaryHost" class="loading">Зареждане…</div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Приходи и разходи по период</h2></div>
+      <div id="bucketsHost" class="loading">Зареждане…</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>По категория</h2></div>
+      <div id="categoryHost" class="loading">Зареждане…</div>
+    </div>
+
+    ${isAdmin ? `
+    <div class="panel no-print">
+      <div class="panel-head"><h2>Ръчно перо (приход/разход извън автоматичните източници)</h2></div>
+      <p class="hint">За неща като наем на офис, комунални, реклама, заплати на офис персонал, счетоводни услуги и т.н. — приходите от наем на коли, седмичните такси от шофьорите и партньорските комисионни се смятат автоматично и не е нужно да се въвеждат тук.</p>
+      <div class="error-box" id="entryError"></div>
+      <form id="entryForm">
+        <div class="field-row">
+          <div class="field"><label>Дата *</label><input name="entry_date" type="date" required value="${todayStr()}"></div>
+          <div class="field"><label>Тип *</label>
+            <select name="direction" id="directionSelect" required>
+              <option value="expense">Разход</option>
+              <option value="income">Приход</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Категория *</label><input name="category" id="categoryInput" list="categorySuggestions" required></div>
+          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+        </div>
+        <datalist id="categorySuggestions"></datalist>
+        <div class="field"><label>Бележка</label><input name="note"></div>
+        <button type="submit" class="btn btn-primary btn-sm">Добави</button>
+      </form>
+      <h3 style="margin-top:20px;">Ръчно въведени пера за периода</h3>
+      <div id="manualEntriesHost" class="loading">Зареждане…</div>
+    </div>` : ''}
+
+    <div class="panel">
+      <div class="panel-head"><h2>Всички движения за периода</h2></div>
+      <div id="entriesHost" class="loading">Зареждане…</div>
+    </div>
+    <div class="print-footer">Dombi Riders ЕООД · Вътрешна система за управление · Отчетът е информативен и не замества счетоводна справка.</div>
+  `;
+
+  document.getElementById('applyBtn').addEventListener('click', () => {
+    GRANULARITY = document.getElementById('granularitySelect').value;
+    document.getElementById('printRangeLabel').textContent =
+      `Период: ${fmtDate(document.getElementById('fromInput').value)} — ${fmtDate(document.getElementById('toInput').value)} · Генерирано на ${fmtDateTime(new Date())} от ${CURRENT_USER.full_name}`;
+    loadReport();
+  });
+  document.getElementById('granularitySelect').addEventListener('change', (e) => {
+    GRANULARITY = e.target.value;
+    if (REPORT) { renderBuckets(REPORT.entries); }
+  });
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
+  document.getElementById('exportCsvBtn').addEventListener('click', () => {
+    if (!REPORT) return;
+    const headers = ['Дата', 'Тип', 'Категория', 'Сума', 'Бележка', 'Източник'];
+    const rows = REPORT.entries.map(e => [
+      e.date, e.direction === 'income' ? 'Приход' : 'Разход', e.category, e.amount, e.note || '', SOURCE_LABELS[e.source] || e.source,
+    ]);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`dombi-riders-schetovodstvo-${stamp}.csv`, headers, rows);
+  });
+
+  const directionSelect = document.getElementById('directionSelect');
+  const categorySuggestions = document.getElementById('categorySuggestions');
+  function syncCategorySuggestions() {
+    const list = directionSelect.value === 'income' ? INCOME_CATEGORY_SUGGESTIONS : EXPENSE_CATEGORY_SUGGESTIONS;
+    categorySuggestions.innerHTML = list.map(c => `<option value="${c}"></option>`).join('');
+  }
+  if (directionSelect) { directionSelect.addEventListener('change', syncCategorySuggestions); syncCategorySuggestions(); }
+
+  const entryForm = document.getElementById('entryForm');
+  if (entryForm) entryForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('entryError');
+    errorBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await Api.post('/api/finance/entries', data);
+      e.target.reset();
+      syncCategorySuggestions();
+      await loadReport();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  document.getElementById('printRangeLabel').textContent =
+    `Период: ${fmtDate(document.getElementById('fromInput').value)} — ${fmtDate(document.getElementById('toInput').value)} · Генерирано на ${fmtDateTime(new Date())} от ${CURRENT_USER.full_name}`;
+  await loadReport();
+}
+init();
+</script>
+</body>
+</html>

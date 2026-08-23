@@ -22,6 +22,11 @@ const APP_STATUS = {
 };
 function appStatusBadge(s) { const [label, cls] = APP_STATUS[s] || [s, 'badge-muted']; return `<span class="badge ${cls}">${label}</span>`; }
 const EC_TYPE_LABELS = { labor: 'Трудов', civil: 'Граждански' };
+const CITY_LABELS = { sofia: 'София', plovdiv: 'Пловдив', varna: 'Варна', burgas: 'Бургас' };
+const VEHICLE_LABELS = { own_car: 'Собствена кола', company_car: 'Фирмена кола', bicycle: 'Колело', scooter: 'Скутер' };
+const NATIONALITY_LABELS = { bulgarian: 'България', ukrainian: 'Украйна', uzbek: 'Узбекистан', other: 'Друга' };
+const GLOVO_BOLT_LABELS = { yes: 'Да', no: 'Не' };
+function photoLink(url) { return url ? `<a href="${url}" target="_blank">Преглед</a>` : '—'; }
 
 let CURRENT_USER = null;
 let MANAGERS = [];
@@ -50,10 +55,18 @@ function applicationDetailHtml(app, isAdmin) {
             <div class="table-wrap"><table>
               <tr><td><strong>ЕГН</strong></td><td>${app.egn || '—'}</td></tr>
               <tr><td><strong>Адрес</strong></td><td>${app.address || '—'}</td></tr>
+              <tr><td><strong>Град</strong></td><td>${CITY_LABELS[app.city] || '—'}</td></tr>
+              <tr><td><strong>Националност</strong></td><td>${app.nationality === 'other' ? (app.nationality_other || 'Друга') : (NATIONALITY_LABELS[app.nationality] || '—')}</td></tr>
+              <tr><td><strong>Ще кара с</strong></td><td>${VEHICLE_LABELS[app.work_vehicle_type] || '—'}</td></tr>
+              <tr><td><strong>Профил Glovo/Bolt</strong></td><td>${GLOVO_BOLT_LABELS[app.had_glovo_bolt_account] || '—'}${app.glovo_bolt_platform ? ' · ' + app.glovo_bolt_platform : ''}</td></tr>
               <tr><td><strong>Лична карта №</strong></td><td>${app.id_card_number || '—'} ${app.id_card_expiry ? '· валидна до ' + fmtDate(app.id_card_expiry) : ''}</td></tr>
-              <tr><td><strong>Снимка ЛК</strong></td><td>${app.id_card_photo_url ? `<a href="${app.id_card_photo_url}" target="_blank">Преглед</a>` : '—'}</td></tr>
+              <tr><td><strong>Снимка ЛК — лице / гръб</strong></td><td>${photoLink(app.id_card_photo_front_url)} / ${photoLink(app.id_card_photo_back_url)}</td></tr>
+              <tr><td><strong>Селфи</strong></td><td>${photoLink(app.selfie_photo_url)}</td></tr>
               <tr><td><strong>Книжка №</strong></td><td>${app.driver_license_number || '—'} ${app.driver_license_expiry ? '· валидна до ' + fmtDate(app.driver_license_expiry) : ''}</td></tr>
-              <tr><td><strong>Снимка книжка</strong></td><td>${app.driver_license_photo_url ? `<a href="${app.driver_license_photo_url}" target="_blank">Преглед</a>` : '—'}</td></tr>
+              <tr><td><strong>Снимка книжка — лице / гръб</strong></td><td>${photoLink(app.driver_license_photo_front_url)} / ${photoLink(app.driver_license_photo_back_url)}</td></tr>
+              ${app.nationality && app.nationality !== 'bulgarian' ? `
+              <tr><td><strong>${app.nationality === 'ukrainian' ? 'Закрила' : 'Разрешение за пребиваване'}</strong></td><td>${photoLink(app.nationality === 'ukrainian' ? app.protection_status_photo_url : app.residence_permit_photo_url)}</td></tr>
+              ${app.nationality !== 'ukrainian' ? `<tr><td><strong>Удостоверение от НАП</strong></td><td>${photoLink(app.nap_certificate_photo_url)}</td></tr>` : ''}` : ''}
               <tr><td><strong>Бележки</strong></td><td>${app.notes || '—'}</td></tr>
             </table></div>
           </div>

@@ -249,6 +249,32 @@ function serveStatic(req, res, urlPath) {
 // Умишлено НЕ слагаме CORS глобално — всички останали /api/* ендпойнти
 // изискват сесийна бисквитка (HttpOnly, SameSite=Lax) и остават достъпни
 // само от същия произход, за да не отваряме излишна повърхност за атака.
+// формуляр за кандидатстване — валидни стойности за селектите (виж apply.html / apply-details.html)
+const VALID_CITIES = new Set(['sofia', 'plovdiv', 'varna', 'burgas']);
+const VALID_WORK_VEHICLES = new Set(['own_car', 'company_car', 'bicycle', 'scooter']);
+const VALID_NATIONALITIES = new Set(['bulgarian', 'ukrainian', 'uzbek', 'other']);
+
+// качва всички снимки на кандидатурата (ЛК лице/гръб, селфи, книжка лице/гръб,
+// документи за чужди граждани), ако присъстват в тялото — общ хелпър за
+// POST /api/apply и POST /api/apply/details/:token
+function saveApplyPhotos(body) {
+  const out = {};
+  const map = {
+    id_card_photo_front: ['id_card_photo_front_url', 'apply-idcard-front'],
+    id_card_photo_back: ['id_card_photo_back_url', 'apply-idcard-back'],
+    selfie_photo: ['selfie_photo_url', 'apply-selfie'],
+    driver_license_photo_front: ['driver_license_photo_front_url', 'apply-license-front'],
+    driver_license_photo_back: ['driver_license_photo_back_url', 'apply-license-back'],
+    protection_status_photo: ['protection_status_photo_url', 'apply-protection'],
+    residence_permit_photo: ['residence_permit_photo_url', 'apply-residence'],
+    nap_certificate_photo: ['nap_certificate_photo_url', 'apply-nap'],
+  };
+  for (const [bodyKey, [outKey, prefix]] of Object.entries(map)) {
+    if (body[bodyKey]) out[outKey] = saveBase64Image(body[bodyKey], prefix).url;
+  }
+  return out;
+}
+
 const PUBLIC_CORS_PATHS = new Set(['/api/apply', '/api/apply/id-card-scan', '/api/apply/license-scan']);
 
 async function handleApi(req, res, pathname, query) {
@@ -766,6 +792,46 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 201, { transaction: rec, balance: db.getWalletBalance(body.user_id) });
     }
 
+    // ---- СЧЕТОВОДСТВО (общ финансов отчет + ръчна счетоводна книга) -------
+    if (pathname === '/api/finance/report' && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const report = db.getCompanyFinanceReport({ from: query.from, to: query.to });
+      return sendJson(res, 200, report);
+    }
+    if (pathname === '/api/finance/entries' && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      return sendJson(res, 200, { entries: db.listFinanceEntries({ from: query.from, to: query.to }) });
+    }
+    if (pathname === '/api/finance/entries' && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const rec = db.addFinanceEntry({
+          entry_date: body.entry_date, direction: body.direction,
+          category: body.category ? escapeHtml(String(body.category).slice(0, 100)) : null,
+          amount: body.amount, note: body.note ? escapeHtml(String(body.note).slice(0, 500)) : null,
+          created_by: user.id,
+        });
+        return sendJson(res, 201, { entry: rec });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    const financeEntryMatch = pathname.match(/^\/api\/finance\/entries\/([\w-]+)$/);
+    if (financeEntryMatch && req.method === 'DELETE') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        db.deleteFinanceEntry(financeEntryMatch[1]);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // ---- ЛИЧНИ ДОСИЕТА (HR картотека на документите) ---------------------
     // Служебна карта на служителя: лична карта, шофьорска книжка, трудови/
     // граждански договори, договори за наем и протоколи, на едно място +
@@ -813,13 +879,16 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { profile: updated });
     }
 
+    // side='front'|'back' — качват се отделно (виж и apply.html/apply-details.html,
+    // където кандидатите вече качват лице/гръб поотделно при кандидатстване)
     const personnelIdPhotoMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/id-card-photo$/);
     if (personnelIdPhotoMatch && req.method === 'POST') {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'idcard');
-      const updated = db.updateUser(personnelIdPhotoMatch[1], { id_card_photo_url: url });
+      const field = body.side === 'back' ? 'id_card_photo_back_url' : 'id_card_photo_url';
+      const updated = db.updateUser(personnelIdPhotoMatch[1], { [field]: url });
       return sendJson(res, 200, { profile: updated });
     }
     const personnelLicensePhotoMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/license-photo$/);
@@ -828,7 +897,17 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'license');
-      const updated = db.updateUser(personnelLicensePhotoMatch[1], { driver_license_photo_url: url });
+      const field = body.side === 'back' ? 'driver_license_photo_back_url' : 'driver_license_photo_url';
+      const updated = db.updateUser(personnelLicensePhotoMatch[1], { [field]: url });
+      return sendJson(res, 200, { profile: updated });
+    }
+    const personnelSelfiePhotoMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/selfie-photo$/);
+    if (personnelSelfiePhotoMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const { url } = saveBase64Image(body.photo, 'selfie');
+      const updated = db.updateUser(personnelSelfiePhotoMatch[1], { selfie_photo_url: url });
       return sendJson(res, 200, { profile: updated });
     }
 
@@ -1346,11 +1425,9 @@ async function handleApi(req, res, pathname, query) {
       if (!body.full_name || !body.phone) {
         return sendJson(res, 400, { error: 'Липсват задължителни полета (име, телефон)' });
       }
-      let id_card_photo_url = null;
-      let driver_license_photo_url = null;
+      let photos;
       try {
-        if (body.id_card_photo) id_card_photo_url = saveBase64Image(body.id_card_photo, 'apply-idcard').url;
-        if (body.driver_license_photo) driver_license_photo_url = saveBase64Image(body.driver_license_photo, 'apply-license').url;
+        photos = saveApplyPhotos(body);
       } catch (err) {
         return sendJson(res, 400, { error: 'Невалиден формат на качен файл: ' + err.message });
       }
@@ -1363,12 +1440,26 @@ async function handleApi(req, res, pathname, query) {
         email: body.email ? escapeHtml(String(body.email).slice(0, 200)) : null,
         address: body.address ? escapeHtml(String(body.address).slice(0, 300)) : null,
         id_card_number: body.id_card_number ? escapeHtml(String(body.id_card_number).slice(0, 30)) : null,
-        id_card_expiry: body.id_card_expiry || null, id_card_photo_url,
+        id_card_expiry: body.id_card_expiry || null,
+        id_card_photo_front_url: photos.id_card_photo_front_url,
+        id_card_photo_back_url: photos.id_card_photo_back_url,
+        selfie_photo_url: photos.selfie_photo_url,
         driver_license_number: body.driver_license_number ? escapeHtml(String(body.driver_license_number).slice(0, 30)) : null,
-        driver_license_expiry: body.driver_license_expiry || null, driver_license_photo_url,
+        driver_license_expiry: body.driver_license_expiry || null,
+        driver_license_photo_front_url: photos.driver_license_photo_front_url,
+        driver_license_photo_back_url: photos.driver_license_photo_back_url,
         desired_contract_type: body.desired_contract_type === 'civil' ? 'civil' : 'labor',
         desired_hours_per_day: body.desired_hours_per_day ? Number(body.desired_hours_per_day) : null,
         notes: body.notes ? escapeHtml(String(body.notes).slice(0, 1000)) : null,
+        had_glovo_bolt_account: body.had_glovo_bolt_account === 'yes' ? 'yes' : (body.had_glovo_bolt_account === 'no' ? 'no' : null),
+        glovo_bolt_platform: body.glovo_bolt_platform ? escapeHtml(String(body.glovo_bolt_platform).slice(0, 100)) : null,
+        city: VALID_CITIES.has(body.city) ? body.city : null,
+        work_vehicle_type: VALID_WORK_VEHICLES.has(body.work_vehicle_type) ? body.work_vehicle_type : null,
+        nationality: VALID_NATIONALITIES.has(body.nationality) ? body.nationality : null,
+        nationality_other: body.nationality_other ? escapeHtml(String(body.nationality_other).slice(0, 100)) : null,
+        protection_status_photo_url: photos.protection_status_photo_url,
+        residence_permit_photo_url: photos.residence_permit_photo_url,
+        nap_certificate_photo_url: photos.nap_certificate_photo_url,
       });
       return sendJson(res, 201, { application: { id: rec.id, status: rec.status } });
     }
@@ -1389,6 +1480,9 @@ async function handleApi(req, res, pathname, query) {
           driver_license_number: app.driver_license_number, driver_license_expiry: app.driver_license_expiry,
           desired_contract_type: app.desired_contract_type, desired_hours_per_day: app.desired_hours_per_day,
           notes: app.notes, status: app.status,
+          had_glovo_bolt_account: app.had_glovo_bolt_account, glovo_bolt_platform: app.glovo_bolt_platform,
+          city: app.city, work_vehicle_type: app.work_vehicle_type,
+          nationality: app.nationality, nationality_other: app.nationality_other,
         },
       });
     }
@@ -1397,10 +1491,9 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 429, { error: 'Твърде много опити от този адрес. Опитайте по-късно.' });
       }
       const body = await readJsonBody(req);
-      let id_card_photo_url, driver_license_photo_url;
+      let photos;
       try {
-        if (body.id_card_photo) id_card_photo_url = saveBase64Image(body.id_card_photo, 'apply-idcard').url;
-        if (body.driver_license_photo) driver_license_photo_url = saveBase64Image(body.driver_license_photo, 'apply-license').url;
+        photos = saveApplyPhotos(body);
       } catch (err) {
         return sendJson(res, 400, { error: 'Невалиден формат на качен файл: ' + err.message });
       }
@@ -1414,9 +1507,14 @@ async function handleApi(req, res, pathname, query) {
         desired_contract_type: body.desired_contract_type === 'civil' ? 'civil' : 'labor',
         desired_hours_per_day: body.desired_hours_per_day ? Number(body.desired_hours_per_day) : null,
         notes: body.notes ? escapeHtml(String(body.notes).slice(0, 1000)) : null,
+        had_glovo_bolt_account: body.had_glovo_bolt_account === 'yes' ? 'yes' : (body.had_glovo_bolt_account === 'no' ? 'no' : null),
+        glovo_bolt_platform: body.glovo_bolt_platform ? escapeHtml(String(body.glovo_bolt_platform).slice(0, 100)) : null,
+        city: VALID_CITIES.has(body.city) ? body.city : null,
+        work_vehicle_type: VALID_WORK_VEHICLES.has(body.work_vehicle_type) ? body.work_vehicle_type : null,
+        nationality: VALID_NATIONALITIES.has(body.nationality) ? body.nationality : null,
+        nationality_other: body.nationality_other ? escapeHtml(String(body.nationality_other).slice(0, 100)) : null,
+        ...photos,
       };
-      if (id_card_photo_url) patch.id_card_photo_url = id_card_photo_url;
-      if (driver_license_photo_url) patch.driver_license_photo_url = driver_license_photo_url;
       try {
         const app = db.completeApplicationDetails(applyDetailsMatch[1], patch);
         return sendJson(res, 200, { application: { id: app.id, status: app.status } });

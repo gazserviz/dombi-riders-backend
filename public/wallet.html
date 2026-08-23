@@ -35,12 +35,67 @@ const TX_TYPE_LABELS = {
 
 let CURRENT_USER = null;
 let ALL_USERS = [];
+let OWN_TRANSACTIONS = [];
+let OWN_GRANULARITY = 'week';
+let VIEWED_USER_TRANSACTIONS = [];
+let VIEWED_GRANULARITY = 'week';
+
+// --- разходи/приходи по портфейл: дневно/седмично/месечно (виж и finance.html
+// за същата логика на общото счетоводство на фирмата) --------------------
+function isoWeekStart(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+function walletBucketKey(createdAt, granularity) {
+  const dateStr = createdAt.slice(0, 10);
+  if (granularity === 'day') return dateStr;
+  if (granularity === 'month') return dateStr.slice(0, 7);
+  return isoWeekStart(dateStr);
+}
+const WALLET_MONTH_NAMES = ['януари', 'февруари', 'март', 'април', 'май', 'юни', 'юли', 'август', 'септември', 'октомври', 'ноември', 'декември'];
+function walletBucketLabel(key, granularity) {
+  if (granularity === 'month') { const [y, m] = key.split('-'); return `${WALLET_MONTH_NAMES[Number(m) - 1]} ${y}`; }
+  if (granularity === 'week') return `Седмица от ${fmtDate(key)}`;
+  return fmtDate(key);
+}
+function buildWalletBuckets(transactions, granularity) {
+  const map = new Map();
+  transactions.forEach(t => {
+    const key = walletBucketKey(t.created_at, granularity);
+    if (!map.has(key)) map.set(key, { key, income: 0, expense: 0 });
+    const b = map.get(key);
+    const amt = Number(t.amount || 0);
+    if (amt >= 0) b.income += amt; else b.expense += Math.abs(amt);
+  });
+  return [...map.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
+}
+function walletBreakdownHtml(transactions, granularity) {
+  const buckets = buildWalletBuckets(transactions, granularity);
+  if (!buckets.length) return `<p class="hint">Няма движения все още.</p>`;
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Период</th><th>Приходи</th><th>Разходи</th><th>Нето</th></tr></thead>
+      <tbody>
+        ${buckets.map(b => `
+          <tr>
+            <td>${walletBucketLabel(b.key, granularity)}</td>
+            <td style="color:var(--green);">${fmtMoney(b.income)}</td>
+            <td style="color:var(--danger);">${fmtMoney(b.expense)}</td>
+            <td style="font-weight:700;color:${(b.income - b.expense) >= 0 ? 'var(--green)' : 'var(--danger)'};">${fmtMoney(b.income - b.expense)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
 
 async function loadOwnWallet() {
   const host = document.getElementById('ownWalletHost');
   host.innerHTML = `<div class="loading">Зареждане…</div>`;
   const data = await Api.get('/api/wallet');
   CURRENT_USER.can_approve_transfers = data.can_approve_transfers;
+  OWN_TRANSACTIONS = data.transactions;
 
   host.innerHTML = `
     <div class="stat-card" style="margin-bottom:16px;">
@@ -57,7 +112,26 @@ async function loadOwnWallet() {
           <td>${txBadge(t)}</td><td>${t.note || '—'}</td></tr>`).join('')}
       </tbody>
     </table></div>` : `<p class="hint">Няма транзакции все още.</p>`}
+
+    <h3 style="margin-top:20px;">Приходи и разходи по период</h3>
+    <div class="field" style="max-width:220px;">
+      <label>Групиране</label>
+      <select id="ownGranularitySelect">
+        <option value="day">Дневно</option>
+        <option value="week" selected>Седмично</option>
+        <option value="month">Месечно</option>
+      </select>
+    </div>
+    <div id="ownBreakdownHost">${walletBreakdownHtml(OWN_TRANSACTIONS, OWN_GRANULARITY)}</div>
   `;
+  const ownGranSelect = document.getElementById('ownGranularitySelect');
+  if (ownGranSelect) {
+    ownGranSelect.value = OWN_GRANULARITY;
+    ownGranSelect.addEventListener('change', (e) => {
+      OWN_GRANULARITY = e.target.value;
+      document.getElementById('ownBreakdownHost').innerHTML = walletBreakdownHtml(OWN_TRANSACTIONS, OWN_GRANULARITY);
+    });
+  }
   renderApprovePanelVisibility();
 }
 
@@ -145,14 +219,64 @@ async function loadAdminOverview() {
   const { wallets } = await Api.get('/api/wallet/users');
   host.innerHTML = `
     <div class="table-wrap"><table>
-      <thead><tr><th>Потребител</th><th>Роля</th><th>Салдо</th></tr></thead>
+      <thead><tr><th>Потребител</th><th>Роля</th><th>Салдо</th><th></th></tr></thead>
       <tbody>
-        ${wallets.map(w => `<tr><td>${w.full_name}</td><td>${ROLE_LABELS[w.role] || w.role}</td><td>${fmtMoney(w.balance)}</td></tr>`).join('')}
+        ${wallets.map(w => `
+          <tr>
+            <td>${w.full_name}</td><td>${ROLE_LABELS[w.role] || w.role}</td><td>${fmtMoney(w.balance)}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm view-wallet-btn" data-id="${w.user_id}" data-name="${w.full_name}">Приходи/разходи →</button></td>
+          </tr>`).join('')}
       </tbody>
     </table></div>`;
+  host.querySelectorAll('.view-wallet-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadViewedWallet(btn.dataset.id, btn.dataset.name));
+  });
 
   const select = document.getElementById('adjUserSelect');
   select.innerHTML = wallets.map(w => `<option value="${w.user_id}">${w.full_name}</option>`).join('');
+}
+
+async function loadViewedWallet(userId, fullName) {
+  const panel = document.getElementById('viewedWalletPanel');
+  const host = document.getElementById('viewedWalletHost');
+  panel.style.display = '';
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  document.getElementById('viewedWalletTitle').textContent = `Приходи/разходи — ${fullName}`;
+  const data = await Api.get(`/api/wallet/users/${userId}`);
+  VIEWED_USER_TRANSACTIONS = data.transactions;
+  host.innerHTML = `
+    <div class="stat-card" style="margin-bottom:16px;">
+      <div class="label">Текущо салдо</div>
+      <div class="value">${fmtMoney(data.balance)}</div>
+    </div>
+    <div class="field" style="max-width:220px;">
+      <label>Групиране</label>
+      <select id="viewedGranularitySelect">
+        <option value="day">Дневно</option>
+        <option value="week" selected>Седмично</option>
+        <option value="month">Месечно</option>
+      </select>
+    </div>
+    <div id="viewedBreakdownHost">${walletBreakdownHtml(VIEWED_USER_TRANSACTIONS, VIEWED_GRANULARITY)}</div>
+    <h3 style="margin-top:20px;">История на транзакциите</h3>
+    ${data.transactions.length ? `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Кога</th><th>Вид</th><th>Сума</th><th>Бележка</th></tr></thead>
+      <tbody>
+        ${data.transactions.map(t => `
+          <tr><td>${fmtDateTime(t.created_at)}</td><td>${TX_TYPE_LABELS[t.type] || t.type}</td>
+          <td>${txBadge(t)}</td><td>${t.note || '—'}</td></tr>`).join('')}
+      </tbody>
+    </table></div>` : `<p class="hint">Няма транзакции все още.</p>`}
+  `;
+  const viewedGranSelect = document.getElementById('viewedGranularitySelect');
+  if (viewedGranSelect) {
+    viewedGranSelect.value = VIEWED_GRANULARITY;
+    viewedGranSelect.addEventListener('change', (e) => {
+      VIEWED_GRANULARITY = e.target.value;
+      document.getElementById('viewedBreakdownHost').innerHTML = walletBreakdownHtml(VIEWED_USER_TRANSACTIONS, VIEWED_GRANULARITY);
+    });
+  }
 }
 
 async function refreshAll() {
@@ -224,6 +348,10 @@ async function init() {
           <button type="submit" class="btn btn-primary btn-block">Приложи корекция</button>
         </form>
       </div>
+    </div>
+    <div class="panel" id="viewedWalletPanel" style="display:none;">
+      <div class="panel-head"><h2 id="viewedWalletTitle">Приходи/разходи</h2></div>
+      <div id="viewedWalletHost" class="loading">Зареждане…</div>
     </div>` : ''}
   `;
 

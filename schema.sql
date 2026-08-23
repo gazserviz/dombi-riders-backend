@@ -33,14 +33,31 @@ create table profiles (
   manager_id uuid references profiles(id),
 
   -- лична карта / шофьорска книжка — за досието и алармите за изтичане
+  -- (id_card_photo_url/driver_license_photo_url пазят лицевата страна за
+  -- обратна съвместимост с /api/hr/personnel/:id/id-photo|license-photo;
+  -- гърбовете и селфито се попълват само при одобрение на кандидатура)
   egn text,
   address text,
   id_card_number text,
   id_card_expiry date,
   id_card_photo_url text,
+  id_card_photo_back_url text,
+  selfie_photo_url text,
   driver_license_number text,
   driver_license_expiry date,
   driver_license_photo_url text,
+  driver_license_photo_back_url text,
+
+  -- пренесени от кандидатурата при одобрение (виж job_applications по-долу)
+  had_glovo_bolt_account text,          -- 'yes' | 'no'
+  glovo_bolt_platform text,
+  city text,
+  work_vehicle_type text,
+  nationality text,
+  nationality_other text,
+  protection_status_photo_url text,
+  residence_permit_photo_url text,
+  nap_certificate_photo_url text,
 
   -- външни идентификатори от Bolt/Glovo (за съпоставяне при импорт на
   -- заработки — виж payroll_entries.platform_breakdown и lib/earnings-import.js
@@ -539,6 +556,16 @@ create index idx_employment_contracts_profile on employment_contracts(profile_id
 -- generateApplicationLink/completeApplicationDetails).
 create type application_status as enum ('pending', 'link_sent', 'details_completed', 'approved', 'rejected');
 
+-- 'city' валидни стойности: sofia | plovdiv | varna | burgas
+-- 'work_vehicle_type' (с какво ще кара) валидни стойности: own_car | company_car | bicycle | scooter
+--   — различно от евентуален по-широк избор на превозно средство в маркетинг
+--   сайта (какво ПРИТЕЖАВА кандидатът); това поле е конкретно за работата.
+-- 'nationality' валидни стойности: bulgarian | ukrainian | uzbek | other
+--   (nationality_other се попълва само при 'other'). Документи за чужди
+--   граждани (виж по-долу) се изискват само когато nationality <> 'bulgarian':
+--     ukrainian        → protection_status_photo_url ("Закрила")
+--     uzbek / other    → residence_permit_photo_url (разрешение за пребиваване)
+--                        + nap_certificate_photo_url (удостоверение от НАП за работа)
 create table job_applications (
   id uuid primary key default uuid_generate_v4(),
   full_name text not null,
@@ -548,13 +575,25 @@ create table job_applications (
   address text,
   id_card_number text,
   id_card_expiry date,
-  id_card_photo_url text,
+  id_card_photo_front_url text,
+  id_card_photo_back_url text,
+  selfie_photo_url text,
   driver_license_number text,
   driver_license_expiry date,
-  driver_license_photo_url text,
+  driver_license_photo_front_url text,
+  driver_license_photo_back_url text,
   desired_contract_type employment_contract_type not null default 'labor',
   desired_hours_per_day int,
   notes text,
+  had_glovo_bolt_account text,          -- 'yes' | 'no'
+  glovo_bolt_platform text,             -- свободен текст: Glovo / Bolt / и двете
+  city text,                            -- виж валидни стойности по-горе
+  work_vehicle_type text,               -- виж валидни стойности по-горе
+  nationality text,                     -- виж валидни стойности по-горе
+  nationality_other text,
+  protection_status_photo_url text,     -- "Закрила" (украински граждани)
+  residence_permit_photo_url text,      -- разрешение за пребиваване (др. чужди граждани)
+  nap_certificate_photo_url text,       -- удостоверение от НАП за работа (др. чужди граждани)
   status application_status not null default 'pending',
   application_token text unique,       -- линк за довършване от кандидата (виж коментара по-горе)
   token_created_at timestamptz,
@@ -633,6 +672,31 @@ create table partner_commission_profiles (
   updated_at timestamptz not null default now()
 );
 comment on table partner_commission_profiles is 'Комисионна на реферални/посреднически партньори (мениджъри) — % или фиксирана сума';
+
+-- ---------------------------------------------------------------------------
+-- СЧЕТОВОДСТВО: ръчна счетоводна книга — приходи/разходи, които нямат друго
+-- специализирано място в системата (наем офис, комунални, реклама, заплати
+-- на офис персонал и т.н.). Общият финансов отчет (виж GET /api/finance/report
+-- в server.js) комбинира тези записи с приходите от наем на коли
+-- (vehicle_payments), седмичните такси от шофьорите (payroll_entries.
+-- deduction_amount — РЕАЛНИЯТ приход на фирмата от шофьор, не gross_earnings),
+-- разходите по автопарка (service_records + vehicle_recurring_costs) и
+-- изчислените партньорски комисионни (partner_commission_profiles).
+-- ---------------------------------------------------------------------------
+create type finance_direction as enum ('income', 'expense');
+
+create table finance_entries (
+  id uuid primary key default uuid_generate_v4(),
+  entry_date date not null,
+  direction finance_direction not null,
+  category text not null,
+  amount numeric(12,2) not null check (amount > 0),
+  note text,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+comment on table finance_entries is 'Ръчна счетоводна книга за приходи/разходи извън автоматично изчислените пера';
+create index idx_finance_entries_date on finance_entries(entry_date);
 
 -- ---------------------------------------------------------------------------
 -- ИНДЕКСИ

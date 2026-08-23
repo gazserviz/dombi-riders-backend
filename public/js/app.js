@@ -23,6 +23,7 @@ const Api = {
   get(url) { return this.call('GET', url); },
   post(url, body) { return this.call('POST', url, body); },
   put(url, body) { return this.call('PUT', url, body); },
+  del(url) { return this.call('DELETE', url); },
 };
 
 const ROLE_LABELS = { admin: 'Администратор', manager: 'Мениджър', driver: 'Шофьор' };
@@ -46,6 +47,9 @@ const NAV = [
     { href: '/payroll.html', icon: '💶', label: 'Заплати', roles: ['admin','manager','driver'] },
     { href: '/leave.html', icon: '🏖️', label: 'Отпуски', roles: ['admin','manager','driver'] },
     { href: '/partners.html', icon: '🤝', label: 'Партньорски комисионни', roles: ['admin'] },
+  ]},
+  { group: 'Финанси', items: [
+    { href: '/finance.html', icon: '💰', label: 'Счетоводство', roles: ['admin','manager'] },
   ]},
   { group: 'Администрация', items: [
     { href: '/users.html', icon: '👤', label: 'Потребители и роли', roles: ['admin'] },

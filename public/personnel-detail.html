@@ -35,7 +35,7 @@ let IS_SELF = false;
 let CAN_EDIT = false;
 let MANAGERS = [];
 
-function docFieldRow(label, value, expiry, photoUrl) {
+function docFieldRow(label, value, expiry, photoFrontUrl, photoBackUrl) {
   let expiryHtml = '—';
   if (expiry) {
     const diff = new Date(expiry) - new Date();
@@ -43,12 +43,16 @@ function docFieldRow(label, value, expiry, photoUrl) {
     const soon = daysLeft < 30;
     expiryHtml = `${fmtDate(expiry)} ${soon ? `<span class="badge ${daysLeft < 0 ? 'badge-danger' : 'badge-warn'}" style="margin-left:6px;">${daysLeftLabel(daysLeft)}</span>` : ''}`;
   }
+  const photoCell = [
+    photoFrontUrl ? `<a href="${photoFrontUrl}" target="_blank">Лице</a>` : '<span class="hint">няма лице</span>',
+    photoBackUrl ? `<a href="${photoBackUrl}" target="_blank">Гръб</a>` : '<span class="hint">няма гръб</span>',
+  ].join(' · ');
   return `
     <tr>
       <td><strong>${label}</strong></td>
       <td>${value || '<span class="hint">—</span>'}</td>
       <td>${expiryHtml}</td>
-      <td>${photoUrl ? `<a href="${photoUrl}" target="_blank">Преглед снимка</a>` : '<span class="hint">няма</span>'}</td>
+      <td>${photoCell}</td>
     </tr>`;
 }
 
@@ -75,10 +79,15 @@ async function loadFile() {
       <div class="panel">
         <div class="panel-head"><h2>Лични документи</h2></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Документ</th><th>Номер</th><th>Валиден до</th><th>Снимка</th></tr></thead>
+          <thead><tr><th>Документ</th><th>Номер</th><th>Валиден до</th><th>Снимки</th></tr></thead>
           <tbody>
-            ${docFieldRow('Лична карта', profile.id_card_number, profile.id_card_expiry, profile.id_card_photo_url)}
-            ${docFieldRow('Шофьорска книжка', profile.driver_license_number, profile.driver_license_expiry, profile.driver_license_photo_url)}
+            ${docFieldRow('Лична карта', profile.id_card_number, profile.id_card_expiry, profile.id_card_photo_url, profile.id_card_photo_back_url)}
+            ${docFieldRow('Шофьорска книжка', profile.driver_license_number, profile.driver_license_expiry, profile.driver_license_photo_url, profile.driver_license_photo_back_url)}
+            <tr>
+              <td><strong>Селфи</strong></td>
+              <td colspan="2"><span class="hint">—</span></td>
+              <td>${profile.selfie_photo_url ? `<a href="${profile.selfie_photo_url}" target="_blank">Преглед</a>` : '<span class="hint">няма</span>'}</td>
+            </tr>
           </tbody>
         </table></div>
       </div>
@@ -112,12 +121,28 @@ async function loadFile() {
       </form>
       <div class="field-row" style="margin-top:16px;">
         <div>
-          <div class="photo-upload-btn" id="uploadIdCardBtn">🪪 Качи снимка на лична карта</div>
-          <input type="file" id="idCardFile" accept="image/*" style="display:none;">
+          <div class="photo-upload-btn" id="uploadIdCardFrontBtn">🪪 Лична карта — лице</div>
+          <input type="file" id="idCardFrontFile" accept="image/*" style="display:none;">
         </div>
         <div>
-          <div class="photo-upload-btn" id="uploadLicenseBtn">🚗 Качи снимка на шофьорска книжка</div>
-          <input type="file" id="licenseFile" accept="image/*" style="display:none;">
+          <div class="photo-upload-btn" id="uploadIdCardBackBtn">🪪 Лична карта — гръб</div>
+          <input type="file" id="idCardBackFile" accept="image/*" style="display:none;">
+        </div>
+      </div>
+      <div class="field-row" style="margin-top:8px;">
+        <div>
+          <div class="photo-upload-btn" id="uploadLicenseFrontBtn">🚗 Книжка — лице</div>
+          <input type="file" id="licenseFrontFile" accept="image/*" style="display:none;">
+        </div>
+        <div>
+          <div class="photo-upload-btn" id="uploadLicenseBackBtn">🚗 Книжка — гръб</div>
+          <input type="file" id="licenseBackFile" accept="image/*" style="display:none;">
+        </div>
+      </div>
+      <div class="field-row" style="margin-top:8px;">
+        <div>
+          <div class="photo-upload-btn" id="uploadSelfieBtn">🤳 Селфи</div>
+          <input type="file" id="selfieFile" accept="image/*" style="display:none;">
         </div>
       </div>
       <div class="hint" id="photoMsg"></div>
@@ -226,39 +251,31 @@ async function loadFile() {
     }
   });
 
-  const idCardBtn = document.getElementById('uploadIdCardBtn');
-  if (idCardBtn) idCardBtn.addEventListener('click', () => document.getElementById('idCardFile').click());
-  const idCardFile = document.getElementById('idCardFile');
-  if (idCardFile) idCardFile.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const msg = document.getElementById('photoMsg');
-    msg.textContent = 'Качване…';
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      await Api.post(`/api/hr/personnel/${TARGET_ID}/id-card-photo`, { photo: dataUrl });
-      await loadFile();
-      const m = document.getElementById('photoMsg');
-      if (m) m.textContent = 'Снимката на личната карта е качена.';
-    } catch (err) { msg.textContent = err.message; }
-  });
-
-  const licenseBtn = document.getElementById('uploadLicenseBtn');
-  if (licenseBtn) licenseBtn.addEventListener('click', () => document.getElementById('licenseFile').click());
-  const licenseFile = document.getElementById('licenseFile');
-  if (licenseFile) licenseFile.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const msg = document.getElementById('photoMsg');
-    msg.textContent = 'Качване…';
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      await Api.post(`/api/hr/personnel/${TARGET_ID}/license-photo`, { photo: dataUrl });
-      await loadFile();
-      const m = document.getElementById('photoMsg');
-      if (m) m.textContent = 'Снимката на книжката е качена.';
-    } catch (err) { msg.textContent = err.message; }
-  });
+  function bindPersonnelPhotoUpload(btnId, fileId, endpoint, side, successMsg) {
+    const btn = document.getElementById(btnId);
+    if (btn) btn.addEventListener('click', () => document.getElementById(fileId).click());
+    const fileInput = document.getElementById(fileId);
+    if (fileInput) fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const msg = document.getElementById('photoMsg');
+      msg.textContent = 'Качване…';
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const body = { photo: dataUrl };
+        if (side) body.side = side;
+        await Api.post(`/api/hr/personnel/${TARGET_ID}/${endpoint}`, body);
+        await loadFile();
+        const m = document.getElementById('photoMsg');
+        if (m) m.textContent = successMsg;
+      } catch (err) { msg.textContent = err.message; }
+    });
+  }
+  bindPersonnelPhotoUpload('uploadIdCardFrontBtn', 'idCardFrontFile', 'id-card-photo', 'front', 'Лицето на личната карта е качено.');
+  bindPersonnelPhotoUpload('uploadIdCardBackBtn', 'idCardBackFile', 'id-card-photo', 'back', 'Гърбът на личната карта е качен.');
+  bindPersonnelPhotoUpload('uploadLicenseFrontBtn', 'licenseFrontFile', 'license-photo', 'front', 'Лицето на книжката е качено.');
+  bindPersonnelPhotoUpload('uploadLicenseBackBtn', 'licenseBackFile', 'license-photo', 'back', 'Гърбът на книжката е качен.');
+  bindPersonnelPhotoUpload('uploadSelfieBtn', 'selfieFile', 'selfie-photo', null, 'Селфито е качено.');
 
   const ecTypeSelect = document.getElementById('ecTypeSelect');
   const ecHoursField = document.getElementById('ecHoursField');
