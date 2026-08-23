@@ -1373,6 +1373,58 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 201, { application: { id: rec.id, status: rec.status } });
     }
 
+    // ---- ЛИНК ЗА ДОВЪРШВАНЕ НА КАНДИДАТУРАТА (публично, по token) ---------
+    // Кандидатът, подал КРАТКАТА форма (маркетинг сайт), получава от админа
+    // линк към /apply-details.html?token=... — тук той/тя допълва ЛК/книжка/
+    // ЕГН/адрес/избор на договор върху СЪЩИЯ вече съществуващ запис.
+    const applyDetailsMatch = pathname.match(/^\/api\/apply\/details\/([a-f0-9]+)$/);
+    if (applyDetailsMatch && req.method === 'GET') {
+      const app = db.getJobApplicationByToken(applyDetailsMatch[1]);
+      if (!app) return sendJson(res, 404, { error: 'Невалиден, изтекъл или вече обработен линк.' });
+      return sendJson(res, 200, {
+        application: {
+          full_name: app.full_name, phone: app.phone, email: app.email,
+          egn: app.egn, address: app.address,
+          id_card_number: app.id_card_number, id_card_expiry: app.id_card_expiry,
+          driver_license_number: app.driver_license_number, driver_license_expiry: app.driver_license_expiry,
+          desired_contract_type: app.desired_contract_type, desired_hours_per_day: app.desired_hours_per_day,
+          notes: app.notes, status: app.status,
+        },
+      });
+    }
+    if (applyDetailsMatch && req.method === 'POST') {
+      if (rateLimited(`apply-details:${clientIp(req)}`, { max: 20, windowMs: 30 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много опити от този адрес. Опитайте по-късно.' });
+      }
+      const body = await readJsonBody(req);
+      let id_card_photo_url, driver_license_photo_url;
+      try {
+        if (body.id_card_photo) id_card_photo_url = saveBase64Image(body.id_card_photo, 'apply-idcard').url;
+        if (body.driver_license_photo) driver_license_photo_url = saveBase64Image(body.driver_license_photo, 'apply-license').url;
+      } catch (err) {
+        return sendJson(res, 400, { error: 'Невалиден формат на качен файл: ' + err.message });
+      }
+      const patch = {
+        egn: body.egn ? escapeHtml(String(body.egn).slice(0, 20)) : null,
+        address: body.address ? escapeHtml(String(body.address).slice(0, 300)) : null,
+        id_card_number: body.id_card_number ? escapeHtml(String(body.id_card_number).slice(0, 30)) : null,
+        id_card_expiry: body.id_card_expiry || null,
+        driver_license_number: body.driver_license_number ? escapeHtml(String(body.driver_license_number).slice(0, 30)) : null,
+        driver_license_expiry: body.driver_license_expiry || null,
+        desired_contract_type: body.desired_contract_type === 'civil' ? 'civil' : 'labor',
+        desired_hours_per_day: body.desired_hours_per_day ? Number(body.desired_hours_per_day) : null,
+        notes: body.notes ? escapeHtml(String(body.notes).slice(0, 1000)) : null,
+      };
+      if (id_card_photo_url) patch.id_card_photo_url = id_card_photo_url;
+      if (driver_license_photo_url) patch.driver_license_photo_url = driver_license_photo_url;
+      try {
+        const app = db.completeApplicationDetails(applyDetailsMatch[1], patch);
+        return sendJson(res, 200, { application: { id: app.id, status: app.status } });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // ---- КАНДИДАТУРИ (админ преглед и одобрение) --------------------------
     if (pathname === '/api/hr/applications' && req.method === 'GET') {
       const user = requireRole(req, res, ['admin', 'manager']);
@@ -1413,6 +1465,23 @@ async function handleApi(req, res, pathname, query) {
       const body = await readJsonBody(req);
       const app = db.rejectJobApplication(applicationRejectMatch[1], { reviewed_by: user.id, decision_note: body.decision_note });
       return sendJson(res, 200, { application: app });
+    }
+    // с 1 клик: генерира уникален линк за довършване на кандидатурата (ЛК/
+    // книжка/ЕГН/адрес/избор на договор), който админът копира и изпраща сам
+    // на кандидата (Viber/SMS/имейл — системата няма собствен пращач на писма).
+    const applicationSendLinkMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)\/send-link$/);
+    if (applicationSendLinkMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      try {
+        const app = db.generateApplicationLink(applicationSendLinkMatch[1]);
+        const proto = req.headers['x-forwarded-proto'] || 'https';
+        const host = req.headers.host;
+        const link = `${proto}://${host}/apply-details.html?token=${app.application_token}`;
+        return sendJson(res, 200, { application: app, link });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
 
     // ---- ШАБЛОНИ НА БЛАНКИ (протокол / договор / трудов-граждански договор) ---

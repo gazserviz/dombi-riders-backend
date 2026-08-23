@@ -532,7 +532,12 @@ create index idx_employment_contracts_profile on employment_contracts(profile_id
 -- качват лични данни + снимки на документи, AI ги разчита автоматично.
 -- Одобрение от админ/мениджър превръща записа в profiles + employment_contracts.
 -- ---------------------------------------------------------------------------
-create type application_status as enum ('pending', 'approved', 'rejected');
+-- 'link_sent'/'details_completed' обслужват двуетапния процес: кратка форма
+-- (маркетинг сайт: само име/телефон/имейл) → админ генерира линк с 1 клик
+-- (application_token) → кандидатът допълва ЛК/книжка/ЕГН/избор на договор на
+-- /apply-details.html?token=... върху СЪЩИЯ запис (виж lib/db.js
+-- generateApplicationLink/completeApplicationDetails).
+create type application_status as enum ('pending', 'link_sent', 'details_completed', 'approved', 'rejected');
 
 create table job_applications (
   id uuid primary key default uuid_generate_v4(),
@@ -551,6 +556,9 @@ create table job_applications (
   desired_hours_per_day int,
   notes text,
   status application_status not null default 'pending',
+  application_token text unique,       -- линк за довършване от кандидата (виж коментара по-горе)
+  token_created_at timestamptz,
+  details_completed_at timestamptz,
   reviewed_by uuid references profiles(id),
   reviewed_at timestamptz,
   created_profile_id uuid references profiles(id),   -- попълва се при одобрение

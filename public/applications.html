@@ -15,6 +15,8 @@
 <script>
 const APP_STATUS = {
   pending: ['Чака преглед', 'badge-warn'],
+  link_sent: ['Изпратен линк за довършване', 'badge-muted'],
+  details_completed: ['Данните са допълнени', 'badge-warn'],
   approved: ['Одобрена', 'badge-green'],
   rejected: ['Отхвърлена', 'badge-danger'],
 };
@@ -26,11 +28,23 @@ let MANAGERS = [];
 let activeStatus = 'pending';
 let expandedId = null;
 
+const OPEN_STATUSES = ['pending', 'link_sent', 'details_completed'];
+
 function applicationDetailHtml(app, isAdmin) {
   const suggestedEmail = app.email || '';
+  const isOpen = OPEN_STATUSES.includes(app.status);
+  const detailsGiven = app.egn || app.id_card_number || app.driver_license_number;
   return `
     <tr><td colspan="6">
       <div class="panel" style="margin:0;background:var(--panel-2);">
+        ${['pending', 'link_sent'].includes(app.status) ? `
+        <div class="hint" style="margin-bottom:14px;">
+          ${detailsGiven ? '' : 'Кандидатурата е само от кратката форма — липсват лична карта/книжка/ЕГН/избор на договор. '}
+          Изпрати линк, по който кандидатът сам да ги допълни, преди да одобриш.
+          <button type="button" class="btn btn-ghost btn-sm send-link-btn" data-id="${app.id}" style="margin-left:8px;">
+            ${app.status === 'link_sent' ? '🔗 Генерирай нов линк' : '🔗 Изпрати линк за довършване'}
+          </button>
+        </div>` : ''}
         <div class="grid-2">
           <div>
             <div class="table-wrap"><table>
@@ -43,11 +57,12 @@ function applicationDetailHtml(app, isAdmin) {
               <tr><td><strong>Бележки</strong></td><td>${app.notes || '—'}</td></tr>
             </table></div>
           </div>
-          ${(isAdmin && app.status === 'pending') ? `
+          ${(isAdmin && isOpen) ? `
           <div>
             <h3>Одобри кандидатурата</h3>
-            <p class="hint">Създава реален профил (роля: шофьор) и чернова на договор, готова за разписване.</p>
+            <p class="hint">Създава реален профил (роля: шофьор) и чернова на договор (${EC_TYPE_LABELS[app.desired_contract_type] || app.desired_contract_type}${app.desired_hours_per_day ? ' · ' + app.desired_hours_per_day + 'ч' : ''}), готова за разписване.</p>
             <div class="error-box" id="approveError-${app.id}"></div>
+            <div class="success-box" id="approveSuccess-${app.id}"></div>
             <form class="approve-form" data-id="${app.id}">
               <div class="field"><label>Имейл за новия профил *</label><input name="email" type="email" required value="${suggestedEmail}"></div>
               <div class="field"><label>Временна парола (по избор — генерира се автоматично, ако е празно)</label><input name="temp_password"></div>
@@ -60,9 +75,9 @@ function applicationDetailHtml(app, isAdmin) {
               <button type="submit" class="btn btn-primary btn-sm">Одобри и създай профил</button>
             </form>
           </div>` : ''}
-          ${(!isAdmin && app.status === 'pending') ? `<div><p class="hint">Само администратор може да одобрява кандидатури и да създава профили.</p></div>` : ''}
+          ${(!isAdmin && isOpen) ? `<div><p class="hint">Само администратор може да одобрява кандидатури и да създава профили.</p></div>` : ''}
         </div>
-        ${app.status === 'pending' ? `
+        ${isOpen ? `
         <div style="margin-top:14px;">
           <button type="button" class="btn btn-ghost btn-sm reject-btn" data-id="${app.id}">Отхвърли кандидатурата</button>
         </div>` : ''}
@@ -110,14 +125,18 @@ async function refresh() {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const errorBox = document.getElementById(`approveError-${form.dataset.id}`);
+      const successBox = document.getElementById(`approveSuccess-${form.dataset.id}`);
       errorBox.classList.remove('show');
       const data = Object.fromEntries(new FormData(e.target).entries());
       if (!data.manager_id) delete data.manager_id;
       if (!data.temp_password) delete data.temp_password;
       try {
         const result = await Api.post(`/api/hr/applications/${form.dataset.id}/approve`, data);
-        alert(`Профилът е създаден.\n\nИмейл: ${result.profile.email}\nВременна парола: ${result.temp_password}\n\nЗапишете паролата сега — няма да бъде показана отново (може да се смени от „Потребители и роли“).`);
-        expandedId = null;
+        successBox.innerHTML = `Профилът е създаден.<br>
+          Имейл: <strong>${result.profile.email}</strong> · Временна парола: <strong>${result.temp_password}</strong><br>
+          Запишете паролата сега — няма да бъде показана отново.<br><br>
+          <a href="/employment-contract-print.html?id=${result.contract.id}" target="_blank" class="btn btn-primary btn-sm">📄 Отвори договора → изпрати за подпис</a>`;
+        successBox.classList.add('show');
         await refresh();
       } catch (err) {
         errorBox.textContent = err.message;
@@ -131,6 +150,16 @@ async function refresh() {
       try {
         await Api.post(`/api/hr/applications/${btn.dataset.id}/reject`, { decision_note: note });
         expandedId = null;
+        await refresh();
+      } catch (err) { alert(err.message); }
+    });
+  });
+  host.querySelectorAll('.send-link-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        const { link } = await Api.post(`/api/hr/applications/${btn.dataset.id}/send-link`, {});
+        try { await navigator.clipboard.writeText(link); } catch (e) { /* без достъп до клипборда — показваме линка директно */ }
+        prompt('Линкът е копиран (ако браузърът позволи). Изпрати го на кандидата през Viber/SMS/имейл:', link);
         await refresh();
       } catch (err) { alert(err.message); }
     });
@@ -152,11 +181,14 @@ async function init() {
 
   document.getElementById('app-content').innerHTML = `
     <p class="hint" style="margin-bottom:16px;">
-      Кандидатури от публичната форма за самокандидатстване (<code>/apply.html</code>).
+      Кандидатури от кратката форма на маркетинг сайта и от подробната форма (<code>/apply.html</code>).
+      За кратките кандидатури изпрати линк на кандидата да допълни лична карта/книжка/ЕГН/избор на договор.
       Одобрението създава реален потребителски профил и чернова на трудов/граждански договор.
     </p>
     <div class="tabs">
       <div class="tab active" data-status="pending">Чакащи</div>
+      <div class="tab" data-status="link_sent">Изпратен линк</div>
+      <div class="tab" data-status="details_completed">Допълнени</div>
       <div class="tab" data-status="approved">Одобрени</div>
       <div class="tab" data-status="rejected">Отхвърлени</div>
     </div>

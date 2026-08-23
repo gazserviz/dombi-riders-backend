@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Довърши кандидатурата си — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .apply-wrap{min-height:100vh;padding:40px 16px;display:flex;justify-content:center;background:radial-gradient(circle at 20% 0%, #123d1f33, transparent 45%), var(--bg);}
+  .apply-card{width:720px;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:36px 32px;}
+  .apply-logo{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .apply-logo .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 12px 2px #4dff7a88;}
+  .apply-logo span{font-family:'Anton',sans-serif;text-transform:uppercase;letter-spacing:.04em;font-size:1.05rem;}
+  .scan-hint{font-size:.78rem;color:var(--muted);margin-top:4px;}
+  .prefill-box{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:.88rem;}
+  .prefill-box .row{display:flex;justify-content:space-between;padding:3px 0;}
+  .prefill-box .row span:first-child{color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="apply-wrap">
+  <div class="apply-card">
+    <div class="apply-logo"><span class="dot"></span><span>Dombi Riders</span></div>
+    <h2 style="margin-bottom:4px;">Довърши кандидатурата си</h2>
+    <p class="hint" style="margin-bottom:22px;">
+      Остана само това — качи снимки на документите си (разчитат се автоматично) и избери какъв договор искаш.
+      Данните, които вече ни изпрати, са показани по-долу.
+    </p>
+
+    <div id="loadingHost" class="loading">Зареждане…</div>
+    <div id="invalidHost" style="display:none;" class="error-box show"></div>
+
+    <div id="formHost" style="display:none;">
+      <div class="prefill-box" id="prefillBox"></div>
+      <div class="error-box" id="errorBox"></div>
+
+      <form id="applyForm">
+        <h3>Лични данни</h3>
+        <div class="field-row">
+          <div class="field"><label>ЕГН</label><input name="egn" maxlength="10"></div>
+          <div class="field"><label>Адрес</label><input name="address"></div>
+        </div>
+
+        <h3 style="margin-top:20px;">Желан вид договор</h3>
+        <div class="field-row">
+          <div class="field"><label>Вид договор *</label>
+            <select name="desired_contract_type" id="contractTypeSelect" required>
+              <option value="labor">Трудов договор</option>
+              <option value="civil">Граждански договор</option>
+            </select>
+          </div>
+          <div class="field" id="hoursField"><label>Часове на ден *</label>
+            <select name="desired_hours_per_day">
+              <option value="2">2 часа</option>
+              <option value="4">4 часа</option>
+              <option value="6">6 часа</option>
+              <option value="8">8 часа</option>
+            </select>
+          </div>
+        </div>
+
+        <h3 style="margin-top:20px;">Лична карта</h3>
+        <p class="hint">Качете снимка на личната си карта — данните ще се разчетат автоматично и ще попълнят формата вместо вас.</p>
+        <div class="photo-upload-btn" id="idCardUploadBtn">🪪 Качи снимка на лична карта</div>
+        <input type="file" id="idCardFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="idCardScanMsg"></div>
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field"><label>Номер на лична карта</label><input name="id_card_number"></div>
+          <div class="field"><label>Валидна до</label><input name="id_card_expiry" type="date"></div>
+        </div>
+
+        <h3 style="margin-top:20px;">Шофьорска книжка (по избор)</h3>
+        <p class="hint">Ако кандидатствате за позиция, изискваща книжка — качете снимка за автоматично разчитане.</p>
+        <div class="photo-upload-btn" id="licenseUploadBtn">🚗 Качи снимка на шофьорска книжка</div>
+        <input type="file" id="licenseFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="licenseScanMsg"></div>
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field"><label>Номер на книжка</label><input name="driver_license_number"></div>
+          <div class="field"><label>Валидна до</label><input name="driver_license_expiry" type="date"></div>
+        </div>
+
+        <h3 style="margin-top:20px;">Допълнителна информация</h3>
+        <div class="field"><textarea name="notes" rows="3" style="width:100%;font-family:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);" placeholder="Опит, предпочитан график, друго…"></textarea></div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:20px;">Изпрати</button>
+      </form>
+    </div>
+
+    <div id="successHost" style="display:none;">
+      <div class="success-box show">
+        Готово! Кандидатурата ти е допълнена успешно — ще се свържем с теб след преглед.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get('token');
+let idCardPhotoDataUrl = null;
+let licensePhotoDataUrl = null;
+
+async function init() {
+  if (!token) {
+    document.getElementById('loadingHost').style.display = 'none';
+    document.getElementById('invalidHost').style.display = '';
+    document.getElementById('invalidHost').textContent = 'Липсва линк за достъп.';
+    return;
+  }
+  try {
+    const { application: app } = await Api.get(`/api/apply/details/${token}`);
+    document.getElementById('loadingHost').style.display = 'none';
+
+    if (app.status === 'details_completed') {
+      document.getElementById('formHost').style.display = 'none';
+      document.getElementById('successHost').style.display = '';
+      return;
+    }
+
+    document.getElementById('formHost').style.display = '';
+    document.getElementById('prefillBox').innerHTML = `
+      <div class="row"><span>Име</span><span><strong>${app.full_name || '—'}</strong></span></div>
+      <div class="row"><span>Телефон</span><span>${app.phone || '—'}</span></div>
+      ${app.email ? `<div class="row"><span>Имейл</span><span>${app.email}</span></div>` : ''}
+    `;
+
+    const form = document.getElementById('applyForm');
+    if (app.egn) form.egn.value = app.egn;
+    if (app.address) form.address.value = app.address;
+    if (app.desired_contract_type) form.desired_contract_type.value = app.desired_contract_type;
+    if (app.desired_hours_per_day) form.desired_hours_per_day.value = app.desired_hours_per_day;
+    if (app.id_card_number) form.id_card_number.value = app.id_card_number;
+    if (app.id_card_expiry) form.id_card_expiry.value = app.id_card_expiry;
+    if (app.driver_license_number) form.driver_license_number.value = app.driver_license_number;
+    if (app.driver_license_expiry) form.driver_license_expiry.value = app.driver_license_expiry;
+    if (app.notes) form.notes.value = app.notes;
+  } catch (err) {
+    document.getElementById('loadingHost').style.display = 'none';
+    document.getElementById('invalidHost').style.display = '';
+    document.getElementById('invalidHost').textContent = err.message || 'Линкът е невалиден или вече не е активен.';
+    return;
+  }
+
+  const contractTypeSelect = document.getElementById('contractTypeSelect');
+  const hoursField = document.getElementById('hoursField');
+  function syncHoursField() { hoursField.style.display = contractTypeSelect.value === 'labor' ? '' : 'none'; }
+  contractTypeSelect.addEventListener('change', syncHoursField);
+  syncHoursField();
+
+  document.getElementById('idCardUploadBtn').addEventListener('click', () => document.getElementById('idCardFile').click());
+  document.getElementById('idCardFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById('idCardScanMsg');
+    msg.textContent = 'Разчитане на снимката…';
+    try {
+      idCardPhotoDataUrl = await readFileAsDataUrl(file);
+      const result = await Api.post('/api/apply/id-card-scan', { photo: idCardPhotoDataUrl });
+      if (result.warning) {
+        msg.textContent = result.warning;
+      } else if (result.extracted) {
+        const f = result.extracted;
+        const form2 = document.getElementById('applyForm');
+        if (f.egn) form2.egn.value = f.egn;
+        if (f.id_card_number) form2.id_card_number.value = f.id_card_number;
+        if (f.address && !form2.address.value) form2.address.value = f.address;
+        if (f.id_card_expiry) form2.id_card_expiry.value = f.id_card_expiry;
+        msg.textContent = 'Данните са разчетени автоматично — проверете и коригирайте при нужда.';
+      }
+    } catch (err) {
+      msg.textContent = 'Снимката е прикачена, но разчитането неуспешно: ' + err.message;
+    }
+  });
+
+  document.getElementById('licenseUploadBtn').addEventListener('click', () => document.getElementById('licenseFile').click());
+  document.getElementById('licenseFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById('licenseScanMsg');
+    msg.textContent = 'Разчитане на снимката…';
+    try {
+      licensePhotoDataUrl = await readFileAsDataUrl(file);
+      const result = await Api.post('/api/apply/license-scan', { photo: licensePhotoDataUrl });
+      if (result.warning) {
+        msg.textContent = result.warning;
+      } else if (result.extracted) {
+        const f = result.extracted;
+        const form2 = document.getElementById('applyForm');
+        if (f.driver_license_number) form2.driver_license_number.value = f.driver_license_number;
+        if (f.driver_license_expiry) form2.driver_license_expiry.value = f.driver_license_expiry;
+        msg.textContent = 'Данните са разчетени автоматично — проверете и коригирайте при нужда.';
+      }
+    } catch (err) {
+      msg.textContent = 'Снимката е прикачена, но разчитането неуспешно: ' + err.message;
+    }
+  });
+
+  document.getElementById('applyForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    errorBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    if (data.desired_contract_type !== 'labor') delete data.desired_hours_per_day;
+    if (idCardPhotoDataUrl) data.id_card_photo = idCardPhotoDataUrl;
+    if (licensePhotoDataUrl) data.driver_license_photo = licensePhotoDataUrl;
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      await Api.post(`/api/apply/details/${token}`, data);
+      document.getElementById('formHost').style.display = 'none';
+      document.getElementById('successHost').style.display = '';
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+      submitBtn.disabled = false;
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>
