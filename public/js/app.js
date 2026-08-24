@@ -54,6 +54,7 @@ const NAV = [
   { group: 'Администрация', items: [
     { href: '/users.html', icon: '👤', label: 'Потребители и роли', roles: ['admin'] },
     { href: '/activity.html', icon: '🕘', label: 'Дневник на активността', roles: ['admin'] },
+    { href: '/backups.html', icon: '💾', label: 'Резервни копия', roles: ['admin'] },
   ]},
 ];
 

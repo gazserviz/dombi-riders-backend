@@ -19,10 +19,17 @@ const earningsImport = require('./lib/earnings-import');
 const docxToPdf = require('./lib/docx-to-pdf');
 const esign = require('./lib/esign');
 const pdfBuilder = require('./lib/pdf-builder');
+const backup = require('./lib/backup');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const UPLOADS_DIR = path.join(__dirname, 'data', 'uploads');
+// UPLOADS_DIR дели корена (DATA_DIR) с бекъпите (виж lib/backup.js) — задайте
+// env DATA_DIR = точния Mount Path на Render Persistent Disk, за да оцелеят
+// и снимките, и бекъпите след redeploy/рестарт. Без DATA_DIR — стар режим
+// (локална папка data/ до кода, ефимерна на Render free tier).
+const UPLOADS_DIR = path.join(backup.DATA_DIR, 'uploads');
+// на чисто монтиран диск (нов DATA_DIR) папката още не съществува — правим я
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 // в Render зад HTTPS — задава Secure на session бисквитката; локално (http)
 // оставяме изключено, иначе браузърът просто ще я откаже
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -826,6 +833,54 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       try {
         db.deleteFinanceEntry(financeEntryMatch[1]);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // ---- БЕКЪПИ (автоматични резервни копия на базата, виж lib/backup.js) -
+    if (pathname === '/api/backups' && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      return sendJson(res, 200, { backups: backup.listBackups(), dataDir: backup.DATA_DIR });
+    }
+    if (pathname === '/api/backups/run' && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const filename = backup.writeBackup(db.readDb(), { reason: 'manual' });
+        return sendJson(res, 201, { ok: true, filename });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    const backupDownloadMatch = pathname.match(/^\/api\/backups\/([\w.-]+)\/download$/);
+    if (backupDownloadMatch && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const raw = backup.readBackupFile(decodeURIComponent(backupDownloadMatch[1]));
+        res.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'content-disposition': `attachment; filename="${backupDownloadMatch[1]}"`,
+        });
+        return res.end(raw);
+      } catch (err) {
+        return sendJson(res, 404, { error: err.message });
+      }
+    }
+    const backupRestoreMatch = pathname.match(/^\/api\/backups\/([\w.-]+)\/restore$/);
+    if (backupRestoreMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const raw = backup.readBackupFile(decodeURIComponent(backupRestoreMatch[1]));
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.data || typeof parsed.data !== 'object') throw new Error('Повреден файл с бекъп');
+        // предпазен бекъп на ТЕКУЩОТО състояние точно преди да го презапишем
+        backup.writeBackup(db.readDb(), { reason: 'pre-restore' });
+        db.writeDb(parsed.data);
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
@@ -1796,6 +1851,13 @@ const server = http.createServer((req, res) => {
     if (migrated) console.log('Мигрирани нехеширани пароли → scrypt хеш.');
   } catch (e) {
     console.error('Грешка при миграция на пароли:', e.message);
+  }
+
+  try {
+    backup.scheduleAutoBackups(() => db.readDb());
+    console.log(`Автоматични бекъпи: включени (папка ${backup.BACKUPS_DIR}).`);
+  } catch (e) {
+    console.error('Грешка при стартиране на автоматичните бекъпи:', e.message);
   }
 
   server.listen(PORT, () => {

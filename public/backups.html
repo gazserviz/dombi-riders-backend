@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Резервни копия — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="app-shell" data-active="/backups.html" data-title="Резервни копия"></div>
+
+<script src="/js/app.js"></script>
+<script>
+let CURRENT_USER = null;
+const REASON_LABELS = { boot: 'При стартиране', scheduled: 'Автоматичен', manual: 'Ръчен', 'pre-restore': 'Преди възстановяване' };
+
+function fmtBytes(n) {
+  if (n == null || isNaN(n)) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function renderBackups(list, dataDir) {
+  const host = document.getElementById('backupsHost');
+  document.getElementById('dataDirLabel').textContent = dataDir;
+  if (!list.length) { host.innerHTML = `<p class="hint">Все още няма записан бекъп.</p>`; return; }
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Дата и час</th><th>Вид</th><th>Профили</th><th>Заплати</th><th>Коли</th><th>Кандидатури</th><th>Размер</th><th></th></tr></thead>
+      <tbody>
+        ${list.map(b => `
+          <tr>
+            <td>${fmtDateTime(b.mtime)}</td>
+            <td>${REASON_LABELS[b.reason] || b.reason || '—'}</td>
+            <td>${b.meta ? b.meta.profiles : '—'}</td>
+            <td>${b.meta ? b.meta.payroll_entries : '—'}</td>
+            <td>${b.meta ? b.meta.vehicles : '—'}</td>
+            <td>${b.meta ? b.meta.job_applications : '—'}</td>
+            <td>${fmtBytes(b.size)}</td>
+            <td style="white-space:nowrap;">
+              <a class="btn btn-ghost btn-sm" href="/api/backups/${encodeURIComponent(b.filename)}/download">⬇ Свали</a>
+              <button class="btn btn-danger btn-sm restore-btn" data-file="${b.filename}">↺ Възстанови</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+
+  host.querySelectorAll('.restore-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const file = btn.dataset.file;
+      if (!confirm(`Да се възстанови ли базата от този бекъп (${fmtDateTime(list.find(b=>b.filename===file).mtime)})?\n\nТова ЗАМЕНЯ цялата текуща база (профили, заплати, кандидатури, коли и т.н.) с версията от бекъпа. Преди това автоматично се прави предпазен бекъп на текущото състояние.`)) return;
+      const typed = prompt('За потвърждение въведете думата ВЪЗСТАНОВИ (с главни букви):');
+      if (typed !== 'ВЪЗСТАНОВИ') { alert('Отказано — думата не съвпадна.'); return; }
+      try {
+        await Api.post(`/api/backups/${encodeURIComponent(file)}/restore`, {});
+        alert('Базата беше възстановена от избрания бекъп. Страницата ще се презареди.');
+        window.location.reload();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+}
+
+async function loadBackups() {
+  document.getElementById('backupsHost').innerHTML = `<div class="loading">Зареждане…</div>`;
+  const { backups, dataDir } = await Api.get('/api/backups');
+  renderBackups(backups, dataDir);
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (CURRENT_USER.role !== 'admin') {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате бекъпите.</div>`;
+    return;
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="panel">
+      <p class="hint">
+        Системата пази автоматично последните резервни копия на цялата база данни (профили, заплати, кандидатури, коли, договори и т.н.) — по едно на всеки 24 часа, плюс едно при всяко стартиране на сървъра.
+        Текуща папка за бекъпи: <code id="dataDirLabel">—</code>.
+        <strong>Важно:</strong> докато Render инстанцията няма закачен постоянен диск (Persistent Disk), тази папка е ефимерна — бекъпите тук (както и снимките на документи) се губят при redeploy. Истинска защита от загуба на данни има само след закупен диск, монтиран към <code>DATA_DIR</code>.
+      </p>
+    </div>
+
+    <div class="toolbar no-print">
+      <button class="btn btn-primary btn-sm" id="runBackupBtn">💾 Направи бекъп сега</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Налични бекъпи</h2></div>
+      <div id="backupsHost" class="loading">Зареждане…</div>
+    </div>
+  `;
+
+  document.getElementById('runBackupBtn').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      await Api.post('/api/backups/run', {});
+      await loadBackups();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      e.target.disabled = false;
+    }
+  });
+
+  await loadBackups();
+}
+init();
+</script>
+</body>
+</html>
