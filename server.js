@@ -394,6 +394,17 @@ async function handleApi(req, res, pathname, query) {
       const vehicle = db.updateVehicle(vehicleMatch[1], body);
       return sendJson(res, 200, { vehicle });
     }
+    if (vehicleMatch && req.method === 'DELETE') {
+      // само admin — трайно изтриване на кола (напр. чистене на демо данни)
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const vehicle = db.deleteVehicle(vehicleMatch[1]);
+        return sendJson(res, 200, { ok: true, vehicle });
+      } catch (err) {
+        return sendJson(res, err.code === 'VEHICLE_HAS_HISTORY' ? 409 : 400, { error: err.message });
+      }
+    }
 
     // пробег (одометър) — история от всички източници + ръчно въвеждане
     const odoMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/odometer$/);

@@ -117,27 +117,40 @@ function renderTable(vehicles) {
   if (!vehicles.length) {
     return `<div class="empty-state">Няма коли, отговарящи на филтъра.</div>`;
   }
+  const canDelete = CURRENT_USER.role === 'admin';
   return `
     <div class="table-wrap">
       <table>
         <thead><tr>
           <th>Рег. номер</th><th>Марка / Модел</th><th>Година</th><th>Категория</th>
-          <th>Статус</th><th>Себестойност</th><th>Документи</th>
+          <th>Статус</th><th>Себестойност</th><th>Документи</th>${canDelete ? '<th class="no-print"></th>' : ''}
         </tr></thead>
         <tbody>
           ${vehicles.map(v => `
-            <tr class="clickable" onclick="window.location='/vehicle-detail.html?id=${v.id}'">
-              <td><strong>${v.plate_number}</strong></td>
-              <td>${v.make} ${v.model}</td>
-              <td>${v.year || '—'}</td>
-              <td>${CAT_LABELS[v.category] || v.category || '—'}</td>
-              <td>${vehicleStatusBadge(v.status)}</td>
-              <td>${fmtMoney(v.purchase_price)}</td>
-              <td>${docExpiryChips(v)}</td>
+            <tr class="clickable" data-vehicle-id="${v.id}">
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'"><strong>${v.plate_number}</strong></td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${v.make} ${v.model}</td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${v.year || '—'}</td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${CAT_LABELS[v.category] || v.category || '—'}</td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${vehicleStatusBadge(v.status)}</td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${fmtMoney(v.purchase_price)}</td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${docExpiryChips(v)}</td>
+              ${canDelete ? `<td class="no-print"><button type="button" class="btn btn-ghost btn-sm delete-vehicle-btn" data-id="${v.id}" data-plate="${v.plate_number}" title="Изтрий колата">🗑</button></td>` : ''}
             </tr>`).join('')}
         </tbody>
       </table>
     </div>`;
+}
+
+async function deleteVehicleRow(id, plate) {
+  if (!confirm(`Сигурни ли сте, че искате да изтриете колата ${plate}? Това действие е необратимо.`)) return;
+  try {
+    await Api.del(`/api/vehicles/${id}`);
+    ALL_VEHICLES = ALL_VEHICLES.filter(v => v.id !== id);
+    applyFilters();
+  } catch (err) {
+    alert(`Неуспешно изтриване: ${err.message}`);
+  }
 }
 
 function docExpiryChips(v) {
@@ -195,6 +208,12 @@ async function init() {
     const file = e.target.files[0];
     if (file) importVehiclesCsv(file);
     e.target.value = '';
+  });
+  content.addEventListener('click', (e) => {
+    const btn = e.target.closest('.delete-vehicle-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    deleteVehicleRow(btn.dataset.id, btn.dataset.plate);
   });
 
   try {
