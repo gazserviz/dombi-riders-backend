@@ -90,6 +90,8 @@ async function loadFile() {
           <tr><td><strong>ЕГН</strong></td><td>${profile.egn ? `<span id="egnMasked">${'•'.repeat(Math.max(profile.egn.length - 4, 0))}${profile.egn.slice(-4)}</span><span id="egnFull" style="display:none;">${profile.egn}</span> <button type="button" class="btn btn-ghost btn-sm" id="egnToggleBtn" style="padding:2px 8px;font-size:.68rem;">Покажи</button>` : '<span class="hint">—</span>'}</td></tr>
           <tr><td><strong>Адрес</strong></td><td>${profile.address || '<span class="hint">—</span>'}</td></tr>
           <tr><td><strong>Град</strong></td><td>${profile.city || '<span class="hint">—</span>'}</td></tr>
+          <tr><td><strong>Начало на работа</strong></td><td>${profile.start_date ? fmtDate(profile.start_date) : '<span class="hint">—</span>'}</td></tr>
+          <tr><td><strong>Край на работа</strong></td><td>${profile.end_date ? fmtDate(profile.end_date) : '<span class="hint">—</span>'}</td></tr>
         </table></div>
       </div>
 
@@ -134,7 +136,13 @@ async function loadFile() {
           <div class="field"><label>Адрес</label><input name="address" value="${profile.address || ''}"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Град</label><input name="city" value="${profile.city || ''}"></div>
+          <div class="field"><label>Град</label>
+            <select name="city">${cityOptions(profile.city)}</select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Начало на работа</label><input name="start_date" type="date" value="${profile.start_date || ''}"></div>
+          <div class="field"><label>Край на работа</label><input name="end_date" type="date" value="${profile.end_date || ''}"></div>
         </div>
         <div class="field"><label>Мениджър</label>
           <select name="manager_id">

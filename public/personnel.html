@@ -7,6 +7,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app.css">
+<style>
+  /* компактна таблица — Шофьорска книжка е премахната, а Телефон/Град/
+     Платформа са добавени, затова стесняваме колоните, за да се съберат
+     на един екран без хоризонтален скрол (виж заявката на клиента) */
+  .personnel-table{table-layout:fixed;width:100%;}
+  .personnel-table th,.personnel-table td{padding:9px 8px;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;}
+  .personnel-table th:nth-child(1),.personnel-table td:nth-child(1){width:15%;}
+  .personnel-table th:nth-child(2),.personnel-table td:nth-child(2){width:17%;}
+  .personnel-table th:nth-child(3),.personnel-table td:nth-child(3){width:12%;}
+  .personnel-table th:nth-child(4),.personnel-table td:nth-child(4){width:10%;}
+  .personnel-table th:nth-child(5),.personnel-table td:nth-child(5){width:10%;}
+  .personnel-table th:nth-child(6),.personnel-table td:nth-child(6){width:9%;}
+  .personnel-table th:nth-child(7),.personnel-table td:nth-child(7){width:11%;}
+  .personnel-table th:nth-child(8),.personnel-table td:nth-child(8){width:16%;white-space:normal;}
+</style>
 </head>
 <body>
 <div id="app-shell" data-active="/personnel.html" data-title="Досиета на служители"></div>
@@ -29,23 +44,41 @@ const PLATFORM_LABELS = { bolt: 'Bolt', glovo: 'Glovo' };
 
 let ALL_EMPLOYEES = [];
 
+function platformBadges(platforms) {
+  if (!platforms || !platforms.length) return '<span class="hint">—</span>';
+  return platforms.map(p => `<span class="badge badge-muted" style="margin-right:3px;">${PLATFORM_LABELS[p] || p}</span>`).join('');
+}
+
+// активните най-отгоре (по азбучен ред), след тях спрените (пак по азбучен ред)
+function sortPersonnel(employees) {
+  return [...employees].sort((a, b) => {
+    const rankA = a.status === 'active' ? 0 : 1;
+    const rankB = b.status === 'active' ? 0 : 1;
+    if (rankA !== rankB) return rankA - rankB;
+    return (a.full_name || '').localeCompare(b.full_name || '', 'bg');
+  });
+}
+
 function personnelTable(employees) {
   if (!employees.length) return `<p class="hint">Няма служители, отговарящи на филтъра.</p>`;
+  const sorted = sortPersonnel(employees);
   return `
     <div class="table-wrap">
-      <table>
-        <thead><tr><th>Име</th><th>Имейл</th><th>Роля</th><th>Статус</th><th>Шофьорска книжка</th><th>Изтичащи документи</th></tr></thead>
+      <table class="personnel-table">
+        <thead><tr><th>Име</th><th>Имейл</th><th>Телефон</th><th>Град</th><th>Платформа</th><th>Роля</th><th>Статус</th><th>Изтичащи документи</th></tr></thead>
         <tbody>
-          ${employees.map(e => `
-            <tr class="clickable" onclick="window.location='/personnel-detail.html?id=${e.id}'">
+          ${sorted.map(e => `
+            <tr class="clickable" onclick="window.location='/personnel-detail.html?id=${e.id}'" title="${escapeHtml(e.full_name)}">
               <td><a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a></td>
-              <td style="white-space:normal;word-break:break-all;">${e.email}</td>
+              <td title="${escapeHtml(e.email)}">${e.email}</td>
+              <td>${e.phone || '<span class="hint">—</span>'}</td>
+              <td>${e.city || '<span class="hint">—</span>'}</td>
+              <td>${platformBadges(e.platforms)}</td>
               <td>${ROLE_LABELS[e.role] || e.role}</td>
               <td>
                 ${e.status === 'active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}
-                ${e.blacklisted ? '<span class="badge badge-danger" style="margin-left:4px;">Черен списък</span>' : ''}
+                ${e.blacklisted ? '<span class="badge badge-danger" style="margin-left:4px;">ЧС</span>' : ''}
               </td>
-              <td>${e.driver_license_expiry ? fmtDate(e.driver_license_expiry) : '<span class="hint">не е въведена</span>'}</td>
               <td>${employeeAlertBadge(e.next_alert)}</td>
             </tr>`).join('')}
         </tbody>
@@ -58,7 +91,7 @@ function applyPersonnelFilters() {
   const status = document.getElementById('personnelStatusFilter').value;
   const blacklist = document.getElementById('personnelBlacklistFilter').value;
   const phoneQ = (document.getElementById('personnelPhoneFilter').value || '').trim().toLowerCase();
-  const cityQ = (document.getElementById('personnelCityFilter').value || '').trim().toLowerCase();
+  const cityFilter = document.getElementById('personnelCityFilter').value;
   const managerFilter = document.getElementById('personnelManagerFilter').value;
   const platformFilter = document.getElementById('personnelPlatformFilter').value;
   const filtered = ALL_EMPLOYEES.filter(e => {
@@ -70,7 +103,7 @@ function applyPersonnelFilters() {
       if (!hay.includes(q)) return false;
     }
     if (phoneQ && !(e.phone || '').toLowerCase().includes(phoneQ)) return false;
-    if (cityQ && !(e.city || '').toLowerCase().includes(cityQ)) return false;
+    if (cityFilter && e.city !== cityFilter) return false;
     if (managerFilter === 'none' && e.manager_id) return false;
     if (managerFilter && managerFilter !== 'none' && e.manager_id !== managerFilter) return false;
     if (platformFilter === 'both') {
@@ -140,7 +173,12 @@ async function init() {
       </div>
       <div class="field-row" style="align-items:flex-end;">
         <div class="field"><label>Телефон</label><input type="text" id="personnelPhoneFilter" placeholder="напр. 0888"></div>
-        <div class="field"><label>Град</label><input type="text" id="personnelCityFilter" placeholder="напр. София"></div>
+        <div class="field"><label>Град</label>
+          <select id="personnelCityFilter">
+            <option value="">Всички</option>
+            ${BG_CITIES.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+        </div>
         <div class="field"><label>Мениджър</label>
           <select id="personnelManagerFilter">
             <option value="">Всички</option>
@@ -190,7 +228,7 @@ async function init() {
     document.getElementById('personnelStatusFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelBlacklistFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelPhoneFilter').addEventListener('input', applyPersonnelFilters);
-    document.getElementById('personnelCityFilter').addEventListener('input', applyPersonnelFilters);
+    document.getElementById('personnelCityFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelManagerFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelPlatformFilter').addEventListener('change', applyPersonnelFilters);
   } catch (err) {
