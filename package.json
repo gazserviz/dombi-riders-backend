@@ -17,6 +17,9 @@
     "docxtemplater": "^3.50.0",
     "pizzip": "^3.1.7",
     "xlsx": "^0.18.5",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "imapflow": "^1.0.171",
+    "nodemailer": "^6.9.16",
+    "mailparser": "^3.7.2"
   }
 }

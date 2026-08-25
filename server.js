@@ -20,6 +20,7 @@ const docxToPdf = require('./lib/docx-to-pdf');
 const esign = require('./lib/esign');
 const pdfBuilder = require('./lib/pdf-builder');
 const backup = require('./lib/backup');
+const mail = require('./lib/mail');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -884,6 +885,67 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // ---- ПОЩЕНСКА КУТИЯ (office@dombi.bg през Zoho Mail, виж lib/mail.js) -
+    if (pathname === '/api/mail/inbox' && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const limit = Math.min(Math.max(parseInt(query.limit, 10) || 30, 1), 100);
+        const messages = await mail.listInbox({ limit });
+        return sendJson(res, 200, { messages });
+      } catch (err) {
+        return sendJson(res, err.code === 'MAIL_NOT_CONFIGURED' ? 503 : 502, { error: err.message });
+      }
+    }
+    const mailMessageMatch = pathname.match(/^\/api\/mail\/message\/([\w-]+)$/);
+    if (mailMessageMatch && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const message = await mail.getMessage(mailMessageMatch[1]);
+        return sendJson(res, 200, { message });
+      } catch (err) {
+        const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : 502);
+        return sendJson(res, status, { error: err.message });
+      }
+    }
+    const mailAttachmentMatch = pathname.match(/^\/api\/mail\/message\/([\w-]+)\/attachment\/(\d+)$/);
+    if (mailAttachmentMatch && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const att = await mail.getAttachment(mailAttachmentMatch[1], parseInt(mailAttachmentMatch[2], 10));
+        res.writeHead(200, {
+          'content-type': att.contentType,
+          'content-disposition': `attachment; filename="${att.filename.replace(/"/g, '')}"`,
+        });
+        return res.end(att.content);
+      } catch (err) {
+        const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : 502);
+        return sendJson(res, status, { error: err.message });
+      }
+    }
+    if (pathname === '/api/mail/send' && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      if (!body.to || !body.subject || !body.text) {
+        return sendJson(res, 400, { error: 'Липсва получател, тема или текст на писмото' });
+      }
+      try {
+        const result = await mail.sendMail({
+          to: String(body.to).slice(0, 500),
+          subject: String(body.subject).slice(0, 300),
+          text: String(body.text).slice(0, 20000),
+          inReplyTo: body.inReplyTo || undefined,
+          references: body.references || undefined,
+        });
+        return sendJson(res, 200, { ok: true, messageId: result.messageId });
+      } catch (err) {
+        return sendJson(res, err.code === 'MAIL_NOT_CONFIGURED' ? 503 : 502, { error: err.message });
       }
     }
 

@@ -92,6 +92,13 @@ Git repo (виж т. 1):
      сигурност.
 4. По избор: `ANTHROPIC_API_KEY` / `SIGNNOW_ACCESS_TOKEN` (виж коментарите
    в `render.yaml`) — също ръчно от теб, по същата причина.
+4.1. За модула "Пощенска кутия" (`/mail.html`, виж `lib/mail.js`) — office@dombi.bg
+   през Zoho Mail — добави ръчно в Render → Environment:
+   - `MAIL_USER` = `office@dombi.bg`
+   - `MAIL_PASSWORD` = App-Specific Password от Zoho (Account → Security →
+     App Passwords), **НЕ** обикновената парола за вход в Zoho. Без тези две
+     променливи страницата ще показва ясна грешка "Пощата не е
+     конфигурирана", но останалата система работи нормално.
 5. Deploy. При първо стартиране конзолният лог трябва да покаже:
    `Postgres kv_store беше празна — заредена начална база от data/db.json...`
    — това означава, че реалните данни от бекфила са заредени успешно в

@@ -51,6 +51,10 @@ const NAV = [
   { group: 'Финанси', items: [
     { href: '/finance.html', icon: '💰', label: 'Счетоводство', roles: ['admin','manager'] },
   ]},
+  { group: 'Поща', items: [
+    { href: '/mail.html', icon: '📧', label: 'Пощенска кутия', roles: ['admin'] },
+    { href: 'https://mail.zoho.eu', icon: '↗️', label: 'Zoho Webmail', roles: ['admin'] },
+  ]},
   { group: 'Администрация', items: [
     { href: '/users.html', icon: '👤', label: 'Потребители и роли', roles: ['admin'] },
     { href: '/activity.html', icon: '🕘', label: 'Дневник на активността', roles: ['admin'] },
@@ -135,10 +139,14 @@ async function mountShell() {
     return `
       <div class="nav-group">
         <div class="nav-label">${group.group}</div>
-        ${items.map(i => `
-          <a class="nav-link ${i.href === activeHref ? 'active' : ''}" href="${i.href}">
+        ${items.map(i => {
+          const isExternal = /^https?:\/\//.test(i.href);
+          const extraAttrs = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+          return `
+          <a class="nav-link ${i.href === activeHref ? 'active' : ''}" href="${i.href}"${extraAttrs}>
             <span class="ic">${i.icon}</span>${i.label}
-          </a>`).join('')}
+          </a>`;
+        }).join('')}
       </div>`;
   }).join('');
 

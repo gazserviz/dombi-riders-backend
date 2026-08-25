@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Пощенска кутия — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .mail-list{max-height:640px;overflow-y:auto;}
+  .mail-row{display:block;width:100%;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--line);padding:12px 6px;cursor:pointer;color:inherit;font:inherit;}
+  .mail-row:last-child{border-bottom:none;}
+  .mail-row:hover,.mail-row.active{background:#ffffff0a;}
+  .mail-row .mr-top{display:flex;justify-content:space-between;gap:8px;font-size:.82rem;}
+  .mail-row .mr-from{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mail-row.unread .mr-from,.mail-row.unread .mr-subject{font-weight:800;}
+  .mail-row .mr-date{color:var(--muted);white-space:nowrap;font-size:.74rem;}
+  .mail-row .mr-subject{font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;}
+  .mail-detail-head{margin-bottom:14px;}
+  .mail-detail-head .subj{font-size:1.05rem;font-weight:800;margin-bottom:6px;}
+  .mail-detail-head .meta{font-size:.8rem;color:var(--muted);line-height:1.6;}
+  .mail-body-frame{width:100%;height:480px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .mail-body-text{white-space:pre-wrap;word-break:break-word;font-size:.88rem;line-height:1.6;max-height:480px;overflow-y:auto;padding:14px;background:#ffffff08;border-radius:10px;border:1px solid var(--line);}
+  .attach-list{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;}
+  .compose-panel{display:none;}
+  .compose-panel.show{display:block;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/mail.html" data-title="Пощенска кутия"></div>
+
+<script src="/js/app.js"></script>
+<script>
+let CURRENT_USER = null;
+let MESSAGES = [];
+let SELECTED_UID = null;
+
+function fmtBytes(n) {
+  if (n == null || isNaN(n)) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function renderList() {
+  const host = document.getElementById('mailListHost');
+  if (!MESSAGES.length) { host.innerHTML = `<p class="hint">Няма писма във входящата кутия.</p>`; return; }
+  host.innerHTML = MESSAGES.map(m => `
+    <button type="button" class="mail-row ${m.seen ? '' : 'unread'} ${m.uid === SELECTED_UID ? 'active' : ''}" data-uid="${m.uid}">
+      <div class="mr-top">
+        <span class="mr-from">${m.fromName}</span>
+        <span class="mr-date">${m.date ? fmtDateTime(m.date) : ''}</span>
+      </div>
+      <div class="mr-subject">${m.subject}</div>
+    </button>
+  `).join('');
+  host.querySelectorAll('.mail-row').forEach(btn => {
+    btn.addEventListener('click', () => openMessage(Number(btn.dataset.uid)));
+  });
+}
+
+async function loadInbox() {
+  const host = document.getElementById('mailListHost');
+  const errorBox = document.getElementById('listError');
+  errorBox.classList.remove('show');
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  try {
+    const { messages } = await Api.get('/api/mail/inbox?limit=50');
+    MESSAGES = messages;
+    renderList();
+  } catch (err) {
+    host.innerHTML = '';
+    errorBox.textContent = err.message;
+    errorBox.classList.add('show');
+  }
+}
+
+function renderMessageDetail(msg) {
+  const host = document.getElementById('mailDetailHost');
+  const bodyHtml = msg.html
+    ? `<iframe class="mail-body-frame" sandbox=""></iframe>`
+    : `<div class="mail-body-text"></div>`;
+  host.innerHTML = `
+    <div class="mail-detail-head">
+      <div class="subj">${msg.subject}</div>
+      <div class="meta">
+        От: ${msg.from}<br>
+        До: ${msg.to || '—'}<br>
+        Дата: ${msg.date ? fmtDateTime(msg.date) : '—'}
+      </div>
+    </div>
+    ${bodyHtml}
+    ${msg.attachments.length ? `
+      <div class="attach-list">
+        ${msg.attachments.map(a => `
+          <a class="btn btn-ghost btn-sm" href="/api/mail/message/${msg.uid}/attachment/${a.index}" download>
+            📎 ${a.filename} (${fmtBytes(a.size)})
+          </a>`).join('')}
+      </div>` : ''}
+    <div style="margin-top:16px;">
+      <button class="btn btn-primary btn-sm" id="replyBtn">↩ Отговори</button>
+    </div>
+  `;
+  if (msg.html) {
+    // sandbox="" (без allow-scripts/allow-same-origin) — писмото не може да
+    // изпълни JS нито да чете/пише каквото и да е в родителската страница,
+    // дори ако съдържа злонамерен код; безопасно за преглед на чужд HTML.
+    host.querySelector('.mail-body-frame').srcdoc = msg.html;
+  } else {
+    host.querySelector('.mail-body-text').textContent = msg.text || '(празно писмо)';
+  }
+  document.getElementById('replyBtn').addEventListener('click', () => openCompose({
+    to: msg.from,
+    subject: /^re:/i.test(msg.subject) ? msg.subject : `Re: ${msg.subject}`,
+    inReplyTo: msg.messageId,
+    references: [msg.references, msg.messageId].filter(Boolean).join(' '),
+  }));
+}
+
+async function openMessage(uid) {
+  SELECTED_UID = uid;
+  renderList();
+  const host = document.getElementById('mailDetailHost');
+  host.innerHTML = `<div class="loading">Зареждане на писмото…</div>`;
+  try {
+    const { message } = await Api.get(`/api/mail/message/${uid}`);
+    renderMessageDetail(message);
+    const m = MESSAGES.find(x => x.uid === uid);
+    if (m) { m.seen = true; renderList(); }
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+function openCompose(prefill) {
+  prefill = prefill || {};
+  const panel = document.getElementById('composePanel');
+  panel.classList.add('show');
+  document.getElementById('composeTo').value = prefill.to || '';
+  document.getElementById('composeSubject').value = prefill.subject || '';
+  document.getElementById('composeText').value = '';
+  document.getElementById('composeInReplyTo').value = prefill.inReplyTo || '';
+  document.getElementById('composeReferences').value = prefill.references || '';
+  document.getElementById('composeError').classList.remove('show');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (CURRENT_USER.role !== 'admin') {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате пощенската кутия.</div>`;
+    return;
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="toolbar">
+      <button class="btn btn-primary btn-sm" id="composeBtn">✉️ Ново писмо</button>
+      <button class="btn btn-ghost btn-sm" id="refreshBtn">🔄 Обнови</button>
+      <div class="spacer"></div>
+      <a class="btn btn-ghost btn-sm" href="https://mail.zoho.eu" target="_blank" rel="noopener noreferrer">↗ Отвори в Zoho Webmail</a>
+    </div>
+
+    <div class="panel compose-panel" id="composePanel">
+      <div class="panel-head"><h2>Ново писмо</h2></div>
+      <div class="error-box" id="composeError"></div>
+      <form id="composeForm">
+        <input type="hidden" id="composeInReplyTo">
+        <input type="hidden" id="composeReferences">
+        <div class="field"><label>До *</label><input type="text" id="composeTo" required placeholder="driver@example.com"></div>
+        <div class="field"><label>Тема *</label><input type="text" id="composeSubject" required></div>
+        <div class="field"><label>Съобщение *</label><textarea id="composeText" rows="8" required></textarea></div>
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <button type="submit" class="btn btn-primary btn-sm">Изпрати</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="cancelComposeBtn">Отказ</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>Входящи</h2></div>
+        <div class="error-box" id="listError"></div>
+        <div class="mail-list" id="mailListHost"><div class="loading">Зареждане…</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Писмо</h2></div>
+        <div id="mailDetailHost"><p class="hint">Изберете писмо от списъка вляво.</p></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('composeBtn').addEventListener('click', () => openCompose());
+  document.getElementById('cancelComposeBtn').addEventListener('click', () => {
+    document.getElementById('composePanel').classList.remove('show');
+  });
+  document.getElementById('refreshBtn').addEventListener('click', loadInbox);
+  document.getElementById('composeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('composeError');
+    errorBox.classList.remove('show');
+    try {
+      await Api.post('/api/mail/send', {
+        to: document.getElementById('composeTo').value.trim(),
+        subject: document.getElementById('composeSubject').value.trim(),
+        text: document.getElementById('composeText').value,
+        inReplyTo: document.getElementById('composeInReplyTo').value || undefined,
+        references: document.getElementById('composeReferences').value || undefined,
+      });
+      document.getElementById('composePanel').classList.remove('show');
+      alert('Писмото е изпратено.');
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  await loadInbox();
+}
+init();
+</script>
+</body>
+</html>
