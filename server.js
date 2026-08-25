@@ -139,6 +139,20 @@ function readJsonBody(req) {
   });
 }
 
+// нормализира списък с имейл адреси, разделени със запетая и/или точка и
+// запетая ("a@x.com, b@y.com; c@z.com") — подрязва интервалите и премахва
+// празните записи, връща обратно единен низ разделен със запетая (форматът,
+// който nodemailer/SMTP очакват в To/Cc)
+function normalizeEmailList(raw, maxCount) {
+  if (!raw) return '';
+  const parts = String(raw)
+    .split(/[,;]/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, maxCount);
+  return parts.join(', ');
+}
+
 function getCurrentUser(req) {
   const cookies = parseCookies(req);
   const token = cookies.session;
@@ -948,13 +962,30 @@ async function handleApi(req, res, pathname, query) {
       if (!body.to || !body.subject || !body.text) {
         return sendJson(res, 400, { error: 'Липсва получател, тема или текст на писмото' });
       }
+      const to = normalizeEmailList(String(body.to).slice(0, 2000), 25);
+      const cc = body.cc ? normalizeEmailList(String(body.cc).slice(0, 2000), 25) : '';
+      if (!to) {
+        return sendJson(res, 400, { error: 'Липсва валиден получател' });
+      }
+      // прикачени файлове при препращане — идват от клиента вече като base64
+      // (свалени преди това от оригиналното писмо през /attachment route)
+      let attachments;
+      if (Array.isArray(body.attachments) && body.attachments.length) {
+        attachments = body.attachments.slice(0, 10).map(a => ({
+          filename: String(a.filename || 'прикачен-файл').slice(0, 255),
+          contentType: a.contentType ? String(a.contentType).slice(0, 120) : undefined,
+          content: String(a.content || ''),
+        })).filter(a => a.content);
+      }
       try {
         const result = await mail.sendMail({
-          to: String(body.to).slice(0, 500),
+          to,
+          cc: cc || undefined,
           subject: String(body.subject).slice(0, 300),
           text: String(body.text).slice(0, 20000),
           inReplyTo: body.inReplyTo || undefined,
           references: body.references || undefined,
+          attachments,
         });
         return sendJson(res, 200, { ok: true, messageId: result.messageId });
       } catch (err) {

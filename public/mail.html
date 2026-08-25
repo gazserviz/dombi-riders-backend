@@ -40,6 +40,17 @@ let MESSAGES = [];
 let SELECTED_UID = null;
 let SELECTED_FOLDER = null;
 let CURRENT_TAB = 'inbox'; // 'inbox' | 'sent'
+let FORWARD_ATTACHMENTS = []; // [{filename, contentType, content(base64)}] — попълва се при "Препрати"
+
+function arrayBufferToBase64(buf) {
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
 
 function fmtBytes(n) {
   if (n == null || isNaN(n)) return '—';
@@ -117,8 +128,9 @@ function renderMessageDetail(msg) {
             📎 ${a.filename} (${fmtBytes(a.size)})
           </a>`).join('')}
       </div>` : ''}
-    <div style="margin-top:16px;">
+    <div style="margin-top:16px;display:flex;gap:8px;">
       ${CURRENT_TAB === 'sent' ? '' : '<button class="btn btn-primary btn-sm" id="replyBtn">↩ Отговори</button>'}
+      <button class="btn btn-ghost btn-sm" id="forwardBtn">↪ Препрати</button>
     </div>
   `;
   if (msg.html) {
@@ -138,6 +150,39 @@ function renderMessageDetail(msg) {
       references: [msg.references, msg.messageId].filter(Boolean).join(' '),
     }));
   }
+  document.getElementById('forwardBtn').addEventListener('click', () => forwardMessage(msg));
+}
+
+// подготвя ново писмо с цитираното оригинално съобщение и (ако има) с
+// прикачените му файлове, свалени и готови да се приложат наново
+async function forwardMessage(msg) {
+  const btn = document.getElementById('forwardBtn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  FORWARD_ATTACHMENTS = [];
+  try {
+    if (msg.attachments.length) {
+      btn.textContent = 'Зареждане на прикачени файлове…';
+      for (const a of msg.attachments) {
+        const res = await fetch(`/api/mail/message/${msg.uid}/attachment/${a.index}?folder=${encodeURIComponent(msg.folder)}`, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`Неуспешно сваляне на ${a.filename}`);
+        const buf = await res.arrayBuffer();
+        FORWARD_ATTACHMENTS.push({ filename: a.filename, contentType: a.contentType, content: arrayBufferToBase64(buf) });
+      }
+    }
+    const quoted = `\n\n---------- Препратено съобщение ----------\nОт: ${msg.from}\nДата: ${msg.date ? fmtDateTime(msg.date) : '—'}\nТема: ${msg.subject}\nДо: ${msg.to || '—'}\n\n${msg.text || '(писмото няма текстово съдържание — виж оригинала в Zoho Webmail)'}`;
+    openCompose({
+      subject: /^fwd:/i.test(msg.subject) ? msg.subject : `Fwd: ${msg.subject}`,
+      text: quoted,
+      keepForwardAttachments: true,
+    });
+  } catch (err) {
+    FORWARD_ATTACHMENTS = [];
+    alert(`Грешка при подготовка на препращането: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 async function openMessage(uid, folder) {
@@ -156,16 +201,30 @@ async function openMessage(uid, folder) {
   }
 }
 
+function renderForwardAttachmentsNotice() {
+  const host = document.getElementById('composeAttachNotice');
+  if (!FORWARD_ATTACHMENTS.length) { host.innerHTML = ''; return; }
+  host.innerHTML = `<div class="hint">📎 Ще бъдат приложени: ${FORWARD_ATTACHMENTS.map(a => a.filename).join(', ')}
+    <button type="button" class="btn btn-ghost btn-sm" id="clearForwardAttachBtn" style="margin-left:8px;">Премахни</button></div>`;
+  document.getElementById('clearForwardAttachBtn').addEventListener('click', () => {
+    FORWARD_ATTACHMENTS = [];
+    renderForwardAttachmentsNotice();
+  });
+}
+
 function openCompose(prefill) {
   prefill = prefill || {};
+  if (!prefill.keepForwardAttachments) FORWARD_ATTACHMENTS = [];
   const panel = document.getElementById('composePanel');
   panel.classList.add('show');
   document.getElementById('composeTo').value = prefill.to || '';
+  document.getElementById('composeCc').value = prefill.cc || '';
   document.getElementById('composeSubject').value = prefill.subject || '';
-  document.getElementById('composeText').value = '';
+  document.getElementById('composeText').value = prefill.text || '';
   document.getElementById('composeInReplyTo').value = prefill.inReplyTo || '';
   document.getElementById('composeReferences').value = prefill.references || '';
   document.getElementById('composeError').classList.remove('show');
+  renderForwardAttachmentsNotice();
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -191,9 +250,11 @@ async function init() {
       <form id="composeForm">
         <input type="hidden" id="composeInReplyTo">
         <input type="hidden" id="composeReferences">
-        <div class="field"><label>До *</label><input type="text" id="composeTo" required placeholder="driver@example.com"></div>
+        <div class="field"><label>До * (може повече от един, разделени със запетая)</label><input type="text" id="composeTo" required placeholder="driver1@example.com, driver2@example.com"></div>
+        <div class="field"><label>Копие (Cc)</label><input type="text" id="composeCc" placeholder="по избор, разделени със запетая"></div>
         <div class="field"><label>Тема *</label><input type="text" id="composeSubject" required></div>
         <div class="field"><label>Съобщение *</label><textarea id="composeText" rows="8" required></textarea></div>
+        <div id="composeAttachNotice"></div>
         <div style="display:flex;gap:10px;margin-top:12px;">
           <button type="submit" class="btn btn-primary btn-sm">Изпрати</button>
           <button type="button" class="btn btn-ghost btn-sm" id="cancelComposeBtn">Отказ</button>
@@ -221,6 +282,7 @@ async function init() {
   document.getElementById('composeBtn').addEventListener('click', () => openCompose());
   document.getElementById('cancelComposeBtn').addEventListener('click', () => {
     document.getElementById('composePanel').classList.remove('show');
+    FORWARD_ATTACHMENTS = [];
   });
   document.getElementById('refreshBtn').addEventListener('click', loadMessages);
   document.querySelectorAll('.mail-tabs button').forEach(btn => {
@@ -230,20 +292,27 @@ async function init() {
     e.preventDefault();
     const errorBox = document.getElementById('composeError');
     errorBox.classList.remove('show');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
     try {
       await Api.post('/api/mail/send', {
         to: document.getElementById('composeTo').value.trim(),
+        cc: document.getElementById('composeCc').value.trim() || undefined,
         subject: document.getElementById('composeSubject').value.trim(),
         text: document.getElementById('composeText').value,
         inReplyTo: document.getElementById('composeInReplyTo').value || undefined,
         references: document.getElementById('composeReferences').value || undefined,
+        attachments: FORWARD_ATTACHMENTS.length ? FORWARD_ATTACHMENTS : undefined,
       });
       document.getElementById('composePanel').classList.remove('show');
+      FORWARD_ATTACHMENTS = [];
       alert('Писмото е изпратено.');
       if (CURRENT_TAB === 'sent') loadMessages();
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.classList.add('show');
+    } finally {
+      submitBtn.disabled = false;
     }
   });
 
