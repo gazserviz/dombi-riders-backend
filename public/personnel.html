@@ -29,18 +29,17 @@ function personnelTable(employees) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Име</th><th>Имейл</th><th>Роля</th><th>Статус</th><th>Лична карта</th><th>Шофьорска книжка</th><th>Изтичащи документи</th><th></th></tr></thead>
+        <thead><tr><th>Име</th><th>Имейл</th><th>Роля</th><th>Статус</th><th>Лична карта</th><th>Шофьорска книжка</th><th>Изтичащи документи</th></tr></thead>
         <tbody>
           ${employees.map(e => `
-            <tr>
-              <td><strong>${e.full_name}</strong></td>
-              <td>${e.email}</td>
+            <tr class="clickable" onclick="window.location='/personnel-detail.html?id=${e.id}'">
+              <td><a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a></td>
+              <td style="white-space:normal;word-break:break-all;">${e.email}</td>
               <td>${ROLE_LABELS[e.role] || e.role}</td>
               <td>${e.status === 'active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}</td>
               <td>${e.id_card_expiry ? fmtDate(e.id_card_expiry) : '<span class="hint">не е въведена</span>'}</td>
               <td>${e.driver_license_expiry ? fmtDate(e.driver_license_expiry) : '<span class="hint">не е въведена</span>'}</td>
               <td>${employeeAlertBadge(e.next_alert)}</td>
-              <td><a class="btn btn-ghost btn-sm" href="/personnel-detail.html?id=${e.id}">Досие →</a></td>
             </tr>`).join('')}
         </tbody>
       </table>
