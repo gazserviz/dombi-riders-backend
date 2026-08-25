@@ -15,6 +15,12 @@
 <script>
 const PAID_LABELS = { true: ['Платено', 'badge-green'], false: ['Неплатено', 'badge-warn'] };
 function paidBadge(paid) { const [label, cls] = PAID_LABELS[!!paid]; return `<span class="badge ${cls}">${label}</span>`; }
+const PLATFORM_LABELS = { bolt: 'Bolt', glovo: 'Glovo' };
+function platformBreakdownLine(e) {
+  const pb = e.platform_breakdown;
+  if (!pb || !Object.keys(pb).length) return '';
+  return `<div class="hint" style="font-size:.72rem;margin-top:2px;">${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</div>`;
+}
 function signBadge(status) {
   if (status === 'signed_in_person' || status === 'signed_remote') return '<span class="badge badge-green">Потвърдено</span>';
   return '<span class="badge badge-muted">Непотвърдено</span>';
@@ -49,7 +55,7 @@ async function loadEntries() {
             <td>${fmtDate(e.week_start)} — ${fmtDate(e.week_end)}</td>
             <td><strong>${e.order_count}</strong></td>
             ${earningsVisible ? `
-            <td>${fmtMoney(e.gross_earnings)}</td>
+            <td>${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</td>
             <td>${fmtMoney(e.deduction_amount)}</td>
             <td><strong>${fmtMoney(e.net_amount)}</strong></td>` : ''}
             <td>${signBadge(e.signature_status)}${e.signed_by_name ? `<div class="hint" style="font-size:.74rem;">${e.signed_by_name} · ${fmtDate(e.signed_at)}</div>` : ''}</td>
@@ -249,6 +255,89 @@ async function initImportPanel() {
   });
 }
 
+async function initPayrollStatsPanel() {
+  const from = document.getElementById('statsFrom');
+  const to = document.getElementById('statsTo');
+  from.value = addDaysStr(currentWeekStart(), -7 * 8); // последните ~8 седмици по подразбиране
+  to.value = todayStr();
+  mountPeriodPicker(document.getElementById('statsPeriodPicker'), from, to, { useMonthPreset: true, onApply: loadPayrollStats });
+  document.getElementById('statsRefreshBtn').addEventListener('click', loadPayrollStats);
+  await loadPayrollStats();
+}
+
+async function loadPayrollStats() {
+  const host = document.getElementById('payrollStatsHost');
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const from = document.getElementById('statsFrom').value;
+  const to = document.getElementById('statsTo').value;
+  try {
+    // без profile_id -> връща записите на ВСИЧКИ служители (само за админ/мениджър)
+    const { entries } = await Api.get('/api/hr/payroll');
+    const periodEntries = entries.filter(e => (!from || e.week_start >= from) && (!to || e.week_start <= to));
+    const totalOrders = periodEntries.reduce((s, e) => s + Number(e.order_count || 0), 0);
+    const totalGross = periodEntries.reduce((s, e) => s + Number(e.gross_earnings || 0), 0);
+    const totalDeduction = periodEntries.reduce((s, e) => s + Number(e.deduction_amount || 0), 0);
+    const totalNet = periodEntries.reduce((s, e) => s + Number(e.net_amount || 0), 0);
+    const totalPaid = periodEntries.filter(e => e.paid).reduce((s, e) => s + Number(e.net_amount || 0), 0);
+    const totalUnpaid = totalNet - totalPaid;
+
+    const platformTotals = {};
+    periodEntries.forEach(e => {
+      if (!e.platform_breakdown) return;
+      Object.entries(e.platform_breakdown).forEach(([k, v]) => { platformTotals[k] = (platformTotals[k] || 0) + Number(v || 0); });
+    });
+
+    // разбивка по служител — кой колко има за периода и какво остава да му се плати
+    const byProfile = new Map();
+    periodEntries.forEach(e => {
+      if (!byProfile.has(e.profile_id)) byProfile.set(e.profile_id, { orders: 0, gross: 0, deduction: 0, net: 0, paid: 0, weeks: 0 });
+      const row = byProfile.get(e.profile_id);
+      row.orders += Number(e.order_count || 0);
+      row.gross += Number(e.gross_earnings || 0);
+      row.deduction += Number(e.deduction_amount || 0);
+      row.net += Number(e.net_amount || 0);
+      if (e.paid) row.paid += Number(e.net_amount || 0);
+      row.weeks += 1;
+    });
+    const nameById = Object.fromEntries(DIRECTORY.map(u => [u.id, u.full_name]));
+    const profileRows = [...byProfile.entries()]
+      .map(([id, r]) => ({ id, name: nameById[id] || id, ...r, unpaid: r.net - r.paid }))
+      .sort((a, b) => b.unpaid - a.unpaid);
+
+    host.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Служители с данни</div><div class="value">${byProfile.size}</div></div>
+        <div class="stat-card"><div class="label">Общо поръчки</div><div class="value">${totalOrders}</div></div>
+        <div class="stat-card"><div class="label">Обща заработка (шофьори)</div><div class="value">${fmtMoney(totalGross)}</div></div>
+        <div class="stat-card"><div class="label">Приход за фирмата (удръжки)</div><div class="value green">${fmtMoney(totalDeduction)}</div></div>
+        <div class="stat-card"><div class="label">Изплатено на служители</div><div class="value green">${fmtMoney(totalPaid)}</div></div>
+        <div class="stat-card"><div class="label">Остава да се плати</div><div class="value ${totalUnpaid > 0 ? 'warn' : ''}">${fmtMoney(totalUnpaid)}</div></div>
+      </div>
+      ${Object.keys(platformTotals).length ? `<p class="hint">По платформа: ${Object.entries(platformTotals).map(([k, v]) => `<strong>${PLATFORM_LABELS[k] || k}</strong>: ${fmtMoney(v)}`).join(' · ')}</p>` : ''}
+      <p class="hint">„Приход за фирмата“ са само седмичните такси/удръжки от шофьорите — не е пълна печалба/загуба на фирмата (не включва разходи по коли, сервиз, партньорски комисионни и др.). За пълния отчет с всички разходи виж <a href="/finance.html">Счетоводство</a>.</p>
+      ${profileRows.length ? `
+      <div class="table-wrap" style="margin-top:10px;"><table>
+        <thead><tr><th>Служител</th><th>Седмици</th><th>Поръчки</th><th>Заработка</th><th>Удръжка</th><th>За изплащане</th><th>Платено</th><th>Остава</th></tr></thead>
+        <tbody>
+          ${profileRows.map(r => `
+            <tr>
+              <td><a class="employee-name-link" href="/personnel-detail.html?id=${r.id}">${r.name}</a></td>
+              <td>${r.weeks}</td>
+              <td>${r.orders}</td>
+              <td>${fmtMoney(r.gross)}</td>
+              <td>${fmtMoney(r.deduction)}</td>
+              <td><strong>${fmtMoney(r.net)}</strong></td>
+              <td>${fmtMoney(r.paid)}</td>
+              <td>${r.unpaid > 0.005 ? `<strong style="color:var(--warn);">${fmtMoney(r.unpaid)}</strong>` : fmtMoney(r.unpaid)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>` : `<p class="hint">Няма записи за избрания период.</p>`}
+    `;
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
@@ -311,6 +400,18 @@ async function init() {
       <div id="importPreviewHost" style="margin-top:14px;"></div>
     </div>` : ''}
 
+    ${isAdmin ? `
+    <div class="panel" id="statsPanel">
+      <div class="panel-head"><h2>Статистика за периода (всички служители)</h2></div>
+      <div id="statsPeriodPicker"></div>
+      <div class="field-row">
+        <div class="field"><label>От (седмица, начало)</label><input type="date" id="statsFrom"></div>
+        <div class="field"><label>До (седмица, начало)</label><input type="date" id="statsTo"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="statsRefreshBtn">Обнови</button>
+      <div id="payrollStatsHost" style="margin-top:14px;" class="loading">Зареждане…</div>
+    </div>` : ''}
+
     <div class="panel">
       <div class="panel-head"><h2>${isAdmin ? 'Седмици на избрания служител' : 'Моите седмици'}</h2></div>
       <div id="entriesHost" class="loading">${isAdmin ? 'Изберете служител отгоре.' : 'Зареждане…'}</div>
@@ -320,6 +421,7 @@ async function init() {
 
   if (isAdmin) {
     await initImportPanel();
+    await initPayrollStatsPanel();
     const select = document.getElementById('employeeSelect');
     select.addEventListener('change', async () => {
       selectedProfileId = select.value || null;

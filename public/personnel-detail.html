@@ -458,7 +458,7 @@ async function loadFile() {
 
   const toggleStatusBtn = document.getElementById('toggleStatusBtn');
   if (toggleStatusBtn) toggleStatusBtn.addEventListener('click', async () => {
-    const newStatus = profile.status === 'active' ? 'inactive' : 'active';
+    const newStatus = profile.status === 'active' ? 'suspended' : 'active';
     if (!confirm(newStatus === 'active' ? 'Активирай профила на служителя?' : 'Спри профила на служителя?')) return;
     try { await Api.put(`/api/hr/personnel/${TARGET_ID}`, { status: newStatus }); await loadFile(); }
     catch (err) { alert(err.message); }
@@ -514,6 +514,13 @@ function initEarningsPanel() {
   loadEarnings();
 }
 
+const PLATFORM_LABELS = { bolt: 'Bolt', glovo: 'Glovo' };
+function platformBreakdownLine(e) {
+  const pb = e.platform_breakdown;
+  if (!pb || !Object.keys(pb).length) return '';
+  return `<div class="hint" style="font-size:.72rem;margin-top:2px;">${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</div>`;
+}
+
 async function loadEarnings() {
   const host = document.getElementById('earningsHost');
   host.innerHTML = `<div class="loading">Зареждане…</div>`;
@@ -536,6 +543,17 @@ async function loadEarnings() {
     const totalNet = periodEntries.reduce((s, e) => s + Number(e.net_amount || 0), 0);
     const totalPaid = periodEntries.filter(e => e.paid).reduce((s, e) => s + Number(e.net_amount || 0), 0);
     const totalUnpaid = totalNet - totalPaid;
+    // сборове по платформа (Bolt/Glovo/...) — от платформената разбивка,
+    // запазена при импорта (виж platform_breakdown в payroll_entries)
+    const platformTotals = {};
+    periodEntries.forEach(e => {
+      if (!e.platform_breakdown) return;
+      Object.entries(e.platform_breakdown).forEach(([k, v]) => {
+        platformTotals[k] = (platformTotals[k] || 0) + Number(v || 0);
+      });
+    });
+    const platformTotalsLine = Object.keys(platformTotals).length
+      ? `<p class="hint" style="margin-top:-14px;margin-bottom:10px;">По платформа: ${Object.entries(platformTotals).map(([k, v]) => `<strong>${PLATFORM_LABELS[k] || k}</strong>: ${fmtMoney(v)}`).join(' · ')}</p>` : '';
     host.innerHTML = `
       <div class="stat-grid">
         <div class="stat-card"><div class="label">Поръчки за периода</div><div class="value">${totalOrders}</div></div>
@@ -545,23 +563,31 @@ async function loadEarnings() {
         <div class="stat-card"><div class="label">Изплатено вече</div><div class="value green">${fmtMoney(totalPaid)}</div></div>
         <div class="stat-card"><div class="label">Остава да се плати</div><div class="value ${totalUnpaid > 0 ? 'warn' : ''}">${fmtMoney(totalUnpaid)}</div></div>
       </div>
-      <p class="hint" style="margin-top:8px;">„Приход за фирмата“ е сборът от седмичните такси/удръжки, събрани от служителя — реалният паричен приход на фирмата от него. Не изважда споделени разходи (кола, сервиз и др.), затова не е чиста печалба.</p>
+      ${platformTotalsLine}
+      <p class="hint" style="margin-top:8px;">„Приход за фирмата“ е сборът от седмичните такси/удръжки, събрани от служителя — реалният паричен приход на фирмата от него. Удръжката е една обща седмична такса по договора, не се разделя по платформа. Не изважда споделени разходи (кола, сервиз и др.), затова не е чиста печалба — пълният отчет с разходи е на страница „Счетоводство“.</p>
       ${periodEntries.length ? `
       <div class="table-wrap" style="margin-top:10px;"><table>
-        <thead><tr><th>Седмица</th><th>Поръчки</th><th>Заработка</th><th>Удръжка</th><th>За изплащане</th><th>Платено</th></tr></thead>
+        <thead><tr><th>Седмица</th><th>Поръчки</th><th>Заработка</th><th>Удръжка</th><th>За изплащане</th><th>Платено</th><th></th></tr></thead>
         <tbody>
           ${periodEntries.sort((a, b) => (a.week_start < b.week_start ? 1 : -1)).map(e => `
             <tr>
               <td>${fmtDate(e.week_start)} — ${fmtDate(e.week_end)}</td>
               <td>${e.order_count || 0}</td>
-              <td>${fmtMoney(e.gross_earnings)}</td>
+              <td>${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</td>
               <td>${fmtMoney(e.deduction_amount)}</td>
               <td><strong>${fmtMoney(e.net_amount)}</strong></td>
               <td>${e.paid ? '<span class="badge badge-green">Платено</span>' : '<span class="badge badge-warn">Дължимо</span>'}</td>
+              <td>${(CURRENT_USER.role === 'admin' && !e.paid) ? `<button type="button" class="btn btn-ghost btn-sm earn-mark-paid-btn" data-id="${e.id}" style="padding:2px 8px;font-size:.68rem;">Маркирай платено</button>` : ''}</td>
             </tr>`).join('')}
         </tbody>
       </table></div>` : `<p class="hint">Няма записи за избрания период.</p>`}
     `;
+    host.querySelectorAll('.earn-mark-paid-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try { await Api.post(`/api/hr/payroll/${btn.dataset.id}/mark-paid`, { paid: true }); await loadEarnings(); }
+        catch (err) { alert(err.message); }
+      });
+    });
   } catch (err) {
     host.innerHTML = `<div class="error-box show">${err.message}</div>`;
   }
