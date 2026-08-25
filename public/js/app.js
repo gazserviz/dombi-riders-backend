@@ -271,6 +271,16 @@ function isoWeekNumber(dateStr) {
   const week1 = new Date(d.getFullYear(), 0, 4);
   return 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
 }
+// единен етикет "Седмица N · дата — дата" за отчети (заплати, партньорска
+// статистика и др.) — показва номера на седмицата ВИНАГИ, независимо дали
+// периодът е избран чрез бутон/номер на седмица или чрез ръчен избор на
+// дати от календарче (номерът се извежда от самата дата, не от начина на
+// избор). weekEnd е по избор — при липса се показва само началото.
+function weekRangeLabel(weekStart, weekEnd) {
+  if (!weekStart) return '—';
+  const wn = isoWeekNumber(weekStart);
+  return weekEnd ? `Седмица ${wn} · ${fmtDate(weekStart)} — ${fmtDate(weekEnd)}` : `Седмица ${wn} · ${fmtDate(weekStart)}`;
+}
 function todayStr() { return isoDateOnly(new Date()); }
 function currentWeekStart() { return mondayOf(todayStr()); }
 function previousWeekStart() { return addDaysStr(currentWeekStart(), -7); }
