@@ -59,8 +59,48 @@ const NAV = [
     { href: '/users.html', icon: '👤', label: 'Потребители и роли', roles: ['admin'] },
     { href: '/activity.html', icon: '🕘', label: 'Дневник на активността', roles: ['admin'] },
     { href: '/backups.html', icon: '💾', label: 'Резервни копия', roles: ['admin'] },
+    { href: '/nav-settings.html', icon: '🧭', label: 'Навигация на менюто', roles: ['admin'] },
   ]},
 ];
+
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ---------------------------------------------------------------------------
+// слепва запазена в базата конфигурация на менюто (само label + ред) върху
+// базовия NAV масив от кода. href/икона/roles ВИНАГИ идват от кода — конфиг
+// може само да преименува и пренарежда, никога да не разкрие/скрие страница
+// по роля. Групите се съпоставят по оригиналното (кодовото) им име
+// (base_group), а не по показваното, за да работи дори след преименуване.
+function mergeNavConfig(baseNav, config) {
+  if (!config || !Array.isArray(config.groups) || !config.groups.length) return baseNav;
+  const baseByGroup = new Map(baseNav.map(g => [g.group, g]));
+  const usedGroups = new Set();
+  const result = [];
+  config.groups.forEach(cg => {
+    const base = baseByGroup.get(cg.base_group || cg.group);
+    if (!base) return; // групата вече не съществува в кода — пропускаме
+    usedGroups.add(base.group);
+    const baseItemsByHref = new Map(base.items.map(i => [i.href, i]));
+    const usedHrefs = new Set();
+    const items = [];
+    (Array.isArray(cg.items) ? cg.items : []).forEach(ci => {
+      const baseItem = baseItemsByHref.get(ci.href);
+      if (!baseItem) return; // страницата вече не съществува — пропускаме
+      usedHrefs.add(ci.href);
+      items.push({ ...baseItem, label: ci.label || baseItem.label });
+    });
+    // добавяме нови елементи от кода, липсващи в запазената конфигурация
+    base.items.forEach(bi => { if (!usedHrefs.has(bi.href)) items.push(bi); });
+    result.push({ group: cg.label || base.group, items });
+  });
+  // добавяме нови групи от кода, липсващи в запазената конфигурация
+  baseNav.forEach(bg => { if (!usedGroups.has(bg.group)) result.push(bg); });
+  return result;
+}
 
 function fmtMoney(n) {
   if (n == null || isNaN(n)) return '—';
@@ -133,18 +173,24 @@ async function mountShell() {
   const activeHref = mountPoint.dataset.active || '';
   const title = mountPoint.dataset.title || '';
 
-  const navHtml = NAV.map(group => {
+  let effectiveNav = NAV;
+  try {
+    const { config } = await Api.get('/api/nav-config');
+    effectiveNav = mergeNavConfig(NAV, config);
+  } catch (e) { /* без запазена конфигурация — ползваме менюто по подразбиране */ }
+
+  const navHtml = effectiveNav.map(group => {
     const items = group.items.filter(i => i.roles.includes(user.role));
     if (!items.length) return '';
     return `
       <div class="nav-group">
-        <div class="nav-label">${group.group}</div>
+        <div class="nav-label">${escapeHtml(group.group)}</div>
         ${items.map(i => {
           const isExternal = /^https?:\/\//.test(i.href);
           const extraAttrs = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
           return `
           <a class="nav-link ${i.href === activeHref ? 'active' : ''}" href="${i.href}"${extraAttrs}>
-            <span class="ic">${i.icon}</span>${i.label}
+            <span class="ic">${i.icon}</span>${escapeHtml(i.label)}
           </a>`;
         }).join('')}
       </div>`;
