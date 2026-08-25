@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Витрина на сайта (коли) — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .fsc-card{border:1px solid var(--panel-line,#2a2a2a);border-radius:10px;padding:16px;margin-bottom:14px;}
+  .fsc-top{display:flex;gap:16px;flex-wrap:wrap;}
+  .fsc-image-box{width:160px;flex:0 0 160px;}
+  .fsc-image-preview{width:160px;height:110px;border-radius:8px;background:#111;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed #444;}
+  .fsc-image-preview img{width:100%;height:100%;object-fit:cover;}
+  .fsc-fields{flex:1;min-width:280px;}
+  .tag-list{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;}
+  .tag-chip{background:#1c1c1c;border:1px solid #333;border-radius:14px;padding:3px 10px;font-size:.78rem;display:flex;align-items:center;gap:6px;}
+  .tag-chip button{background:none;border:none;color:#999;cursor:pointer;font-size:.85rem;line-height:1;}
+  .tag-add-row{display:flex;gap:6px;margin-top:4px;}
+  .tag-add-row input{flex:1;}
+  .vehicle-picker{max-height:160px;overflow-y:auto;border:1px solid #333;border-radius:8px;padding:8px;margin-top:6px;}
+  .vehicle-picker label{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:.85rem;}
+  .fsc-status-live{font-size:.78rem;padding:2px 8px;border-radius:10px;}
+  .fsc-status-live.on{background:#123d1f;color:#4dff7a;}
+  .fsc-status-live.off{background:#3d2a12;color:#ffb35a;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/fleet-showcase.html" data-title="Витрина на сайта (коли)"></div>
+
+<script src="/js/app.js"></script>
+<script>
+let ITEMS = [];
+let VEHICLES = [];
+
+function liveStatus(item) {
+  const linked = (item.linked_vehicle_ids || []).map(id => VEHICLES.find(v => v.id === id)).filter(Boolean);
+  return linked.some(v => v.status === 'available');
+}
+
+function tagListHTML(fscId, field, values) {
+  return `
+    <div class="tag-list" data-fsc="${fscId}" data-field="${field}">
+      ${(values || []).map((v, i) => `<span class="tag-chip">${escapeHtml(v)}<button type="button" class="tag-remove-btn" data-fsc="${fscId}" data-field="${field}" data-i="${i}">✕</button></span>`).join('')}
+    </div>
+    <div class="tag-add-row">
+      <input type="text" class="tag-add-input" data-fsc="${fscId}" data-field="${field}" placeholder="Добави и натисни Enter">
+    </div>`;
+}
+
+function vehiclePickerHTML(fscId, linkedIds) {
+  if (!VEHICLES.length) return `<p class="hint">Няма въведени коли в автопарка все още.</p>`;
+  const sorted = [...VEHICLES].sort((a, b) => `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`, 'bg'));
+  return `
+    <div class="vehicle-picker" data-fsc="${fscId}">
+      ${sorted.map(v => `
+        <label>
+          <input type="checkbox" class="vehicle-link-cb" data-fsc="${fscId}" data-vid="${v.id}" ${linkedIds.includes(v.id) ? 'checked' : ''}>
+          <span>${escapeHtml(v.plate_number || '—')} — ${escapeHtml(v.make || '')} ${escapeHtml(v.model || '')} ${vehicleStatusBadge(v.status)}</span>
+        </label>`).join('')}
+    </div>`;
+}
+
+function fscCardHTML(item, index) {
+  const isLive = liveStatus(item);
+  return `
+  <div class="panel fsc-card" data-fsc="${item.id}">
+    <div class="fsc-top">
+      <div class="fsc-image-box">
+        <div class="fsc-image-preview">
+          ${item.image_url ? `<img src="${item.image_url}" alt="">` : `<span class="hint" style="font-size:.72rem;text-align:center;padding:8px;">Няма снимка — на сайта се показва изчистена генерична икона</span>`}
+        </div>
+        <input type="file" accept="image/jpeg,image/png,image/webp" class="fsc-image-input" data-fsc="${item.id}" style="margin-top:6px;font-size:.75rem;">
+      </div>
+      <div class="fsc-fields">
+        <div class="field-row">
+          <div class="field" style="flex:2;"><label>Име (марка и модел)</label><input type="text" class="fsc-name" data-fsc="${item.id}" value="${escapeHtml(item.name)}" maxlength="80"></div>
+          <div class="field"><label>Категория</label>
+            <select class="fsc-category" data-fsc="${item.id}">
+              <option value="economy" ${item.category==='economy'?'selected':''}>Икономична</option>
+              <option value="comfort" ${item.category==='comfort'?'selected':''}>Комфортна</option>
+              <option value="eco" ${item.category==='eco'?'selected':''}>Хибрид / Електро</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Гориво</label><input type="text" class="fsc-fuel" data-fsc="${item.id}" value="${escapeHtml(item.fuel||'')}" maxlength="40"></div>
+          <div class="field"><label>Скоростна кутия</label><input type="text" class="fsc-transmission" data-fsc="${item.id}" value="${escapeHtml(item.transmission||'')}" maxlength="40"></div>
+          <div class="field" style="max-width:90px;"><label>Места</label><input type="number" min="1" max="9" class="fsc-seats" data-fsc="${item.id}" value="${item.seats||5}"></div>
+          <div class="field"><label>Бадж</label>
+            <select class="fsc-badge" data-fsc="${item.id}">
+              <option value="" ${!item.badge?'selected':''}>Няма</option>
+              <option value="top" ${item.badge==='top'?'selected':''}>★ Топ избор</option>
+              <option value="new" ${item.badge==='new'?'selected':''}>Ново в автопарка</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row" style="align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="fsc-active" data-fsc="${item.id}" ${item.active!==false?'checked':''}> Показва се на сайта</label>
+          <span class="fsc-status-live ${isLive?'on':'off'}">${isLive ? 'В момента: Наличен' : 'В момента: Очаква се'}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="field-row" style="margin-top:10px;">
+      <div class="field" style="flex:1;">
+        <label>Включено в наема</label>
+        ${tagListHTML(item.id, 'includes', item.includes)}
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Изисквания към наемателя</label>
+        ${tagListHTML(item.id, 'requirements', item.requirements)}
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:6px;">
+      <label>Свързани реални коли от автопарка (определя дали картата показва „Наличен" или „Очаква се" — регистрационните номера никога не се показват на сайта)</label>
+      ${vehiclePickerHTML(item.id, item.linked_vehicle_ids || [])}
+    </div>
+
+    <div class="toolbar no-print" style="margin-top:12px;">
+      <button type="button" class="btn btn-primary btn-sm fsc-save-btn" data-fsc="${item.id}">Запази</button>
+      <button type="button" class="btn btn-ghost btn-sm fsc-up-btn" data-fsc="${item.id}" ${index===0?'disabled':''}>↑ нагоре</button>
+      <button type="button" class="btn btn-ghost btn-sm fsc-down-btn" data-fsc="${item.id}" ${index===ITEMS.length-1?'disabled':''}>↓ надолу</button>
+      <button type="button" class="btn btn-danger btn-sm fsc-delete-btn" data-fsc="${item.id}">Изтрий</button>
+    </div>
+  </div>`;
+}
+
+function render() {
+  document.getElementById('fscHost').innerHTML = ITEMS.length
+    ? ITEMS.map((item, i) => fscCardHTML(item, i)).join('')
+    : `<p class="hint">Няма модели във витрината — добавете първия отдолу.</p>`;
+  bindCardEvents();
+}
+
+function collectItemPatch(fscId) {
+  const card = document.querySelector(`.fsc-card[data-fsc="${fscId}"]`);
+  return {
+    name: card.querySelector('.fsc-name').value.trim(),
+    category: card.querySelector('.fsc-category').value,
+    fuel: card.querySelector('.fsc-fuel').value.trim(),
+    transmission: card.querySelector('.fsc-transmission').value.trim(),
+    seats: Number(card.querySelector('.fsc-seats').value) || 5,
+    badge: card.querySelector('.fsc-badge').value || null,
+    active: card.querySelector('.fsc-active').checked,
+    includes: (ITEMS.find(i => i.id === fscId) || {}).includes || [],
+    requirements: (ITEMS.find(i => i.id === fscId) || {}).requirements || [],
+    linked_vehicle_ids: Array.from(card.querySelectorAll('.vehicle-link-cb:checked')).map(cb => cb.dataset.vid),
+  };
+}
+
+function bindCardEvents() {
+  document.querySelectorAll('.tag-add-input').forEach(inp => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const val = inp.value.trim();
+      if (!val) return;
+      const item = ITEMS.find(i => i.id === inp.dataset.fsc);
+      item[inp.dataset.field] = [...(item[inp.dataset.field] || []), val];
+      render();
+    });
+  });
+  document.querySelectorAll('.tag-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = ITEMS.find(i => i.id === btn.dataset.fsc);
+      item[btn.dataset.field] = (item[btn.dataset.field] || []).filter((_, i) => i !== Number(btn.dataset.i));
+      render();
+    });
+  });
+  document.querySelectorAll('.vehicle-link-cb, .fsc-active').forEach(cb => {
+    cb.addEventListener('change', () => {
+      // само обновява живото "Наличен/Очаква се" индикаторче преди запис
+      const fscId = cb.dataset.fsc;
+      if (!fscId) return;
+      const card = document.querySelector(`.fsc-card[data-fsc="${fscId}"]`);
+      const linkedIds = Array.from(card.querySelectorAll('.vehicle-link-cb:checked')).map(x => x.dataset.vid);
+      const linked = linkedIds.map(id => VEHICLES.find(v => v.id === id)).filter(Boolean);
+      const isLive = linked.some(v => v.status === 'available');
+      const badge = card.querySelector('.fsc-status-live');
+      if (badge && cb.classList.contains('vehicle-link-cb')) {
+        badge.className = `fsc-status-live ${isLive ? 'on' : 'off'}`;
+        badge.textContent = isLive ? 'В момента: Наличен' : 'В момента: Очаква се';
+      }
+    });
+  });
+  document.querySelectorAll('.fsc-image-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const file = inp.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const { item } = await Api.post(`/api/admin/fleet-showcase/${inp.dataset.fsc}/image`, { file_base64: reader.result });
+          const idx = ITEMS.findIndex(i => i.id === inp.dataset.fsc);
+          ITEMS[idx] = item;
+          render();
+        } catch (err) { alert(err.message); }
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.querySelectorAll('.fsc-save-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        const patch = collectItemPatch(btn.dataset.fsc);
+        const { item } = await Api.put(`/api/admin/fleet-showcase/${btn.dataset.fsc}`, patch);
+        const idx = ITEMS.findIndex(i => i.id === btn.dataset.fsc);
+        ITEMS[idx] = item;
+        render();
+        const msg = document.getElementById('fscSaveMsg');
+        msg.textContent = `„${item.name}" е запазено.`;
+        msg.classList.add('show');
+        setTimeout(() => msg.classList.remove('show'), 2500);
+      } catch (err) { alert(err.message); }
+    });
+  });
+  document.querySelectorAll('.fsc-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = ITEMS.find(i => i.id === btn.dataset.fsc);
+      if (!confirm(`Да се изтрие ли „${item.name}" от витрината на сайта?`)) return;
+      try {
+        await Api.del(`/api/admin/fleet-showcase/${btn.dataset.fsc}`);
+        ITEMS = ITEMS.filter(i => i.id !== btn.dataset.fsc);
+        render();
+      } catch (err) { alert(err.message); }
+    });
+  });
+  document.querySelectorAll('.fsc-up-btn, .fsc-down-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = ITEMS.findIndex(i => i.id === btn.dataset.fsc);
+      const target = idx + (btn.classList.contains('fsc-up-btn') ? -1 : 1);
+      if (target < 0 || target >= ITEMS.length) return;
+      [ITEMS[idx], ITEMS[target]] = [ITEMS[target], ITEMS[idx]];
+      render();
+      try { await Api.post('/api/admin/fleet-showcase/reorder', { ids: ITEMS.map(i => i.id) }); }
+      catch (err) { alert(err.message); }
+    });
+  });
+}
+
+async function addNewItem() {
+  try {
+    const { item } = await Api.post('/api/admin/fleet-showcase', { name: 'Нов модел', category: 'economy', fuel: '', transmission: '', seats: 5 });
+    ITEMS.push(item);
+    render();
+  } catch (err) { alert(err.message); }
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin', 'manager'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да редактирате витрината на сайта.</div>`;
+    return;
+  }
+  document.getElementById('app-content').innerHTML = `
+    <p class="hint" style="margin-bottom:16px;">
+      Тук управлявате картите с коли, показвани на публичния сайт dombi.bg. Всяка карта може да се свърже с реални коли от автопарка —
+      картата показва „Наличен" на сайта само ако поне една свързана кола в момента е свободна, иначе показва „Очаква се" (без да разкрива регистрационни номера).
+      Ако не качите снимка, на сайта се показва изчистена генерична икона на кола.
+    </p>
+    <div class="success-box" id="fscSaveMsg"></div>
+    <div class="toolbar no-print" style="margin-bottom:14px;">
+      <button type="button" class="btn btn-primary btn-sm" id="fscAddBtn">+ Добави нов модел</button>
+      <a class="btn btn-ghost btn-sm" href="https://dombi.bg" target="_blank" rel="noopener noreferrer">Виж сайта ↗</a>
+    </div>
+    <div id="fscHost" class="loading">Зареждане…</div>
+  `;
+  document.getElementById('fscAddBtn').addEventListener('click', addNewItem);
+
+  try {
+    const [{ items }, { vehicles }] = await Promise.all([
+      Api.get('/api/admin/fleet-showcase'),
+      Api.get('/api/vehicles'),
+    ]);
+    ITEMS = items;
+    VEHICLES = vehicles;
+    render();
+  } catch (err) {
+    document.getElementById('fscHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>
