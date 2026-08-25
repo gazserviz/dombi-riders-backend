@@ -169,8 +169,9 @@
     transition:transform .2s ease, border-color .2s ease;
   }
   .car-card:hover{transform:translateY(-6px);border-color:#4dff7a55;}
-  .car-visual{height:150px;position:relative;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 120%, #4dff7a22, transparent 60%);border-bottom:1px solid var(--panel-line);}
+  .car-visual{height:150px;position:relative;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 120%, #4dff7a22, transparent 60%);border-bottom:1px solid var(--panel-line);overflow:hidden;}
   .car-visual svg{width:120px;height:auto;color:var(--green);filter:drop-shadow(0 0 18px #4dff7a55);}
+  .car-visual img{width:100%;height:100%;object-fit:cover;}
   .car-status{position:absolute;bottom:14px;left:14px;display:flex;align-items:center;gap:6px;background:#06120acc;border:1px solid #4dff7a3a;padding:5px 10px;border-radius:999px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--green);}
   .car-status .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.6s infinite;}
   .car-status.busy{color:#ffb24d;border-color:#ffb24d3a;}
@@ -887,56 +888,74 @@ const rentCaptcha = makeCaptcha('captchaLabelRent');
 
 /* ================================================================
    RENT-A-CAR MINI APP: catalogue, filters, compare, date range
-   NOTE FOR DEVELOPER: CARS is static demo data. When the admin panel
-   is built, replace this array with a fetch() call to the fleet API
-   so availability/status/models are managed live from the backend.
+   CARS се зарежда динамично от бекенда (виж loadCars() по-долу) —
+   наличността и моделите се управляват от админ панела на dombi-riders
+   ("Витрина на сайта" в лявото меню), не се редактират тук. FALLBACK_CARS
+   се ползва само ако заявката към бекенда се провали (напр. временно
+   недостъпен), за да не остане секцията напълно празна.
    ================================================================ */
-const CARS = [
-  { id:'dacia-logan', name:'Dacia Logan', category:'economy', fuel:'Бензин', transmission:'Ръчна', seats:5, status:'available', badge:null,
+const FLEET_SHOWCASE_API_URL = 'https://dombi-riders-backend.onrender.com/api/public/fleet-showcase';
+const FALLBACK_CARS = [
+  { id:'dacia-logan', name:'Dacia Logan', category:'economy', fuel:'Бензин', transmission:'Ръчна', seats:5, status:'soon', badge:null,
     includes:['Гражданска отговорност', 'Пътна помощ 24/7', 'Годишен технически преглед'],
     requirements:['Мин. 21 години', 'Шофьорска книжка от 2+ години'] },
-  { id:'skoda-fabia', name:'Škoda Fabia', category:'economy', fuel:'Дизел', transmission:'Ръчна', seats:5, status:'available', badge:'top',
+  { id:'skoda-fabia', name:'Škoda Fabia', category:'economy', fuel:'Дизел', transmission:'Ръчна', seats:5, status:'soon', badge:'top',
     includes:['Гражданска отговорност', 'Каско', 'Пътна помощ 24/7'],
     requirements:['Мин. 21 години', 'Шофьорска книжка от 2+ години'] },
   { id:'vw-golf', name:'VW Golf 1.6 TDI', category:'comfort', fuel:'Дизел', transmission:'Автоматична', seats:5, status:'soon', badge:null,
     includes:['Гражданска отговорност', 'Каско', 'Зимни гуми през сезона'],
     requirements:['Мин. 23 години', 'Шофьорска книжка от 3+ години'] },
-  { id:'renault-clio', name:'Renault Clio', category:'economy', fuel:'Бензин', transmission:'Ръчна', seats:5, status:'available', badge:null,
+  { id:'renault-clio', name:'Renault Clio', category:'economy', fuel:'Бензин', transmission:'Ръчна', seats:5, status:'soon', badge:null,
     includes:['Гражданска отговорност', 'Пътна помощ 24/7', 'Годишен технически преглед'],
     requirements:['Мин. 21 години', 'Шофьорска книжка от 2+ години'] },
-  { id:'toyota-corolla-hybrid', name:'Toyota Corolla Hybrid', category:'eco', fuel:'Хибрид', transmission:'Автоматична', seats:5, status:'available', badge:'new',
+  { id:'toyota-corolla-hybrid', name:'Toyota Corolla Hybrid', category:'eco', fuel:'Хибрид', transmission:'Автоматична', seats:5, status:'soon', badge:'new',
     includes:['Гражданска отговорност', 'Каско', 'Пътна помощ 24/7'],
     requirements:['Мин. 23 години', 'Шофьорска книжка от 2+ години'] },
   { id:'opel-corsa-e', name:'Opel Corsa-e', category:'eco', fuel:'Електрическа', transmission:'Автоматична', seats:5, status:'soon', badge:null,
     includes:['Гражданска отговорност', 'Каско', 'Пътна помощ 24/7'],
     requirements:['Мин. 23 години', 'Шофьорска книжка от 2+ години'] },
 ];
+let CARS = FALLBACK_CARS;
 const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', eco:'Хибрид / Електро' };
 const CAR_ICON_SVG = '<svg viewBox="0 0 64 28" fill="none"><path d="M2 20h4l3-8h30l6 8h17v5H2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11 12l3-6h20l4 6" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="24" r="4" fill="#07080a" stroke="currentColor" stroke-width="2"/><circle cx="46" cy="24" r="4" fill="#07080a" stroke="currentColor" stroke-width="2"/></svg>';
 
 let activeCat = 'all', activeTrans = 'all', searchTerm = '', sortKey = 'name';
 const compareSet = new Set();
 
+// имената/включено/изисквания вече идват динамично от админ панела (виж
+// loadCars() по-долу), затова ги ескейпваме преди вмъкване в HTML
+function escapeHtml(str){
+  return String(str == null ? '' : str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function resolveCarImageUrl(url){
+  if(!url) return null;
+  if(/^https?:\/\//.test(url)) return url;
+  return 'https://dombi-riders-backend.onrender.com' + url;
+}
+
 function carCardHTML(car){
   const badge = car.badge === 'top' ? '<span class="car-badge top">★ Топ избор</span>'
               : car.badge === 'new' ? '<span class="car-badge new">Ново в автопарка</span>' : '';
   const busy = car.status === 'soon';
+  const img = resolveCarImageUrl(car.image_url);
   return `<div class="car-card" data-id="${car.id}">
     ${badge}
     <label class="car-compare"><input type="checkbox" data-compare="${car.id}"><span>Сравни</span></label>
     <div class="car-visual">
       <span class="car-status ${busy?'busy':''}"><span class="dot"></span>${busy?'Очаква се':'Наличен'}</span>
-      ${CAR_ICON_SVG}
+      ${img ? `<img src="${img}" alt="${escapeHtml(car.name)}" loading="lazy">` : CAR_ICON_SVG}
     </div>
     <div class="car-body">
       <span class="car-cat-tag">${CAT_LABELS[car.category]}</span>
-      <h3>${car.name}</h3>
-      <div class="car-meta"><span>${car.fuel}</span><span>${car.transmission}</span><span>${car.seats} места</span></div>
+      <h3>${escapeHtml(car.name)}</h3>
+      <div class="car-meta"><span>${escapeHtml(car.fuel)}</span><span>${escapeHtml(car.transmission)}</span><span>${car.seats} места</span></div>
       <div class="car-price">Наем: <b>по договаряне</b> / седмица</div>
       <button type="button" class="car-details-toggle">Детайли за наема ▾</button>
       <div class="car-details">
-        <p><b>Включено:</b> ${car.includes.join(', ')}.</p>
-        <p><b>Изисквания:</b> ${car.requirements.join(', ')}.</p>
+        <p><b>Включено:</b> ${car.includes.map(escapeHtml).join(', ')}.</p>
+        <p><b>Изисквания:</b> ${car.requirements.map(escapeHtml).join(', ')}.</p>
       </div>
       <button type="button" class="car-select-btn" ${busy?'disabled':''}>${busy?'Очаква се скоро':'Избери тази кола'}</button>
     </div>
@@ -1028,10 +1047,14 @@ function renderCompareTray(){
   openBtn.style.opacity = compareSet.size < 2 ? .5 : 1;
   openBtn.style.pointerEvents = compareSet.size < 2 ? 'none' : 'auto';
   if(compareSet.size === 0){ tray.classList.remove('show'); items.innerHTML = ''; return; }
+  // ако CARS е сменен (напр. живите данни са пристигнали междувременно),
+  // маха от сравнението id-та, които вече не съществуват в новия списък
+  [...compareSet].forEach(id => { if(!CARS.find(x => x.id === id)) compareSet.delete(id); });
+  if(compareSet.size === 0){ tray.classList.remove('show'); items.innerHTML = ''; return; }
   tray.classList.add('show');
   items.innerHTML = [...compareSet].map(id => {
     const c = CARS.find(x => x.id === id);
-    return `<span class="compare-chip">${c.name}<button type="button" data-remove="${id}">✕</button></span>`;
+    return `<span class="compare-chip">${escapeHtml(c.name)}<button type="button" data-remove="${id}">✕</button></span>`;
   }).join('');
   items.querySelectorAll('[data-remove]').forEach(b => {
     b.addEventListener('click', () => { compareSet.delete(b.dataset.remove); renderCompareTray(); renderCars(); });
@@ -1046,14 +1069,14 @@ function openCompareModal(){
   const cars = [...compareSet].map(id => CARS.find(c => c.id === id));
   const rows = [
     ['Категория', c => CAT_LABELS[c.category]],
-    ['Гориво', c => c.fuel],
-    ['Скоростна кутия', c => c.transmission],
+    ['Гориво', c => escapeHtml(c.fuel)],
+    ['Скоростна кутия', c => escapeHtml(c.transmission)],
     ['Места', c => c.seats + ' места'],
     ['Наличност', c => c.status === 'soon' ? 'Очаква се' : 'Наличен'],
-    ['Включено', c => c.includes.join(', ')],
-    ['Изисквания', c => c.requirements.join(', ')],
+    ['Включено', c => c.includes.map(escapeHtml).join(', ')],
+    ['Изисквания', c => c.requirements.map(escapeHtml).join(', ')],
   ];
-  let html = '<tr><th>Спецификация</th>' + cars.map(c => `<th>${c.name}</th>`).join('') + '</tr>';
+  let html = '<tr><th>Спецификация</th>' + cars.map(c => `<th>${escapeHtml(c.name)}</th>`).join('') + '</tr>';
   rows.forEach(([label, fn]) => { html += `<tr><td>${label}</td>${cars.map(c => `<td>${fn(c)}</td>`).join('')}</tr>`; });
   document.getElementById('compareTable').innerHTML = html;
   document.getElementById('compareModal').classList.add('show');
@@ -1089,6 +1112,9 @@ function updateRentPeriodField(){
 /* ===== CAR SELECTION -> prefill the dedicated rent-a-car request form ===== */
 function populateCarSelect(){
   const select = document.getElementById('carSelectFieldRent');
+  // пази само placeholder-а ("Избери кола от автопарка"), маха стари опции —
+  // важно е при повторно извикване, след като живите данни се заредят
+  select.querySelectorAll('option[value]:not([value=""])').forEach(o => o.remove());
   CARS.forEach(c => {
     const opt = document.createElement('option');
     opt.value = c.id;
@@ -1102,9 +1128,28 @@ function selectCarForApplication(car){
   document.getElementById('rent').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+// показваме веднага с FALLBACK_CARS (не оставяме секцията празна/в чакане),
+// после подменяме с живите данни от автопарка веднага щом дойдат
 populateCarSelect();
 renderCars();
 renderCompareTray();
+
+async function loadCars(){
+  try {
+    const res = await fetch(FLEET_SHOWCASE_API_URL);
+    if(!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    if(Array.isArray(data.cars) && data.cars.length){
+      CARS = data.cars;
+      populateCarSelect();
+      renderCars();
+      renderCompareTray();
+    }
+  } catch(e) {
+    // бекендът временно недостъпен — оставаме на FALLBACK_CARS, без грешка към посетителя
+  }
+}
+loadCars();
 
 /* ===== FORM VALIDATION (apply as courier) =====
    Изпраща реална POST заявка към бекенда (/api/apply), който вече е
