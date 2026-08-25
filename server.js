@@ -1043,12 +1043,66 @@ async function handleApi(req, res, pathname, query) {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
       const body = await readJsonBody(req);
-      const allowed = ['egn', 'address', 'manager_id',
+      const allowed = ['egn', 'address', 'manager_id', 'full_name', 'phone', 'status',
         'id_card_number', 'id_card_expiry', 'driver_license_number', 'driver_license_expiry'];
+      // смяна на роля и имейл — само admin (по-чувствителни полета)
+      if (user.role === 'admin') allowed.push('role', 'email');
       const patch = {};
       allowed.forEach(k => { if (k in body) patch[k] = body[k]; });
-      const updated = db.updateUser(personnelMatch[1], patch);
-      return sendJson(res, 200, { profile: updated });
+      if (patch.email && db.listUsers().some(u => u.id !== personnelMatch[1] && u.email.toLowerCase() === String(patch.email).toLowerCase())) {
+        return sendJson(res, 400, { error: 'Вече има потребител с този имейл' });
+      }
+      try {
+        const updated = db.updateUser(personnelMatch[1], patch);
+        return sendJson(res, 200, { profile: updated });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    // трайно изтриване на служител (само admin) — блокирано, ако има свързана история
+    if (personnelMatch && req.method === 'DELETE') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      if (personnelMatch[1] === user.id) {
+        return sendJson(res, 400, { error: 'Не можете да изтриете собствения си профил.' });
+      }
+      try {
+        const removed = db.deleteUser(personnelMatch[1]);
+        return sendJson(res, 200, { ok: true, profile: removed });
+      } catch (err) {
+        return sendJson(res, err.code === 'EMPLOYEE_HAS_HISTORY' ? 409 : 400, { error: err.message });
+      }
+    }
+    // черен списък (само admin)
+    const personnelBlacklistMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/blacklist$/);
+    if (personnelBlacklistMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const updated = db.setUserBlacklist(personnelBlacklistMatch[1], {
+          blacklisted: !!body.blacklisted, reason: body.reason, actor_id: user.id,
+        });
+        return sendJson(res, 200, { profile: updated });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    // с 1 клик: генерира уникален линк, по който служителят сам допълва/обновява
+    // ЛК/книжка/ЕГН/адрес/телефон — без вход в системата (виж и линка за кандидатури по-долу)
+    const personnelSendLinkMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/send-link$/);
+    if (personnelSendLinkMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      try {
+        const profile = db.generatePersonnelLink(personnelSendLinkMatch[1]);
+        const proto = req.headers['x-forwarded-proto'] || 'https';
+        const host = req.headers.host;
+        const link = `${proto}://${host}/personnel-details.html?token=${profile.personnel_token}`;
+        return sendJson(res, 200, { link });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
 
     // side='front'|'back' — качват се отделно (виж и apply.html/apply-details.html,
@@ -1690,6 +1744,75 @@ async function handleApi(req, res, pathname, query) {
       try {
         const app = db.completeApplicationDetails(applyDetailsMatch[1], patch);
         return sendJson(res, 200, { application: { id: app.id, status: app.status } });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // ---- ЛИНК ЗА ДОПЪЛВАНЕ НА ДОСИЕ (СЪЩЕСТВУВАЩ СЛУЖИТЕЛ, публично, по token) ---
+    // Служителят отваря /personnel-details.html?token=... (генериран от
+    // POST /api/hr/personnel/:id/send-link) и допълва/обновява собствените
+    // си ЛК/книжка/ЕГН/адрес/телефон — без вход в системата.
+    const personnelDetailsMatch = pathname.match(/^\/api\/personnel-details\/([a-f0-9]+)$/);
+    if (personnelDetailsMatch && req.method === 'GET') {
+      const profile = db.getUserByPersonnelToken(personnelDetailsMatch[1]);
+      if (!profile) return sendJson(res, 404, { error: 'Невалиден линк.' });
+      return sendJson(res, 200, {
+        profile: {
+          full_name: profile.full_name, phone: profile.phone,
+          egn: profile.egn, address: profile.address,
+          id_card_number: profile.id_card_number, id_card_expiry: profile.id_card_expiry,
+          id_card_photo_url: profile.id_card_photo_url, id_card_photo_back_url: profile.id_card_photo_back_url,
+          driver_license_number: profile.driver_license_number, driver_license_expiry: profile.driver_license_expiry,
+          driver_license_photo_url: profile.driver_license_photo_url, driver_license_photo_back_url: profile.driver_license_photo_back_url,
+          selfie_photo_url: profile.selfie_photo_url,
+        },
+      });
+    }
+    if (personnelDetailsMatch && req.method === 'POST') {
+      if (rateLimited(`personnel-details:${clientIp(req)}`, { max: 20, windowMs: 30 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много опити от този адрес. Опитайте по-късно.' });
+      }
+      const body = await readJsonBody(req);
+      const patch = {
+        phone: body.phone ? escapeHtml(String(body.phone).slice(0, 30)) : undefined,
+        egn: body.egn ? escapeHtml(String(body.egn).slice(0, 20)) : undefined,
+        address: body.address ? escapeHtml(String(body.address).slice(0, 300)) : undefined,
+        id_card_number: body.id_card_number ? escapeHtml(String(body.id_card_number).slice(0, 30)) : undefined,
+        id_card_expiry: body.id_card_expiry || undefined,
+        driver_license_number: body.driver_license_number ? escapeHtml(String(body.driver_license_number).slice(0, 30)) : undefined,
+        driver_license_expiry: body.driver_license_expiry || undefined,
+      };
+      Object.keys(patch).forEach(k => { if (patch[k] === undefined) delete patch[k]; });
+      try {
+        const profile = db.completePersonnelDetails(personnelDetailsMatch[1], patch);
+        return sendJson(res, 200, { ok: true, full_name: profile.full_name });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    const personnelDetailsPhotoMatch = pathname.match(/^\/api\/personnel-details\/([a-f0-9]+)\/(id-card-photo|license-photo|selfie-photo)$/);
+    if (personnelDetailsPhotoMatch && req.method === 'POST') {
+      if (rateLimited(`personnel-details-photo:${clientIp(req)}`, { max: 30, windowMs: 30 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много опити от този адрес. Опитайте по-късно.' });
+      }
+      const token = personnelDetailsPhotoMatch[1];
+      const kind = personnelDetailsPhotoMatch[2];
+      const body = await readJsonBody(req);
+      let url;
+      try {
+        ({ url } = saveBase64Image(body.photo, `personnel-${kind}`));
+      } catch (err) {
+        return sendJson(res, 400, { error: 'Невалиден формат на качен файл: ' + err.message });
+      }
+      const fieldMap = {
+        'id-card-photo': body.side === 'back' ? 'id_card_photo_back_url' : 'id_card_photo_url',
+        'license-photo': body.side === 'back' ? 'driver_license_photo_back_url' : 'driver_license_photo_url',
+        'selfie-photo': 'selfie_photo_url',
+      };
+      try {
+        const profile = db.completePersonnelDetails(token, { [fieldMap[kind]]: url });
+        return sendJson(res, 200, { ok: true, url, full_name: profile.full_name });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
       }
