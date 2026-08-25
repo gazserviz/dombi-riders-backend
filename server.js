@@ -1221,13 +1221,29 @@ async function handleApi(req, res, pathname, query) {
       const alerts = db.getEmployeeDocumentAlerts();
       const nextAlertByProfile = {};
       alerts.forEach(a => { if (!nextAlertByProfile[a.profile_id]) nextAlertByProfile[a.profile_id] = a; });
+      // платформи (Bolt/Glovo), на които служителят реално има внесена заработка —
+      // изведени от седмичните записи в заплати (payroll_entries), а не от еднократното
+      // поле glovo_bolt_platform от кандидатурата (което е само историческа справка)
+      const platformsByProfile = {};
+      db.listPayrollEntries().forEach(p => {
+        const set = platformsByProfile[p.profile_id] || (platformsByProfile[p.profile_id] = new Set());
+        if (p.platform_breakdown) {
+          Object.keys(p.platform_breakdown).forEach(k => set.add(k));
+        } else if (p.source === 'bolt+glovo') {
+          set.add('bolt'); set.add('glovo');
+        } else if (p.source === 'bolt' || p.source === 'glovo') {
+          set.add(p.source);
+        }
+      });
       const employees = db.listUsers().map(u => ({
-        id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status,
+        id: u.id, full_name: u.full_name, email: u.email, phone: u.phone || '', role: u.role, status: u.status,
         manager_id: u.manager_id || null,
+        city: u.city || null,
         blacklisted: !!u.blacklisted,
         id_card_expiry: u.id_card_expiry || null,
         driver_license_expiry: u.driver_license_expiry || null,
         next_alert: nextAlertByProfile[u.id] || null,
+        platforms: platformsByProfile[u.id] ? [...platformsByProfile[u.id]] : [],
       }));
       return sendJson(res, 200, { employees });
     }
@@ -1251,7 +1267,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
       const body = await readJsonBody(req);
-      const allowed = ['egn', 'address', 'manager_id', 'full_name', 'phone', 'status',
+      const allowed = ['egn', 'address', 'city', 'manager_id', 'full_name', 'phone', 'status',
         'id_card_number', 'id_card_expiry', 'driver_license_number', 'driver_license_expiry'];
       // смяна на роля и имейл — само admin (по-чувствителни полета)
       if (user.role === 'admin') allowed.push('role', 'email');
