@@ -122,6 +122,8 @@ td{padding:12px;border-bottom:1px solid var(--line);white-space:nowrap;}
 tr:last-child td{border-bottom:none;}
 tr.clickable{cursor:pointer;}
 tr.clickable:hover td{background:#ffffff06;}
+.employee-name-link{color:var(--text);font-weight:800;text-decoration:none;border-bottom:1px solid transparent;}
+.employee-name-link:hover{color:var(--green);border-bottom-color:var(--green);}
 
 .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
 .badge-green{background:#4dff7a22;color:var(--green);}
@@ -184,6 +186,29 @@ tr.clickable:hover td{background:#ffffff06;}
   table{font-size:.8rem;}
   th,td{padding:8px 9px;}
 }
+
+/* ---------- must-change-password banner ---------- */
+.must-change-pw-banner{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  background:#ffcf4d18;border:1px solid #ffcf4d44;color:var(--warn);
+  padding:12px 18px;border-radius:var(--radius);margin-bottom:18px;font-size:.86rem;
+}
+.must-change-pw-banner strong{color:var(--warn);}
+.must-change-pw-banner .btn{white-space:nowrap;}
+
+/* ---------- modal ---------- */
+.modal-overlay{
+  display:none;position:fixed;inset:0;z-index:80;
+  background:#000000a8;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.show{display:flex;}
+.modal-box{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:26px 26px 22px;width:100%;max-width:400px;box-shadow:0 20px 60px -10px #000000a0;
+}
+.modal-box h3{margin:0 0 16px;font-size:1.05rem;}
+.modal-box .field-row{grid-template-columns:1fr;}
+.modal-box .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
 
 /* ---------- print ---------- */
 .print-header{display:none;}
