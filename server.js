@@ -216,6 +216,44 @@ function saveBase64File(dataUrl, prefix, fallbackExt) {
   return { url: `/uploads/${filename}`, filename };
 }
 
+// чисти вход за витрината на маркетинг сайта — строго whitelist на полета;
+// image_url се задава САМО през /image ендпойнта (качване), не директно тук,
+// с изключение на null (премахване на вече качена снимка), за да не може
+// някой да подсунe произволен външен URL, който да се показва на dombi.bg.
+const FLEET_SHOWCASE_CATEGORIES = new Set(['economy', 'comfort', 'eco']);
+const FLEET_SHOWCASE_BADGES = new Set([null, 'top', 'new']);
+function sanitizeFleetShowcaseInput(body) {
+  const out = {};
+  if (body.name !== undefined) out.name = String(body.name || '').slice(0, 80);
+  if (body.category !== undefined) {
+    if (!FLEET_SHOWCASE_CATEGORIES.has(body.category)) throw new Error('Невалидна категория');
+    out.category = body.category;
+  }
+  if (body.fuel !== undefined) out.fuel = String(body.fuel || '').slice(0, 40);
+  if (body.transmission !== undefined) out.transmission = String(body.transmission || '').slice(0, 40);
+  if (body.seats !== undefined) out.seats = Math.max(1, Math.min(9, Number(body.seats) || 5));
+  if (body.badge !== undefined) {
+    const badge = body.badge || null;
+    if (!FLEET_SHOWCASE_BADGES.has(badge)) throw new Error('Невалиден бадж');
+    out.badge = badge;
+  }
+  if (body.includes !== undefined) {
+    if (!Array.isArray(body.includes)) throw new Error('includes трябва да е масив');
+    out.includes = body.includes.map(s => String(s).slice(0, 120)).slice(0, 20);
+  }
+  if (body.requirements !== undefined) {
+    if (!Array.isArray(body.requirements)) throw new Error('requirements трябва да е масив');
+    out.requirements = body.requirements.map(s => String(s).slice(0, 120)).slice(0, 20);
+  }
+  if (body.linked_vehicle_ids !== undefined) {
+    if (!Array.isArray(body.linked_vehicle_ids)) throw new Error('linked_vehicle_ids трябва да е масив');
+    out.linked_vehicle_ids = body.linked_vehicle_ids.map(String).slice(0, 200);
+  }
+  if (body.active !== undefined) out.active = !!body.active;
+  if (body.image_url === null) out.image_url = null;
+  return out;
+}
+
 function sendBuffer(res, status, buffer, { contentType, filename, disposition } = {}) {
   res.writeHead(status, {
     'content-type': contentType || 'application/octet-stream',
@@ -297,12 +335,17 @@ function saveApplyPhotos(body) {
   return out;
 }
 
-const PUBLIC_CORS_PATHS = new Set(['/api/apply', '/api/apply/id-card-scan', '/api/apply/license-scan']);
+const PUBLIC_CORS_PATHS = new Set([
+  '/api/apply', '/api/apply/id-card-scan', '/api/apply/license-scan',
+  // витрината с коли на dombi.bg (Render Static Site, отделен произход) чете
+  // само тук — публично, без сесия, без регистрационни номера (виж db.js)
+  '/api/public/fleet-showcase',
+]);
 
 async function handleApi(req, res, pathname, query) {
   if (PUBLIC_CORS_PATHS.has(pathname)) {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -311,6 +354,70 @@ async function handleApi(req, res, pathname, query) {
     }
   }
   try {
+    // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (публично, без сесия) ----------------
+    if (pathname === '/api/public/fleet-showcase' && req.method === 'GET') {
+      return sendJson(res, 200, { cars: db.getPublicFleetShowcase() });
+    }
+
+    // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (админ панел) -------------------------
+    if (pathname === '/api/admin/fleet-showcase' && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      return sendJson(res, 200, { items: db.listFleetShowcase() });
+    }
+    if (pathname === '/api/admin/fleet-showcase' && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 201, { item: db.createFleetShowcaseItem(sanitizeFleetShowcaseInput(body)) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (pathname === '/api/admin/fleet-showcase/reorder' && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      if (!Array.isArray(body.ids)) return sendJson(res, 400, { error: 'Липсва ids (масив)' });
+      return sendJson(res, 200, { items: db.reorderFleetShowcase(body.ids) });
+    }
+    const fleetShowcaseItemMatch = pathname.match(/^\/api\/admin\/fleet-showcase\/([\w-]+)$/);
+    if (fleetShowcaseItemMatch && req.method === 'PUT') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 200, { item: db.updateFleetShowcaseItem(fleetShowcaseItemMatch[1], sanitizeFleetShowcaseInput(body)) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (fleetShowcaseItemMatch && req.method === 'DELETE') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      try {
+        db.deleteFleetShowcaseItem(fleetShowcaseItemMatch[1]);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    const fleetShowcaseImageMatch = pathname.match(/^\/api\/admin\/fleet-showcase\/([\w-]+)\/image$/);
+    if (fleetShowcaseImageMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const item = db.getFleetShowcaseItem(fleetShowcaseImageMatch[1]);
+      if (!item) return sendJson(res, 404, { error: 'Записът от витрината не е намерен' });
+      const body = await readJsonBody(req);
+      try {
+        const { url } = saveBase64Image(body.file_base64, 'fleet-showcase');
+        return sendJson(res, 200, { item: db.updateFleetShowcaseItem(fleetShowcaseImageMatch[1], { image_url: url }) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // ---- AUTH ------------------------------------------------------------
     if (pathname === '/api/login' && req.method === 'POST') {
       const ipKey = `login:${clientIp(req)}`;
