@@ -900,12 +900,24 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, err.code === 'MAIL_NOT_CONFIGURED' ? 503 : 502, { error: err.message });
       }
     }
+    if (pathname === '/api/mail/sent' && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      try {
+        const limit = Math.min(Math.max(parseInt(query.limit, 10) || 30, 1), 100);
+        const messages = await mail.listSent({ limit });
+        return sendJson(res, 200, { messages });
+      } catch (err) {
+        return sendJson(res, err.code === 'MAIL_NOT_CONFIGURED' ? 503 : 502, { error: err.message });
+      }
+    }
     const mailMessageMatch = pathname.match(/^\/api\/mail\/message\/([\w-]+)$/);
     if (mailMessageMatch && req.method === 'GET') {
       const user = requireRole(req, res, ['admin']);
       if (!user) return;
       try {
-        const message = await mail.getMessage(mailMessageMatch[1]);
+        const folder = query.folder || 'INBOX';
+        const message = await mail.getMessage(mailMessageMatch[1], folder);
         return sendJson(res, 200, { message });
       } catch (err) {
         const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : 502);
@@ -917,7 +929,8 @@ async function handleApi(req, res, pathname, query) {
       const user = requireRole(req, res, ['admin']);
       if (!user) return;
       try {
-        const att = await mail.getAttachment(mailAttachmentMatch[1], parseInt(mailAttachmentMatch[2], 10));
+        const folder = query.folder || 'INBOX';
+        const att = await mail.getAttachment(mailAttachmentMatch[1], parseInt(mailAttachmentMatch[2], 10), folder);
         res.writeHead(200, {
           'content-type': att.contentType,
           'content-disposition': `attachment; filename="${att.filename.replace(/"/g, '')}"`,

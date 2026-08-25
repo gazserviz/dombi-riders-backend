@@ -17,6 +17,9 @@
   .mail-row.unread .mr-from,.mail-row.unread .mr-subject{font-weight:800;}
   .mail-row .mr-date{color:var(--muted);white-space:nowrap;font-size:.74rem;}
   .mail-row .mr-subject{font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;}
+  .mail-tabs{display:flex;gap:6px;margin-bottom:10px;}
+  .mail-tabs button{background:transparent;border:1px solid var(--line);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;}
+  .mail-tabs button.active{background:#ffffff12;color:#fff;border-color:#ffffff33;}
   .mail-detail-head{margin-bottom:14px;}
   .mail-detail-head .subj{font-size:1.05rem;font-weight:800;margin-bottom:6px;}
   .mail-detail-head .meta{font-size:.8rem;color:var(--muted);line-height:1.6;}
@@ -35,6 +38,8 @@
 let CURRENT_USER = null;
 let MESSAGES = [];
 let SELECTED_UID = null;
+let SELECTED_FOLDER = null;
+let CURRENT_TAB = 'inbox'; // 'inbox' | 'sent'
 
 function fmtBytes(n) {
   if (n == null || isNaN(n)) return '—';
@@ -45,28 +50,32 @@ function fmtBytes(n) {
 
 function renderList() {
   const host = document.getElementById('mailListHost');
-  if (!MESSAGES.length) { host.innerHTML = `<p class="hint">Няма писма във входящата кутия.</p>`; return; }
+  if (!MESSAGES.length) {
+    host.innerHTML = `<p class="hint">${CURRENT_TAB === 'sent' ? 'Няма изпратени писма.' : 'Няма писма във входящата кутия.'}</p>`;
+    return;
+  }
   host.innerHTML = MESSAGES.map(m => `
-    <button type="button" class="mail-row ${m.seen ? '' : 'unread'} ${m.uid === SELECTED_UID ? 'active' : ''}" data-uid="${m.uid}">
+    <button type="button" class="mail-row ${m.seen ? '' : 'unread'} ${m.uid === SELECTED_UID && m.folder === SELECTED_FOLDER ? 'active' : ''}" data-uid="${m.uid}" data-folder="${m.folder}">
       <div class="mr-top">
-        <span class="mr-from">${m.fromName}</span>
+        <span class="mr-from">${CURRENT_TAB === 'sent' ? ('До: ' + (m.to || '—')) : m.fromName}</span>
         <span class="mr-date">${m.date ? fmtDateTime(m.date) : ''}</span>
       </div>
       <div class="mr-subject">${m.subject}</div>
     </button>
   `).join('');
   host.querySelectorAll('.mail-row').forEach(btn => {
-    btn.addEventListener('click', () => openMessage(Number(btn.dataset.uid)));
+    btn.addEventListener('click', () => openMessage(Number(btn.dataset.uid), btn.dataset.folder));
   });
 }
 
-async function loadInbox() {
+async function loadMessages() {
   const host = document.getElementById('mailListHost');
   const errorBox = document.getElementById('listError');
   errorBox.classList.remove('show');
   host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const endpoint = CURRENT_TAB === 'sent' ? '/api/mail/sent' : '/api/mail/inbox';
   try {
-    const { messages } = await Api.get('/api/mail/inbox?limit=50');
+    const { messages } = await Api.get(`${endpoint}?limit=50`);
     MESSAGES = messages;
     renderList();
   } catch (err) {
@@ -74,6 +83,16 @@ async function loadInbox() {
     errorBox.textContent = err.message;
     errorBox.classList.add('show');
   }
+}
+
+function switchTab(tab) {
+  if (tab === CURRENT_TAB) return;
+  CURRENT_TAB = tab;
+  SELECTED_UID = null;
+  SELECTED_FOLDER = null;
+  document.querySelectorAll('.mail-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('mailDetailHost').innerHTML = `<p class="hint">Изберете писмо от списъка вляво.</p>`;
+  loadMessages();
 }
 
 function renderMessageDetail(msg) {
@@ -94,12 +113,12 @@ function renderMessageDetail(msg) {
     ${msg.attachments.length ? `
       <div class="attach-list">
         ${msg.attachments.map(a => `
-          <a class="btn btn-ghost btn-sm" href="/api/mail/message/${msg.uid}/attachment/${a.index}" download>
+          <a class="btn btn-ghost btn-sm" href="/api/mail/message/${msg.uid}/attachment/${a.index}?folder=${encodeURIComponent(msg.folder)}" download>
             📎 ${a.filename} (${fmtBytes(a.size)})
           </a>`).join('')}
       </div>` : ''}
     <div style="margin-top:16px;">
-      <button class="btn btn-primary btn-sm" id="replyBtn">↩ Отговори</button>
+      ${CURRENT_TAB === 'sent' ? '' : '<button class="btn btn-primary btn-sm" id="replyBtn">↩ Отговори</button>'}
     </div>
   `;
   if (msg.html) {
@@ -110,23 +129,27 @@ function renderMessageDetail(msg) {
   } else {
     host.querySelector('.mail-body-text').textContent = msg.text || '(празно писмо)';
   }
-  document.getElementById('replyBtn').addEventListener('click', () => openCompose({
-    to: msg.from,
-    subject: /^re:/i.test(msg.subject) ? msg.subject : `Re: ${msg.subject}`,
-    inReplyTo: msg.messageId,
-    references: [msg.references, msg.messageId].filter(Boolean).join(' '),
-  }));
+  const replyBtn = document.getElementById('replyBtn');
+  if (replyBtn) {
+    replyBtn.addEventListener('click', () => openCompose({
+      to: msg.from,
+      subject: /^re:/i.test(msg.subject) ? msg.subject : `Re: ${msg.subject}`,
+      inReplyTo: msg.messageId,
+      references: [msg.references, msg.messageId].filter(Boolean).join(' '),
+    }));
+  }
 }
 
-async function openMessage(uid) {
+async function openMessage(uid, folder) {
   SELECTED_UID = uid;
+  SELECTED_FOLDER = folder;
   renderList();
   const host = document.getElementById('mailDetailHost');
   host.innerHTML = `<div class="loading">Зареждане на писмото…</div>`;
   try {
-    const { message } = await Api.get(`/api/mail/message/${uid}`);
+    const { message } = await Api.get(`/api/mail/message/${uid}?folder=${encodeURIComponent(folder)}`);
     renderMessageDetail(message);
-    const m = MESSAGES.find(x => x.uid === uid);
+    const m = MESSAGES.find(x => x.uid === uid && x.folder === folder);
     if (m) { m.seen = true; renderList(); }
   } catch (err) {
     host.innerHTML = `<div class="error-box show">${err.message}</div>`;
@@ -180,7 +203,11 @@ async function init() {
 
     <div class="grid-2">
       <div class="panel">
-        <div class="panel-head"><h2>Входящи</h2></div>
+        <div class="panel-head"><h2>Писма</h2></div>
+        <div class="mail-tabs">
+          <button type="button" data-tab="inbox" class="active">Входящи</button>
+          <button type="button" data-tab="sent">Изпратени</button>
+        </div>
         <div class="error-box" id="listError"></div>
         <div class="mail-list" id="mailListHost"><div class="loading">Зареждане…</div></div>
       </div>
@@ -195,7 +222,10 @@ async function init() {
   document.getElementById('cancelComposeBtn').addEventListener('click', () => {
     document.getElementById('composePanel').classList.remove('show');
   });
-  document.getElementById('refreshBtn').addEventListener('click', loadInbox);
+  document.getElementById('refreshBtn').addEventListener('click', loadMessages);
+  document.querySelectorAll('.mail-tabs button').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
   document.getElementById('composeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorBox = document.getElementById('composeError');
@@ -210,13 +240,14 @@ async function init() {
       });
       document.getElementById('composePanel').classList.remove('show');
       alert('Писмото е изпратено.');
+      if (CURRENT_TAB === 'sent') loadMessages();
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.classList.add('show');
     }
   });
 
-  await loadInbox();
+  await loadMessages();
 }
 init();
 </script>
