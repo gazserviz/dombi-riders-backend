@@ -1268,7 +1268,8 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const body = await readJsonBody(req);
       const allowed = ['egn', 'address', 'city', 'manager_id', 'full_name', 'phone', 'status',
-        'id_card_number', 'id_card_expiry', 'driver_license_number', 'driver_license_expiry'];
+        'id_card_number', 'id_card_expiry', 'driver_license_number', 'driver_license_expiry',
+        'start_date', 'end_date'];
       // смяна на роля и имейл — само admin (по-чувствителни полета)
       if (user.role === 'admin') allowed.push('role', 'email');
       const patch = {};
