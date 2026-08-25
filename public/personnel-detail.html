@@ -65,7 +65,23 @@ async function loadFile() {
   host.innerHTML = `
     <div class="grid-2">
       <div class="panel">
-        <div class="panel-head"><h2>${profile.full_name}</h2><span class="badge ${profile.status === 'active' ? 'badge-green' : 'badge-muted'}">${profile.status === 'active' ? 'Активен' : 'Спрян'}</span></div>
+        <div class="panel-head">
+          <h2>${profile.full_name}</h2>
+          <span>
+            <span class="badge ${profile.status === 'active' ? 'badge-green' : 'badge-muted'}">${profile.status === 'active' ? 'Активен' : 'Спрян'}</span>
+            ${profile.blacklisted ? '<span class="badge badge-danger" style="margin-left:6px;">Черен списък</span>' : ''}
+          </span>
+        </div>
+        ${CAN_EDIT ? `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+          <button type="button" class="btn btn-ghost btn-sm" id="toggleStatusBtn">${profile.status === 'active' ? 'Спри профила' : 'Активирай профила'}</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="sendPersonnelLinkBtn">Изпрати линк за допълване на досие</button>
+          ${CURRENT_USER.role === 'admin' ? `
+          <button type="button" class="btn btn-ghost btn-sm" id="toggleBlacklistBtn">${profile.blacklisted ? 'Извади от черен списък' : 'Вкарай в черен списък'}</button>
+          ${!IS_SELF ? `<button type="button" class="btn btn-ghost btn-sm" id="deleteEmployeeBtn" style="color:var(--danger);">Изтрий служителя</button>` : ''}` : ''}
+        </div>
+        ${profile.blacklisted && profile.blacklist_reason ? `<p class="hint" style="margin-top:-8px;">Причина за черния списък: ${profile.blacklist_reason}</p>` : ''}
+        ` : ''}
         <div class="table-wrap"><table>
           <tr><td><strong>Имейл</strong></td><td>${profile.email}</td></tr>
           <tr><td><strong>Телефон</strong></td><td>${profile.phone || '—'}</td></tr>
@@ -99,6 +115,19 @@ async function loadFile() {
       <div class="success-box" id="editSuccess"></div>
       <div class="error-box" id="editError"></div>
       <form id="editForm">
+        <div class="field-row">
+          <div class="field"><label>Име</label><input name="full_name" value="${profile.full_name || ''}" required></div>
+          <div class="field"><label>Телефон</label><input name="phone" value="${profile.phone || ''}"></div>
+        </div>
+        ${CURRENT_USER.role === 'admin' ? `
+        <div class="field-row">
+          <div class="field"><label>Имейл</label><input name="email" type="email" value="${profile.email || ''}" required></div>
+          <div class="field"><label>Роля</label>
+            <select name="role">
+              ${Object.keys(ROLE_LABELS).map(r => `<option value="${r}" ${profile.role === r ? 'selected' : ''}>${ROLE_LABELS[r]}</option>`).join('')}
+            </select>
+          </div>
+        </div>` : ''}
         <div class="field-row">
           <div class="field"><label>ЕГН</label><input name="egn" value="${profile.egn || ''}"></div>
           <div class="field"><label>Адрес</label><input name="address" value="${profile.address || ''}"></div>
@@ -146,6 +175,24 @@ async function loadFile() {
         </div>
       </div>
       <div class="hint" id="photoMsg"></div>
+    </div>` : ''}
+
+    ${(IS_SELF || CAN_EDIT) ? `
+    <div class="panel">
+      <div class="panel-head"><h2>Портфейл</h2></div>
+      <div id="walletHost" class="loading">Зареждане…</div>
+      ${CURRENT_USER.role === 'admin' ? `
+      <h3 style="margin-top:20px;">Ръчна корекция на баланс</h3>
+      <p class="hint">За начални салда, бонуси или корекции — не е истински банков превод, само вътрешна счетоводна корекция.</p>
+      <div class="error-box" id="walletAdjError"></div>
+      <div class="success-box" id="walletAdjSuccess"></div>
+      <form id="walletAdjForm">
+        <div class="field-row">
+          <div class="field"><label>Сума (€) — може да е отрицателна за тегление *</label><input name="amount" type="number" step="0.01" required></div>
+          <div class="field"><label>Бележка</label><input name="note" placeholder="напр. Начално салдо"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Приложи корекция</button>
+      </form>` : ''}
     </div>` : ''}
 
     <div class="panel">
@@ -319,6 +366,109 @@ async function loadFile() {
     full.style.display = showing ? 'none' : '';
     egnToggleBtn.textContent = showing ? 'Покажи' : 'Скрий';
   });
+
+  const toggleStatusBtn = document.getElementById('toggleStatusBtn');
+  if (toggleStatusBtn) toggleStatusBtn.addEventListener('click', async () => {
+    const newStatus = profile.status === 'active' ? 'inactive' : 'active';
+    if (!confirm(newStatus === 'active' ? 'Активирай профила на служителя?' : 'Спри профила на служителя?')) return;
+    try { await Api.put(`/api/hr/personnel/${TARGET_ID}`, { status: newStatus }); await loadFile(); }
+    catch (err) { alert(err.message); }
+  });
+
+  const sendPersonnelLinkBtn = document.getElementById('sendPersonnelLinkBtn');
+  if (sendPersonnelLinkBtn) sendPersonnelLinkBtn.addEventListener('click', async () => {
+    try {
+      const { link } = await Api.post(`/api/hr/personnel/${TARGET_ID}/send-link`, {});
+      try { await navigator.clipboard.writeText(link); } catch (e) { /* без достъп до клипборда — показваме линка директно */ }
+      prompt('Линкът е копиран (ако браузърът позволи). Изпрати го на служителя през Viber/SMS/имейл, за да допълни/обнови досието си:', link);
+    } catch (err) { alert(err.message); }
+  });
+
+  const toggleBlacklistBtn = document.getElementById('toggleBlacklistBtn');
+  if (toggleBlacklistBtn) toggleBlacklistBtn.addEventListener('click', async () => {
+    try {
+      if (profile.blacklisted) {
+        if (!confirm('Да извадим ли служителя от черния списък?')) return;
+        await Api.post(`/api/hr/personnel/${TARGET_ID}/blacklist`, { blacklisted: false });
+      } else {
+        const reason = prompt('Причина за вкарване в черен списък (по избор):') || '';
+        await Api.post(`/api/hr/personnel/${TARGET_ID}/blacklist`, { blacklisted: true, reason });
+      }
+      await loadFile();
+    } catch (err) { alert(err.message); }
+  });
+
+  const deleteEmployeeBtn = document.getElementById('deleteEmployeeBtn');
+  if (deleteEmployeeBtn) deleteEmployeeBtn.addEventListener('click', async () => {
+    if (!confirm(`Сигурни ли сте, че искате да изтриете служителя ${profile.full_name}? Това действие е необратимо.`)) return;
+    try {
+      await Api.del(`/api/hr/personnel/${TARGET_ID}`);
+      window.location = '/personnel.html';
+    } catch (err) { alert(err.message); }
+  });
+
+  if (IS_SELF || CAN_EDIT) loadWallet();
+}
+
+const WALLET_TX_TYPE_LABELS = {
+  transfer: 'Превод между потребители',
+  admin_adjustment: 'Ръчна корекция от админ',
+  adjustment: 'Корекция',
+};
+function walletTxBadge(t) {
+  const positive = Number(t.amount) >= 0;
+  return `<span class="badge ${positive ? 'badge-green' : 'badge-danger'}">${positive ? '+' : ''}${fmtMoney(t.amount)}</span>`;
+}
+
+async function loadWallet() {
+  const host = document.getElementById('walletHost');
+  if (!host) return;
+  try {
+    const { balance, transactions } = await Api.get(`/api/wallet/users/${TARGET_ID}`);
+    host.innerHTML = `
+      <div class="stat-card" style="margin-bottom:16px;">
+        <div class="label">Текущо салдо</div>
+        <div class="value">${fmtMoney(balance)}</div>
+      </div>
+      ${transactions.length ? `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Кога</th><th>Вид</th><th>Сума</th><th>Бележка</th></tr></thead>
+        <tbody>
+          ${transactions.map(t => `
+            <tr><td>${fmtDateTime(t.created_at)}</td><td>${WALLET_TX_TYPE_LABELS[t.type] || t.type}</td>
+            <td>${walletTxBadge(t)}</td><td>${t.note || '—'}</td></tr>`).join('')}
+        </tbody>
+      </table></div>` : `<p class="hint">Няма транзакции все още.</p>`}
+    `;
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+
+  // формата стои извън #walletHost (не се пресъздава при всяко презареждане на
+  // салдото), затова закачаме listener-а само веднъж (пази от натрупване на
+  // дублирани listener-и и двойно изпращане при повторни корекции)
+  const walletAdjForm = document.getElementById('walletAdjForm');
+  if (walletAdjForm && !walletAdjForm.dataset.bound) {
+    walletAdjForm.dataset.bound = '1';
+    walletAdjForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById('walletAdjError');
+      const successBox = document.getElementById('walletAdjSuccess');
+      errorBox.classList.remove('show'); successBox.classList.remove('show');
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      data.user_id = TARGET_ID;
+      try {
+        await Api.post('/api/wallet/adjustments', data);
+        successBox.textContent = 'Корекцията е приложена.';
+        successBox.classList.add('show');
+        e.target.reset();
+        await loadWallet();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  }
 }
 
 async function init() {

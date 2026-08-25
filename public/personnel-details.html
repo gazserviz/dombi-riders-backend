@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Допълни досието си — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .apply-wrap{min-height:100vh;padding:40px 16px;display:flex;justify-content:center;background:radial-gradient(circle at 20% 0%, #123d1f33, transparent 45%), var(--bg);}
+  .apply-card{width:640px;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:36px 32px;}
+  .apply-logo{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .apply-logo .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 12px 2px #4dff7a88;}
+  .apply-logo span{font-family:'Anton',sans-serif;text-transform:uppercase;letter-spacing:.04em;font-size:1.05rem;}
+  .scan-hint{font-size:.78rem;color:var(--muted);margin-top:4px;}
+  .prefill-box{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:.88rem;}
+  .prefill-box .row{display:flex;justify-content:space-between;padding:3px 0;}
+  .prefill-box .row span:first-child{color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="apply-wrap">
+  <div class="apply-card">
+    <div class="apply-logo"><span class="dot"></span><span>Dombi Riders</span></div>
+    <h2 style="margin-bottom:4px;">Допълни досието си</h2>
+    <p class="hint" style="margin-bottom:22px;">
+      Допълни или обнови личните си данни и снимките на документите — без нужда от вход в системата.
+    </p>
+
+    <div id="loadingHost" class="loading">Зареждане…</div>
+    <div id="invalidHost" style="display:none;" class="error-box show"></div>
+
+    <div id="formHost" style="display:none;">
+      <div class="prefill-box" id="prefillBox"></div>
+      <div class="error-box" id="errorBox"></div>
+      <div class="success-box" id="successBox"></div>
+
+      <form id="detailsForm">
+        <h3>Лични данни</h3>
+        <div class="field-row">
+          <div class="field"><label>Телефон</label><input name="phone"></div>
+          <div class="field"><label>ЕГН</label><input name="egn" maxlength="10"></div>
+        </div>
+        <div class="field"><label>Адрес</label><input name="address"></div>
+
+        <h3 style="margin-top:20px;">Лична карта</h3>
+        <div class="photo-upload-btn" id="idCardFrontUploadBtn">🪪 Лична карта — лице</div>
+        <input type="file" id="idCardFrontFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="idCardFrontMsg"></div>
+        <div class="photo-upload-btn" id="idCardBackUploadBtn" style="margin-top:8px;">🪪 Лична карта — гръб</div>
+        <input type="file" id="idCardBackFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="idCardBackMsg"></div>
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field"><label>Номер на лична карта</label><input name="id_card_number"></div>
+          <div class="field"><label>Валидна до</label><input name="id_card_expiry" type="date"></div>
+        </div>
+
+        <h3 style="margin-top:20px;">Шофьорска книжка</h3>
+        <div class="photo-upload-btn" id="licenseFrontUploadBtn">🚗 Книжка — лице</div>
+        <input type="file" id="licenseFrontFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="licenseFrontMsg"></div>
+        <div class="photo-upload-btn" id="licenseBackUploadBtn" style="margin-top:8px;">🚗 Книжка — гръб</div>
+        <input type="file" id="licenseBackFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="licenseBackMsg"></div>
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field"><label>Номер на книжка</label><input name="driver_license_number"></div>
+          <div class="field"><label>Валидна до</label><input name="driver_license_expiry" type="date"></div>
+        </div>
+
+        <h3 style="margin-top:20px;">Селфи</h3>
+        <p class="hint">Актуална снимка на лицето ти.</p>
+        <div class="photo-upload-btn" id="selfieUploadBtn">🤳 Качи селфи</div>
+        <input type="file" id="selfieFile" accept="image/*" style="display:none;">
+        <div class="scan-hint" id="selfieMsg"></div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:20px;">Запази данните</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get('token');
+
+function bindPersonnelPhotoUpload(btnId, fileId, msgId, kind, side, label) {
+  document.getElementById(btnId).addEventListener('click', () => document.getElementById(fileId).click());
+  document.getElementById(fileId).addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const msg = document.getElementById(msgId);
+    msg.textContent = 'Качване…';
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const body = { photo: dataUrl };
+      if (side) body.side = side;
+      await Api.post(`/api/personnel-details/${token}/${kind}`, body);
+      msg.textContent = label + ' е качена.';
+    } catch (err) {
+      msg.textContent = 'Грешка: ' + err.message;
+    }
+  });
+}
+
+async function init() {
+  if (!token) {
+    document.getElementById('loadingHost').style.display = 'none';
+    document.getElementById('invalidHost').style.display = '';
+    document.getElementById('invalidHost').textContent = 'Липсва линк за достъп.';
+    return;
+  }
+  try {
+    const { profile } = await Api.get(`/api/personnel-details/${token}`);
+    document.getElementById('loadingHost').style.display = 'none';
+    document.getElementById('formHost').style.display = '';
+    document.getElementById('prefillBox').innerHTML = `
+      <div class="row"><span>Име</span><span><strong>${profile.full_name || '—'}</strong></span></div>
+    `;
+
+    const form = document.getElementById('detailsForm');
+    if (profile.phone) form.phone.value = profile.phone;
+    if (profile.egn) form.egn.value = profile.egn;
+    if (profile.address) form.address.value = profile.address;
+    if (profile.id_card_number) form.id_card_number.value = profile.id_card_number;
+    if (profile.id_card_expiry) form.id_card_expiry.value = profile.id_card_expiry;
+    if (profile.driver_license_number) form.driver_license_number.value = profile.driver_license_number;
+    if (profile.driver_license_expiry) form.driver_license_expiry.value = profile.driver_license_expiry;
+  } catch (err) {
+    document.getElementById('loadingHost').style.display = 'none';
+    document.getElementById('invalidHost').style.display = '';
+    document.getElementById('invalidHost').textContent = err.message || 'Линкът е невалиден.';
+    return;
+  }
+
+  bindPersonnelPhotoUpload('idCardFrontUploadBtn', 'idCardFrontFile', 'idCardFrontMsg', 'id-card-photo', 'front', 'Лицето на личната карта');
+  bindPersonnelPhotoUpload('idCardBackUploadBtn', 'idCardBackFile', 'idCardBackMsg', 'id-card-photo', 'back', 'Гърбът на личната карта');
+  bindPersonnelPhotoUpload('licenseFrontUploadBtn', 'licenseFrontFile', 'licenseFrontMsg', 'license-photo', 'front', 'Лицето на книжката');
+  bindPersonnelPhotoUpload('licenseBackUploadBtn', 'licenseBackFile', 'licenseBackMsg', 'license-photo', 'back', 'Гърбът на книжката');
+  bindPersonnelPhotoUpload('selfieUploadBtn', 'selfieFile', 'selfieMsg', 'selfie-photo', null, 'Селфито');
+
+  document.getElementById('detailsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      await Api.post(`/api/personnel-details/${token}`, data);
+      successBox.textContent = 'Запазено успешно.';
+      successBox.classList.add('show');
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>
