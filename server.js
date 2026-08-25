@@ -1017,6 +1017,7 @@ async function handleApi(req, res, pathname, query) {
       const employees = db.listUsers().map(u => ({
         id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status,
         manager_id: u.manager_id || null,
+        blacklisted: !!u.blacklisted,
         id_card_expiry: u.id_card_expiry || null,
         driver_license_expiry: u.driver_license_expiry || null,
         next_alert: nextAlertByProfile[u.id] || null,
@@ -1193,6 +1194,32 @@ async function handleApi(req, res, pathname, query) {
       }
       const result = await docRender.renderDocument('employment_contract', rec, employmentContractDocMatch[2]);
       return sendBuffer(res, 200, result.buffer, { contentType: result.contentType, filename: result.filename });
+    }
+
+    // прикачване на скенер на вече подписан (извън системата, на хартия) трудов/
+    // граждански договор към съществуващ запис. createEmploymentContract вече
+    // покрива определянето на удръжката по вид на договора или ръчно — тук само
+    // добавяме доказателство (снимка/PDF) на хартиения оригинал към записа.
+    const employmentContractScanMatch = pathname.match(/^\/api\/hr\/employment-contracts\/([\w-]+)\/scan$/);
+    if (employmentContractScanMatch && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const rec = db.getEmploymentContract(employmentContractScanMatch[1]);
+      if (!rec) return sendJson(res, 404, { error: 'Договорът не е намерен' });
+      const body = await readJsonBody(req);
+      const raw = String(body.file_base64 || '');
+      const mimeMatch = /^data:([\w.+/-]+);base64,/.exec(raw);
+      const mimeType = mimeMatch ? mimeMatch[1].toLowerCase() : '';
+      const EXT_BY_MIME = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif' };
+      const ext = EXT_BY_MIME[mimeType];
+      if (!ext) return sendJson(res, 400, { error: 'Неподдържан формат — приемат се снимка (JPEG/PNG/WEBP) или PDF' });
+      try {
+        const { url } = saveBase64File(body.file_base64, 'contract-scan', ext);
+        const updated = db.updateEmploymentContract(employmentContractScanMatch[1], { scan_url: url });
+        return sendJson(res, 200, { contract: updated });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
 
     // ---- СЕДМИЧНИ ЗАПЛАТИ (Payroll) ---------------------------------------
