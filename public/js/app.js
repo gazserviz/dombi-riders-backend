@@ -204,12 +204,18 @@ async function mountShell() {
         <div class="sidebar-logo"><span class="dot"></span><span>Dombi Riders</span></div>
         <nav>${navHtml}</nav>
         <div class="sidebar-user">
-          <div class="name">${user.full_name}</div>
+          <div class="name">${escapeHtml(user.full_name)}</div>
           <div class="role">${ROLE_LABELS[user.role] || user.role}</div>
+          <button class="btn btn-ghost btn-sm btn-block" id="changePasswordBtn" style="margin-bottom:6px;">🔑 Смени парола</button>
           <button class="btn btn-ghost btn-sm btn-block" id="logoutBtn">Изход</button>
         </div>
       </aside>
       <div class="main">
+        ${user.must_change_password ? `
+        <div class="must-change-pw-banner" id="mustChangePwBanner">
+          Влизате с временна парола — препоръчваме да я смените сега.
+          <button type="button" class="btn btn-primary btn-sm" id="mustChangePwBtn">Смени сега</button>
+        </div>` : ''}
         <div class="topbar">
           <button class="btn btn-ghost btn-sm" id="burgerBtn" aria-label="Меню">☰</button>
           <div>
@@ -219,11 +225,67 @@ async function mountShell() {
         </div>
         <div class="content" id="app-content"></div>
       </div>
+    </div>
+    <div class="modal-overlay" id="changePasswordModal">
+      <div class="modal-box">
+        <h2 style="margin-top:0;">Смяна на парола</h2>
+        <div class="error-box" id="cpwError"></div>
+        <div class="success-box" id="cpwSuccess"></div>
+        <form id="changePasswordForm">
+          <div class="field"><label>Текуща парола</label><input type="password" name="current_password" required autocomplete="current-password"></div>
+          <div class="field"><label>Нова парола</label><input type="password" name="new_password" required minlength="4" autocomplete="new-password"></div>
+          <div class="field"><label>Повтори новата парола</label><input type="password" name="new_password_confirm" required minlength="4" autocomplete="new-password"></div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button type="submit" class="btn btn-primary btn-sm">Запази новата парола</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="cpwCancelBtn">Отказ</button>
+          </div>
+        </form>
+      </div>
     </div>`;
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await Api.post('/api/logout');
     window.location.href = '/login.html';
+  });
+
+  // ---- смяна на собствена парола (достъпно от всяка страница) -----------
+  const cpwModal = document.getElementById('changePasswordModal');
+  const cpwForm = document.getElementById('changePasswordForm');
+  const cpwError = document.getElementById('cpwError');
+  const cpwSuccess = document.getElementById('cpwSuccess');
+  function openChangePasswordModal() {
+    cpwError.classList.remove('show');
+    cpwSuccess.classList.remove('show');
+    cpwForm.reset();
+    cpwModal.classList.add('show');
+  }
+  function closeChangePasswordModal() { cpwModal.classList.remove('show'); }
+  document.getElementById('changePasswordBtn').addEventListener('click', openChangePasswordModal);
+  const mustChangeBtn = document.getElementById('mustChangePwBtn');
+  if (mustChangeBtn) mustChangeBtn.addEventListener('click', openChangePasswordModal);
+  document.getElementById('cpwCancelBtn').addEventListener('click', closeChangePasswordModal);
+  cpwModal.addEventListener('click', (e) => { if (e.target === cpwModal) closeChangePasswordModal(); });
+  cpwForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    cpwError.classList.remove('show');
+    cpwSuccess.classList.remove('show');
+    const data = Object.fromEntries(new FormData(cpwForm).entries());
+    if (data.new_password !== data.new_password_confirm) {
+      cpwError.textContent = 'Новите пароли не съвпадат.';
+      cpwError.classList.add('show');
+      return;
+    }
+    try {
+      await Api.put('/api/me/password', { current_password: data.current_password, new_password: data.new_password });
+      cpwSuccess.textContent = 'Паролата е сменена успешно.';
+      cpwSuccess.classList.add('show');
+      const banner = document.getElementById('mustChangePwBanner');
+      if (banner) banner.remove();
+      setTimeout(closeChangePasswordModal, 1200);
+    } catch (err) {
+      cpwError.textContent = err.message;
+      cpwError.classList.add('show');
+    }
   });
 
   // мобилна навигация: burger бутон отваря/затваря sidebar-а (виж CSS —
