@@ -25,7 +25,10 @@ function employeeAlertBadge(next_alert) {
   return `<span class="badge ${cls}">${next_alert.label} · ${daysLeftLabel(next_alert.days_left)}</span>`;
 }
 
+let ALL_EMPLOYEES = [];
+
 function personnelTable(employees) {
+  if (!employees.length) return `<p class="hint">Няма служители, отговарящи на филтъра.</p>`;
   return `
     <div class="table-wrap">
       <table>
@@ -36,7 +39,10 @@ function personnelTable(employees) {
               <td><a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a></td>
               <td style="white-space:normal;word-break:break-all;">${e.email}</td>
               <td>${ROLE_LABELS[e.role] || e.role}</td>
-              <td>${e.status === 'active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}</td>
+              <td>
+                ${e.status === 'active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}
+                ${e.blacklisted ? '<span class="badge badge-danger" style="margin-left:4px;">Черен списък</span>' : ''}
+              </td>
               <td>${e.id_card_expiry ? fmtDate(e.id_card_expiry) : '<span class="hint">не е въведена</span>'}</td>
               <td>${e.driver_license_expiry ? fmtDate(e.driver_license_expiry) : '<span class="hint">не е въведена</span>'}</td>
               <td>${employeeAlertBadge(e.next_alert)}</td>
@@ -44,6 +50,23 @@ function personnelTable(employees) {
         </tbody>
       </table>
     </div>`;
+}
+
+function applyPersonnelFilters() {
+  const q = (document.getElementById('personnelSearch').value || '').trim().toLowerCase();
+  const status = document.getElementById('personnelStatusFilter').value;
+  const blacklist = document.getElementById('personnelBlacklistFilter').value;
+  const filtered = ALL_EMPLOYEES.filter(e => {
+    if (status && e.status !== status) return false;
+    if (blacklist === 'yes' && !e.blacklisted) return false;
+    if (blacklist === 'no' && e.blacklisted) return false;
+    if (q) {
+      const hay = `${e.full_name || ''} ${e.email || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  document.getElementById('tableHost').innerHTML = personnelTable(filtered);
 }
 
 async function init() {
@@ -79,6 +102,23 @@ async function init() {
     </div>` : ''}
     <div class="panel">
       <div class="panel-head"><h2>Всички служители</h2></div>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field" style="flex:2;"><label>Търсене (име или имейл)</label><input type="text" id="personnelSearch" placeholder="напр. Иван Иванов"></div>
+        <div class="field"><label>Статус</label>
+          <select id="personnelStatusFilter">
+            <option value="">Всички</option>
+            <option value="active">Активни</option>
+            <option value="inactive">Спрени</option>
+          </select>
+        </div>
+        <div class="field"><label>Черен списък</label>
+          <select id="personnelBlacklistFilter">
+            <option value="">Всички</option>
+            <option value="yes">В черен списък</option>
+            <option value="no">Не е в черен списък</option>
+          </select>
+        </div>
+      </div>
       <div id="tableHost" class="loading">Зареждане…</div>
     </div>`;
 
@@ -106,7 +146,11 @@ async function init() {
 
   try {
     const { employees } = await Api.get('/api/hr/personnel');
+    ALL_EMPLOYEES = employees;
     document.getElementById('tableHost').innerHTML = personnelTable(employees);
+    document.getElementById('personnelSearch').addEventListener('input', applyPersonnelFilters);
+    document.getElementById('personnelStatusFilter').addEventListener('change', applyPersonnelFilters);
+    document.getElementById('personnelBlacklistFilter').addEventListener('change', applyPersonnelFilters);
   } catch (err) {
     document.getElementById('tableHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
   }

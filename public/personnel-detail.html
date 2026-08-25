@@ -195,11 +195,62 @@ async function loadFile() {
       </form>` : ''}
     </div>` : ''}
 
+    ${profile.role === 'driver' || profile.role === 'manager' ? `
+    <div class="panel">
+      <div class="panel-head"><h2>Финансова статистика</h2></div>
+      <div id="earningsPeriodPicker"></div>
+      <div class="field-row">
+        <div class="field"><label>От (седмица, начало)</label><input type="date" id="earnFrom"></div>
+        <div class="field"><label>До (седмица, начало)</label><input type="date" id="earnTo"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="earnRefreshBtn">Обнови</button>
+      <div id="earningsHost" style="margin-top:14px;" class="loading">Зареждане…</div>
+    </div>` : ''}
+
+    ${profile.role === 'manager' && (CURRENT_USER.role === 'admin' || IS_SELF) ? `
+    <div class="panel">
+      <div class="panel-head"><h2>Комисионна (дивидент) като мениджър</h2></div>
+      <p class="hint">Компенсация за екипа шофьори, зачислени към този мениджър (виж полето „Мениджър“ в досието на всеки шофьор) — процент от заработката на екипа или фиксирана сума на седмица/месец. Пълната таблица с всички партньори е на страница „Партньорски комисионни“.</p>
+      <div class="error-box" id="commissionError"></div>
+      <div class="success-box" id="commissionSuccess"></div>
+      <form id="commissionForm">
+        <div class="field"><label>Тип компенсация</label>
+          <select name="comp_type" id="compTypeSelect" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}>
+            <option value="percentage">Процент от заработката на екипа</option>
+            <option value="fixed">Фиксирана сума на период</option>
+            <option value="per_active_driver">На активен шофьор (седмично)</option>
+          </select>
+        </div>
+        <div class="field" id="percentageField"><label>Процент (%)</label><input name="percentage" type="number" step="0.01" min="0" max="100" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+        <div class="field-row" id="fixedFields">
+          <div class="field"><label>Фиксирана сума (€)</label><input name="fixed_amount" type="number" step="0.01" min="0" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+          <div class="field"><label>Период</label>
+            <select name="fixed_period" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}><option value="week">Седмично</option><option value="month">Месечно</option></select>
+          </div>
+        </div>
+        <div class="field-row" id="perActiveDriverFields">
+          <div class="field"><label>Сума на активен шофьор (€)</label><input name="per_driver_amount" type="number" step="0.01" min="0" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+          <div class="field"><label>Праг за "активен" (€ за седмицата)</label><input name="qualifying_threshold" type="number" step="0.01" min="0" value="30" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+        </div>
+        <div class="field"><label>Бележки</label><input name="notes" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+        <div class="field"><label><input type="checkbox" name="active" style="width:auto;display:inline-block;margin-right:6px;" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}>Активна комисионна</label></div>
+        ${CURRENT_USER.role === 'admin' ? `<button type="submit" class="btn btn-primary btn-sm">Запази</button>` : ''}
+      </form>
+      <div class="panel-head" style="margin-top:18px;"><h3>Статистика за период</h3></div>
+      <div id="commissionPeriodPicker"></div>
+      <div class="field-row">
+        <div class="field"><label>От</label><input type="date" id="commFrom"></div>
+        <div class="field"><label>До</label><input type="date" id="commTo"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="commRefreshBtn">Обнови статистиката</button>
+      <div id="commissionStatsHost" style="margin-top:14px;"></div>
+    </div>` : ''}
+
     <div class="panel">
       <div class="panel-head"><h2>Трудови / граждански договори</h2></div>
       ${employment_contracts.length ? `
       <div class="table-wrap"><table>
-        <thead><tr><th>Номер</th><th>Вид</th><th>Часове/ден</th><th>От</th><th>До</th><th>Седмична удръжка</th><th>Разписване</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>Номер</th><th>Вид</th><th>Часове/ден</th><th>От</th><th>До</th><th>Седмична удръжка</th><th>Разписване</th><th>Скенер</th><th>Статус</th><th></th></tr></thead>
         <tbody>
           ${employment_contracts.map(c => `
             <tr>
@@ -210,6 +261,11 @@ async function loadFile() {
               <td>${c.end_date ? fmtDate(c.end_date) : '—'}</td>
               <td>${fmtMoney(c.weekly_deduction_amount)}</td>
               <td>${esignStatusBadge(c.signature_status)}</td>
+              <td>
+                ${c.scan_url ? `<a href="${c.scan_url}" target="_blank">Преглед</a>` : '<span class="hint">няма</span>'}
+                ${CAN_EDIT ? `<br><button type="button" class="btn btn-ghost btn-sm ec-scan-btn" data-id="${c.id}" style="padding:2px 8px;font-size:.68rem;margin-top:4px;">${c.scan_url ? 'Смени' : 'Прикачи'}</button>
+                <input type="file" class="ec-scan-file" data-id="${c.id}" accept="image/*,application/pdf" style="display:none;">` : ''}
+              </td>
               <td>${CAN_EDIT ? `
                 <select class="ec-status-select" data-id="${c.id}">
                   <option value="draft" ${c.status==='draft'?'selected':''}>Чернова</option>
@@ -223,6 +279,7 @@ async function loadFile() {
 
       ${CAN_EDIT ? `
       <h3 style="margin-top:20px;">Нов договор</h3>
+      <p class="hint">Ако служителят вече има подписан на хартия договор извън системата, попълнете вида (за удръжката по подразбиране, може да се промени ръчно) и прикачете снимка/PDF на подписания оригинал.</p>
       <div class="error-box" id="ecError"></div>
       <form id="ecForm">
         <div class="field-row">
@@ -246,6 +303,8 @@ async function loadFile() {
           <div class="field"><label>Крайна дата</label><input name="end_date" type="date"></div>
         </div>
         <div class="field"><label>Седмична удръжка (€) — по подразбиране от вида, може да се промени ръчно</label><input name="weekly_deduction_amount" type="number" step="0.01" placeholder="оставете празно за стойността по подразбиране"></div>
+        <div class="field"><label>Скенер на подписан договор (по избор)</label><input type="file" id="ecScanFile" accept="image/*,application/pdf"></div>
+        <div class="hint" id="ecScanMsg"></div>
         <button type="submit" class="btn btn-primary btn-sm">Създай договор</button>
       </form>` : ''}
     </div>
@@ -335,6 +394,7 @@ async function loadFile() {
     const errorBox = document.getElementById('ecError');
     errorBox.classList.remove('show');
     const data = Object.fromEntries(new FormData(e.target).entries());
+    delete data.ecScanFile;
     data.profile_id = TARGET_ID;
     if (data.contract_type !== 'labor') delete data.hours_per_day;
     else data.hours_per_day = Number(data.hours_per_day);
@@ -342,7 +402,19 @@ async function loadFile() {
     if (!data.weekly_deduction_amount) delete data.weekly_deduction_amount;
     else data.weekly_deduction_amount = Number(data.weekly_deduction_amount);
     try {
-      await Api.post('/api/hr/employment-contracts', data);
+      const { contract } = await Api.post('/api/hr/employment-contracts', data);
+      const scanFile = document.getElementById('ecScanFile').files[0];
+      if (scanFile) {
+        const msg = document.getElementById('ecScanMsg');
+        if (msg) msg.textContent = 'Качване на скенера…';
+        try {
+          const dataUrl = await readFileAsDataUrl(scanFile);
+          await Api.post(`/api/hr/employment-contracts/${contract.id}/scan`, { file_base64: dataUrl });
+        } catch (scanErr) {
+          errorBox.textContent = 'Договорът е създаден, но скенерът не се качи: ' + scanErr.message;
+          errorBox.classList.add('show');
+        }
+      }
       await loadFile();
     } catch (err) {
       errorBox.textContent = err.message;
@@ -354,6 +426,23 @@ async function loadFile() {
     sel.addEventListener('change', async () => {
       try { await Api.put(`/api/hr/employment-contracts/${sel.dataset.id}`, { status: sel.value }); }
       catch (err) { alert(err.message); }
+    });
+  });
+
+  document.querySelectorAll('.ec-scan-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelector(`.ec-scan-file[data-id="${btn.dataset.id}"]`).click();
+    });
+  });
+  document.querySelectorAll('.ec-scan-file').forEach(inp => {
+    inp.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        await Api.post(`/api/hr/employment-contracts/${inp.dataset.id}/scan`, { file_base64: dataUrl });
+        await loadFile();
+      } catch (err) { alert(err.message); }
     });
   });
 
@@ -408,6 +497,173 @@ async function loadFile() {
   });
 
   if (IS_SELF || CAN_EDIT) loadWallet();
+  if (document.getElementById('earningsHost')) initEarningsPanel();
+  if (document.getElementById('commissionForm')) initCommissionPanel();
+}
+
+// -------- Финансова статистика (заработка / удръжки / изплащане) ------------
+function initEarningsPanel() {
+  const fromInput = document.getElementById('earnFrom');
+  const toInput = document.getElementById('earnTo');
+  fromInput.value = addDaysStr(currentWeekStart(), -7 * 8); // последните ~8 седмици по подразбиране
+  toInput.value = todayStr();
+  mountPeriodPicker(document.getElementById('earningsPeriodPicker'), fromInput, toInput, {
+    useMonthPreset: true, onApply: () => loadEarnings(),
+  });
+  document.getElementById('earnRefreshBtn').addEventListener('click', loadEarnings);
+  loadEarnings();
+}
+
+async function loadEarnings() {
+  const host = document.getElementById('earningsHost');
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const from = document.getElementById('earnFrom').value;
+  const to = document.getElementById('earnTo').value;
+  try {
+    const { entries, earnings_visible } = await Api.get(`/api/hr/payroll?profile_id=${TARGET_ID}`);
+    const periodEntries = entries.filter(e => (!from || e.week_start >= from) && (!to || e.week_start <= to));
+    const totalOrders = periodEntries.reduce((s, e) => s + Number(e.order_count || 0), 0);
+    if (!earnings_visible) {
+      host.innerHTML = `
+        <div class="stat-grid">
+          <div class="stat-card"><div class="label">Поръчки за периода</div><div class="value">${totalOrders}</div></div>
+        </div>
+        <p class="hint">Сумите не са видими за вас за този профил.</p>`;
+      return;
+    }
+    const totalGross = periodEntries.reduce((s, e) => s + Number(e.gross_earnings || 0), 0);
+    const totalDeduction = periodEntries.reduce((s, e) => s + Number(e.deduction_amount || 0), 0);
+    const totalNet = periodEntries.reduce((s, e) => s + Number(e.net_amount || 0), 0);
+    const totalPaid = periodEntries.filter(e => e.paid).reduce((s, e) => s + Number(e.net_amount || 0), 0);
+    const totalUnpaid = totalNet - totalPaid;
+    host.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Поръчки за периода</div><div class="value">${totalOrders}</div></div>
+        <div class="stat-card"><div class="label">Изкарани пари (от платформата)</div><div class="value">${fmtMoney(totalGross)}</div></div>
+        <div class="stat-card"><div class="label">Приход за фирмата (седмични такси)</div><div class="value green">${fmtMoney(totalDeduction)}</div></div>
+        <div class="stat-card"><div class="label">За изплащане на служителя общо</div><div class="value">${fmtMoney(totalNet)}</div></div>
+        <div class="stat-card"><div class="label">Изплатено вече</div><div class="value green">${fmtMoney(totalPaid)}</div></div>
+        <div class="stat-card"><div class="label">Остава да се плати</div><div class="value ${totalUnpaid > 0 ? 'warn' : ''}">${fmtMoney(totalUnpaid)}</div></div>
+      </div>
+      <p class="hint" style="margin-top:8px;">„Приход за фирмата“ е сборът от седмичните такси/удръжки, събрани от служителя — реалният паричен приход на фирмата от него. Не изважда споделени разходи (кола, сервиз и др.), затова не е чиста печалба.</p>
+      ${periodEntries.length ? `
+      <div class="table-wrap" style="margin-top:10px;"><table>
+        <thead><tr><th>Седмица</th><th>Поръчки</th><th>Заработка</th><th>Удръжка</th><th>За изплащане</th><th>Платено</th></tr></thead>
+        <tbody>
+          ${periodEntries.sort((a, b) => (a.week_start < b.week_start ? 1 : -1)).map(e => `
+            <tr>
+              <td>${fmtDate(e.week_start)} — ${fmtDate(e.week_end)}</td>
+              <td>${e.order_count || 0}</td>
+              <td>${fmtMoney(e.gross_earnings)}</td>
+              <td>${fmtMoney(e.deduction_amount)}</td>
+              <td><strong>${fmtMoney(e.net_amount)}</strong></td>
+              <td>${e.paid ? '<span class="badge badge-green">Платено</span>' : '<span class="badge badge-warn">Дължимо</span>'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>` : `<p class="hint">Няма записи за избрания период.</p>`}
+    `;
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+// -------- Комисионна (дивидент) на мениджър от неговия екип ------------------
+function toggleCommissionFields() {
+  const form = document.getElementById('commissionForm');
+  const type = form.comp_type.value;
+  document.getElementById('percentageField').style.display = type === 'percentage' ? '' : 'none';
+  document.getElementById('fixedFields').style.display = type === 'fixed' ? '' : 'none';
+  document.getElementById('perActiveDriverFields').style.display = type === 'per_active_driver' ? '' : 'none';
+}
+
+async function initCommissionPanel() {
+  const compTypeSelect = document.getElementById('compTypeSelect');
+  compTypeSelect.addEventListener('change', toggleCommissionFields);
+
+  const commFrom = document.getElementById('commFrom');
+  const commTo = document.getElementById('commTo');
+  commFrom.value = previousWeekStart();
+  commTo.value = previousWeekStart();
+  mountPeriodPicker(document.getElementById('commissionPeriodPicker'), commFrom, commTo, {
+    wireWeekEnd: false, weekPresetMode: 'single', useMonthPreset: true, onApply: () => loadCommissionStats(),
+  });
+  document.getElementById('commRefreshBtn').addEventListener('click', loadCommissionStats);
+
+  try {
+    const { commission } = await Api.get(`/api/hr/partners/${TARGET_ID}`);
+    const form = document.getElementById('commissionForm');
+    form.comp_type.value = (commission && commission.comp_type) || 'percentage';
+    form.percentage.value = (commission && commission.percentage != null) ? commission.percentage : '';
+    form.fixed_amount.value = (commission && commission.fixed_amount != null) ? commission.fixed_amount : '';
+    form.fixed_period.value = (commission && commission.fixed_period) || 'month';
+    form.per_driver_amount.value = (commission && commission.per_driver_amount != null) ? commission.per_driver_amount : '';
+    form.qualifying_threshold.value = (commission && commission.qualifying_threshold != null) ? commission.qualifying_threshold : 30;
+    form.notes.value = (commission && commission.notes) || '';
+    form.active.checked = commission ? commission.active !== false : true;
+    toggleCommissionFields();
+  } catch (err) {
+    const eb = document.getElementById('commissionError');
+    eb.textContent = err.message;
+    eb.classList.add('show');
+  }
+
+  if (CURRENT_USER.role === 'admin') {
+    document.getElementById('commissionForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById('commissionError');
+      const successBox = document.getElementById('commissionSuccess');
+      errorBox.classList.remove('show'); successBox.classList.remove('show');
+      const form = e.target;
+      const patch = {
+        comp_type: form.comp_type.value,
+        percentage: form.percentage.value ? Number(form.percentage.value) : null,
+        fixed_amount: form.fixed_amount.value ? Number(form.fixed_amount.value) : null,
+        fixed_period: form.fixed_period.value,
+        per_driver_amount: form.per_driver_amount.value ? Number(form.per_driver_amount.value) : null,
+        qualifying_threshold: form.qualifying_threshold.value ? Number(form.qualifying_threshold.value) : 30,
+        notes: form.notes.value || null,
+        active: form.active.checked,
+      };
+      try {
+        await Api.put(`/api/hr/partners/${TARGET_ID}`, patch);
+        successBox.textContent = 'Комисионната е запазена.';
+        successBox.classList.add('show');
+        await loadCommissionStats();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  }
+
+  await loadCommissionStats();
+}
+
+async function loadCommissionStats() {
+  const host = document.getElementById('commissionStatsHost');
+  if (!host) return;
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const from = document.getElementById('commFrom').value;
+  const to = document.getElementById('commTo').value;
+  const qs = new URLSearchParams();
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  try {
+    const stats = await Api.get(`/api/hr/partners/${TARGET_ID}/stats?${qs.toString()}`);
+    const isPerActiveDriver = stats.commission && stats.commission.comp_type === 'per_active_driver';
+    host.innerHTML = `
+      <p class="hint">⚠️ Базата за изчисление засега е заработката (заплати) на екипа за периода — приблизителна стойност, докато не бъде готов реалният приход по служител. Не е окончателна счетоводна сума.</p>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Шофьори в екипа</div><div class="value">${stats.team_size}</div></div>
+        <div class="stat-card"><div class="label">Отчетени седмици</div><div class="value">${stats.weeks_covered}</div></div>
+        <div class="stat-card"><div class="label">Общо поръчки</div><div class="value">${stats.total_orders}</div></div>
+        <div class="stat-card"><div class="label">Заработка на екипа</div><div class="value">${fmtMoney(stats.total_gross_earnings)}</div></div>
+        ${isPerActiveDriver ? `<div class="stat-card"><div class="label">Активни шофьор-седмици (&gt; ${stats.qualifying_threshold} €)</div><div class="value">${stats.total_qualifying_driver_weeks}</div></div>` : ''}
+        <div class="stat-card"><div class="label">Дължима комисионна</div><div class="value green">${fmtMoney(stats.commission_owed)}</div></div>
+      </div>`;
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
 }
 
 const WALLET_TX_TYPE_LABELS = {
