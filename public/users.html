@@ -7,6 +7,31 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app.css">
+<style>
+  /* компактна таблица с потребители — без хоризонтален скрол */
+  .users-table{table-layout:fixed;width:100%;}
+  .users-table th,.users-table td{padding:9px 8px;font-size:.82rem;white-space:normal;word-break:break-word;vertical-align:middle;}
+  .users-table th:nth-child(1),.users-table td:nth-child(1){width:26%;}
+  .users-table th:nth-child(2),.users-table td:nth-child(2){width:17%;}
+  .users-table th:nth-child(3),.users-table td:nth-child(3){width:13%;}
+  .users-table th:nth-child(4),.users-table td:nth-child(4){width:19%;}
+  .users-table th:nth-child(5),.users-table td:nth-child(5){width:25%;}
+  .users-table select{width:100%;font-size:.8rem;padding:6px 8px;}
+  .user-cell .u-name{display:block;font-weight:700;}
+  .user-cell .u-sub{display:block;font-size:.72rem;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .perm-group{display:flex;flex-direction:column;gap:4px;}
+  .perm-group label{display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer;}
+  .perm-group input[type=checkbox]{margin:0;width:14px;height:14px;flex:none;}
+  .row-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
+  .row-actions .btn{width:100%;padding:6px 10px;font-size:.72rem;}
+  .temp-pw-box{
+    background:#4dff7a18;border:1px solid #4dff7a44;color:var(--text);
+    padding:12px 14px;border-radius:10px;font-size:.84rem;margin-bottom:16px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  }
+  .temp-pw-box code{background:#00000040;padding:3px 9px;border-radius:6px;font-size:.9rem;color:var(--green);letter-spacing:.02em;}
+  .temp-pw-box .tpw-actions{display:flex;gap:8px;flex:none;}
+</style>
 </head>
 <body>
 <div id="app-shell" data-active="/users.html" data-title="Потребители и роли"></div>
@@ -19,17 +44,52 @@ const ROLE_DESC = {
   driver: 'Достъп само до собствените си зачисления и протоколи.',
 };
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function tempPasswordBox(name, password) {
+  return `
+    <div class="temp-pw-box" id="tempPwBox">
+      <span>Временна парола за <strong>${escapeHtml(name)}</strong>: <code id="tempPwValue">${escapeHtml(password)}</code></span>
+      <span class="tpw-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="tempPwCopyBtn">Копирай</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="tempPwCloseBtn">✕</button>
+      </span>
+    </div>`;
+}
+
+function wireTempPasswordBox(container) {
+  const box = container.querySelector('#tempPwBox');
+  if (!box) return;
+  const copyBtn = box.querySelector('#tempPwCopyBtn');
+  const closeBtn = box.querySelector('#tempPwCloseBtn');
+  copyBtn.addEventListener('click', async () => {
+    const value = box.querySelector('#tempPwValue').textContent;
+    try {
+      await navigator.clipboard.writeText(value);
+      copyBtn.textContent = 'Копирано ✓';
+      setTimeout(() => { copyBtn.textContent = 'Копирай'; }, 1500);
+    } catch (err) {
+      alert(value);
+    }
+  });
+  closeBtn.addEventListener('click', () => box.remove());
+}
+
 function usersTable(users) {
   return `
     <div class="table-wrap">
-      <table>
-        <thead><tr><th>Име</th><th>Имейл</th><th>Телефон</th><th>Роля</th><th>Статус</th><th title="Право да одобрява преводи между портфейли">Одобрява преводи</th><th title="Право да вижда собствената си заработка в модул Заплати">Вижда заработка</th><th></th></tr></thead>
+      <table class="users-table">
+        <thead><tr><th>Потребител</th><th>Роля</th><th>Статус</th><th title="Право да одобрява преводи между портфейли / да вижда собствената си заработка в модул Заплати">Права</th><th>Действия</th></tr></thead>
         <tbody>
           ${users.map(u => `
             <tr>
-              <td><strong>${u.full_name}</strong></td>
-              <td>${u.email}</td>
-              <td>${u.phone||'—'}</td>
+              <td class="user-cell">
+                <span class="u-name">${escapeHtml(u.full_name)}</span>
+                <span class="u-sub">${escapeHtml(u.email)}</span>
+                ${u.phone ? `<span class="u-sub">${escapeHtml(u.phone)}</span>` : ''}
+              </td>
               <td>
                 <select class="role-select" data-id="${u.id}">
                   <option value="admin" ${u.role==='admin'?'selected':''}>Администратор</option>
@@ -38,13 +98,22 @@ function usersTable(users) {
                 </select>
               </td>
               <td>${u.status==='active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}</td>
-              <td>${u.role === 'admin'
-                  ? '<span class="hint">Винаги (админ)</span>'
-                  : `<input type="checkbox" class="approve-transfers-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_approve_transfers ? 'checked' : ''}>`}</td>
-              <td>${['admin','manager'].includes(u.role)
-                  ? '<span class="hint">Винаги</span>'
-                  : `<input type="checkbox" class="view-earnings-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_view_earnings ? 'checked' : ''}>`}</td>
-              <td><button class="btn btn-ghost btn-sm toggle-status-btn" data-id="${u.id}" data-status="${u.status}">${u.status==='active'?'Спри':'Активирай'}</button></td>
+              <td>
+                <div class="perm-group">
+                  ${u.role === 'admin'
+                    ? '<span class="hint">Винаги (админ)</span>'
+                    : `<label><input type="checkbox" class="approve-transfers-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_approve_transfers ? 'checked' : ''}> Преводи</label>`}
+                  ${['admin','manager'].includes(u.role)
+                    ? (u.role === 'admin' ? '' : '<span class="hint">Заработка: винаги</span>')
+                    : `<label><input type="checkbox" class="view-earnings-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_view_earnings ? 'checked' : ''}> Заработка</label>`}
+                </div>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn btn-ghost btn-sm toggle-status-btn" data-id="${u.id}" data-status="${u.status}">${u.status==='active'?'Спри':'Активирай'}</button>
+                  <button class="btn btn-ghost btn-sm reset-password-btn" data-id="${u.id}" data-name="${escapeHtml(u.full_name)}">🔑 Нова парола</button>
+                </div>
+              </td>
             </tr>`).join('')}
         </tbody>
       </table>
@@ -65,11 +134,16 @@ async function init() {
         <div class="panel-head"><h2>Нов потребител</h2></div>
         <div class="error-box" id="errorBox"></div>
         <div class="success-box" id="successBox"></div>
+        <div id="createTempPwHost"></div>
         <form id="userForm">
           <div class="field"><label>Пълно име *</label><input name="full_name" required></div>
           <div class="field"><label>Имейл *</label><input name="email" type="email" required></div>
           <div class="field"><label>Телефон</label><input name="phone"></div>
-          <div class="field"><label>Първоначална парола *</label><input name="password" required minlength="4"></div>
+          <div class="field">
+            <label>Първоначална парола</label>
+            <input name="password" minlength="4" placeholder="име123">
+            <p class="hint">По избор — ако оставите празно, ще се генерира автоматично (напр. „име123“) и ще се покаже след създаване.</p>
+          </div>
           <div class="field"><label>Роля *</label>
             <select name="role" id="roleSelect">
               <option value="driver">Шофьор</option>
@@ -92,6 +166,7 @@ async function init() {
     </div>
     <div class="panel">
       <div class="panel-head"><h2>Всички потребители</h2></div>
+      <div id="resetTempPwHost"></div>
       <div id="tableHost" class="loading">Зареждане…</div>
     </div>`;
 
@@ -131,18 +206,37 @@ async function init() {
         catch (err) { alert(err.message); chk.checked = !chk.checked; }
       });
     });
+    document.querySelectorAll('.reset-password-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Да се генерира нова парола за ${btn.dataset.name}?`)) return;
+        try {
+          const res = await Api.post(`/api/users/${btn.dataset.id}/reset-password`, {});
+          const host = document.getElementById('resetTempPwHost');
+          host.innerHTML = tempPasswordBox(btn.dataset.name, res.temp_password);
+          wireTempPasswordBox(host);
+          host.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (err) { alert(err.message); }
+      });
+    });
   }
 
   document.getElementById('userForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorBox = document.getElementById('errorBox');
     const successBox = document.getElementById('successBox');
+    const tempPwHost = document.getElementById('createTempPwHost');
     errorBox.classList.remove('show'); successBox.classList.remove('show');
+    tempPwHost.innerHTML = '';
     const data = Object.fromEntries(new FormData(e.target).entries());
+    if (!data.password) delete data.password;
     try {
-      await Api.post('/api/users', data);
+      const res = await Api.post('/api/users', data);
       successBox.textContent = 'Потребителят е създаден.';
       successBox.classList.add('show');
+      if (res.temp_password) {
+        tempPwHost.innerHTML = tempPasswordBox(data.full_name, res.temp_password);
+        wireTempPasswordBox(tempPwHost);
+      }
       e.target.reset();
       refreshTable();
     } catch (err) {
