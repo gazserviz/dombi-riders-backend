@@ -52,7 +52,7 @@ async function loadEntries() {
       <tbody>
         ${entries.map(e => `
           <tr>
-            <td>${fmtDate(e.week_start)} — ${fmtDate(e.week_end)}</td>
+            <td>${weekRangeLabel(e.week_start, e.week_end)}</td>
             <td><strong>${e.order_count}</strong></td>
             ${earningsVisible ? `
             <td>${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</td>
@@ -209,7 +209,7 @@ async function initImportPanel() {
       const result = await Api.post('/api/hr/payroll/import/preview', { platform: lastPlatform, file_base64: lastFileBase64 });
       previewHost.innerHTML = result.weeks.map((wk, idx) => `
         <div class="panel" style="margin-top:10px;">
-          <div class="panel-head"><h3>${wk.week_start ? `${fmtDate(wk.week_start)} — ${fmtDate(wk.week_end)}` : 'Седмица (въведете начало/край по-горе)'}</h3></div>
+          <div class="panel-head"><h3>${wk.week_start ? weekRangeLabel(wk.week_start, wk.week_end) : 'Седмица (въведете начало/край по-горе)'}</h3></div>
           ${wk.errors && wk.errors.length ? `<p class="hint" style="color:var(--warn,#c99);">⚠️ ${wk.errors.length} ред(а) с повредени/нечислови данни в оригиналния файл — маркирани по-долу, изискват ръчна проверка спрямо оригиналната фактура.</p>` : ''}
           <p><strong>Съпоставени по телефон (${wk.matched.length}):</strong></p>
           ${renderImportRows(wk.matched, { matched: true })}

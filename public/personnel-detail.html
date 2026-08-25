@@ -571,7 +571,7 @@ async function loadEarnings() {
         <tbody>
           ${periodEntries.sort((a, b) => (a.week_start < b.week_start ? 1 : -1)).map(e => `
             <tr>
-              <td>${fmtDate(e.week_start)} — ${fmtDate(e.week_end)}</td>
+              <td>${weekRangeLabel(e.week_start, e.week_end)}</td>
               <td>${e.order_count || 0}</td>
               <td>${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</td>
               <td>${fmtMoney(e.deduction_amount)}</td>

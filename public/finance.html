@@ -49,7 +49,7 @@ function bucketLabel(key, granularity) {
     const [y, m] = key.split('-');
     return `${MONTH_NAMES[Number(m) - 1]} ${y}`;
   }
-  if (granularity === 'week') return `Седмица от ${fmtDate(key)}`;
+  if (granularity === 'week') return `Седмица ${isoWeekNumber(key)} · от ${fmtDate(key)}`;
   return fmtDate(key);
 }
 

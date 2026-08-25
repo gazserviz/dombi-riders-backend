@@ -106,11 +106,11 @@ async function loadStats() {
     ${isPerActiveDriver && stats.per_active_driver_breakdown && stats.per_active_driver_breakdown.length ? `
     <div class="table-wrap" style="margin-top:14px;">
       <table>
-        <thead><tr><th>Седмица (начало)</th><th>Шофьори в екипа тази седмица</th><th>Активни (&gt; ${stats.qualifying_threshold} €)</th></tr></thead>
+        <thead><tr><th>Седмица</th><th>Шофьори в екипа тази седмица</th><th>Активни (&gt; ${stats.qualifying_threshold} €)</th></tr></thead>
         <tbody>
           ${stats.per_active_driver_breakdown.map(w => `
             <tr>
-              <td>${fmtDate(w.week_start)}</td>
+              <td>${weekRangeLabel(w.week_start)}</td>
               <td>${w.team_size_that_week}</td>
               <td><strong>${w.qualifying_count}</strong></td>
             </tr>`).join('')}
