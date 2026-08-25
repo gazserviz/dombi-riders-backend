@@ -345,6 +345,44 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { user });
     }
 
+    // ---- НАСТРОЙКИ НА МЕНЮТО (навигация) -------------------------------
+    // Само label/ред се пазят в базата — href/икона/roles винаги идват от
+    // кода (NAV масива в app.js), за да не може конфигурацията да бъде
+    // ползвана за ескалиране на видимост на страници по роля.
+    if (pathname === '/api/nav-config' && req.method === 'GET') {
+      const user = requireAuth(req, res);
+      if (!user) return;
+      return sendJson(res, 200, { config: db.getNavConfig() });
+    }
+    if (pathname === '/api/nav-config' && req.method === 'PUT') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const groups = body.groups;
+      if (!Array.isArray(groups)) return sendJson(res, 400, { error: 'Липсва groups (масив)' });
+      const cleanGroups = [];
+      for (const g of groups) {
+        if (!g || typeof g !== 'object') return sendJson(res, 400, { error: 'Невалидна група' });
+        const baseGroup = String(g.base_group || g.group || '').slice(0, 60);
+        if (!baseGroup) return sendJson(res, 400, { error: 'Липсва base_group на групата' });
+        const groupLabel = String(g.label || baseGroup).slice(0, 60);
+        if (!Array.isArray(g.items)) return sendJson(res, 400, { error: 'Липсват елементи в група' });
+        const cleanItems = [];
+        for (const it of g.items) {
+          if (!it || typeof it !== 'object' || !it.href) return sendJson(res, 400, { error: 'Невалиден елемент от менюто' });
+          cleanItems.push({ href: String(it.href).slice(0, 200), label: String(it.label || '').slice(0, 80) });
+        }
+        cleanGroups.push({ base_group: baseGroup, label: groupLabel, items: cleanItems });
+      }
+      return sendJson(res, 200, { config: db.setNavConfig({ groups: cleanGroups }) });
+    }
+    if (pathname === '/api/nav-config/reset' && req.method === 'POST') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      db.resetNavConfig();
+      return sendJson(res, 200, { config: null });
+    }
+
     // ---- USERS (admin) -----------------------------------------------
     if (pathname === '/api/users' && req.method === 'GET') {
       const user = requireRole(req, res, ['admin', 'manager']);
