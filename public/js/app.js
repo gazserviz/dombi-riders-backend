@@ -60,6 +60,7 @@ const NAV = [
     { href: '/templates.html', icon: '🧾', label: 'Бланки и шаблони', roles: ['admin','manager'] },
     { href: '/stats.html', icon: '📊', label: 'Статистики', roles: ['admin','manager'] },
     { href: '/fleet-showcase.html', icon: '🖼️', label: 'Витрина на сайта (коли)', roles: ['admin','manager'] },
+    { href: '/site-editor.html', icon: '🏠', label: 'Начална страница (сайт)', roles: ['admin','manager'] },
   ]},
   { group: 'HR', items: [
     { href: '/wallet.html', icon: '👛', label: 'Портфейл', roles: ['admin','manager','driver'] },
