@@ -160,11 +160,12 @@ function docExpiryChips(v) {
     ['Каско', v.casco_expiry],
     ['Винетка', v.vignette_expiry],
   ];
-  const soon = 30 * 86400000;
+  const danger = 5 * 86400000;
+  const warn = 15 * 86400000;
   return `<div class="chip-row">` + items.map(([label, date]) => {
     if (!date) return '';
     const diff = new Date(date) - new Date();
-    const cls = diff < 0 ? 'badge-danger' : diff < soon ? 'badge-warn' : 'badge-muted';
+    const cls = diff < danger ? 'badge-danger' : diff < warn ? 'badge-warn' : 'badge-muted';
     return `<span class="badge ${cls}">${label} ${fmtDate(date)}</span>`;
   }).join('') + `</div>`;
 }
