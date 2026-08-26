@@ -155,7 +155,6 @@ async function deleteVehicleRow(id, plate) {
 
 function docExpiryChips(v) {
   const items = [
-    ['Рег.', v.registration_expiry],
     ['Гражд. отг.', v.insurance_expiry],
     ['Каско', v.casco_expiry],
     ['Винетка', v.vignette_expiry],
@@ -182,12 +181,12 @@ function applyFilters() {
 }
 
 function exportVehiclesCsv() {
-  const headers = ['Рег. номер','Марка','Модел','Година','Категория','Статус','Себестойност','Рег. до','Гражд. отг. до','Каско до','Винетка до'];
+  const headers = ['Рег. номер','Марка','Модел','Година','Категория','Статус','Себестойност','Гражд. отг. до','Каско до','Винетка до'];
   const rows = (VISIBLE_VEHICLES.length ? VISIBLE_VEHICLES : ALL_VEHICLES).map(v => [
     v.plate_number, v.make, v.model, v.year || '',
     CAT_LABELS[v.category] || v.category || '',
     (VEHICLE_STATUS_LABELS[v.status] || [v.status])[0],
-    v.purchase_price, v.registration_expiry || '', v.insurance_expiry || '', v.casco_expiry || '', v.vignette_expiry || '',
+    v.purchase_price, v.insurance_expiry || '', v.casco_expiry || '', v.vignette_expiry || '',
   ]);
   const stamp = new Date().toISOString().slice(0, 10);
   downloadCsv(`dombi-riders-avtopark-${stamp}.csv`, headers, rows);
