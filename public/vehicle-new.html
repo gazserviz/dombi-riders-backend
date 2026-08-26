@@ -25,9 +25,9 @@ async function init() {
     <div class="grid-2">
       <div class="panel">
         <div class="panel-head"><h2>Снимка на талон</h2></div>
-        <p>Качете снимка на свидетелството за регистрация — системата ще се опита автоматично да разчете данните.</p>
-        <div class="photo-upload-btn" id="talonUploadBtn">📷 Качи снимка на талон / кликни за избор</div>
-        <input type="file" id="talonFile" accept="image/*" style="display:none;">
+        <p>Качете снимка или PDF на свидетелството за регистрация — системата ще се опита автоматично да разчете данните.</p>
+        <div class="photo-upload-btn" id="talonUploadBtn">📎 Качи снимка или PDF на талон / кликни за избор</div>
+        <input type="file" id="talonFile" accept="image/*,application/pdf" style="display:none;">
         <div id="talonPreview"></div>
         <div id="talonStatus" class="hint"></div>
         <div id="talonFields" style="margin-top:14px;"></div>
@@ -136,7 +136,9 @@ async function init() {
     const file = e.target.files[0];
     if (!file) return;
     talonPhotoDataUrl = await readFileAsDataUrl(file);
-    document.getElementById('talonPreview').innerHTML = `<div class="photo-grid"><img src="${talonPhotoDataUrl}"></div>`;
+    document.getElementById('talonPreview').innerHTML = file.type === 'application/pdf'
+      ? `<div class="hint" style="margin-top:8px;">📄 ${file.name}</div>`
+      : `<div class="photo-grid"><img src="${talonPhotoDataUrl}"></div>`;
     const statusEl = document.getElementById('talonStatus');
     statusEl.textContent = 'Разчитане на данните… (може да отнеме няколко секунди)';
 

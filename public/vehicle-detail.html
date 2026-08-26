@@ -504,7 +504,11 @@ function talonTab(v) {
     <div class="tab-panel" id="tab-talon">
       <div class="panel">
         <h2>Данни от талон</h2>
-        ${v.talon_photo_url ? `<div class="photo-grid" style="max-width:220px;"><img src="${v.talon_photo_url}"></div>` : `<p>Няма качена снимка на талон.</p>`}
+        ${v.talon_photo_url ? (
+          /\.pdf$/i.test(v.talon_photo_url)
+            ? `<a href="${v.talon_photo_url}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">📄 Отвори PDF на талона</a>`
+            : `<a href="${v.talon_photo_url}" target="_blank" rel="noopener" class="photo-grid" style="max-width:220px;display:block;"><img src="${v.talon_photo_url}"></a>`
+        ) : `<p>Няма качен файл на талон.</p>`}
         ${hasData ? `
           <div class="table-wrap" style="margin-top:14px;"><table>
             ${Object.entries(td).filter(([,val])=>val!=null&&val!=='').map(([k,val])=>`<tr><td>${k}</td><td>${val}</td></tr>`).join('')}
@@ -527,8 +531,8 @@ function talonTab(v) {
         </div>` : ''}
         ${canWrite ? `
         <div style="margin-top:16px;">
-          <div class="photo-upload-btn" id="talonUploadBtn2">📷 ${v.talon_photo_url ? 'Качи нова снимка' : 'Качи снимка на талон'}</div>
-          <input type="file" id="talonFile2" accept="image/*" style="display:none;">
+          <div class="photo-upload-btn" id="talonUploadBtn2">📎 ${v.talon_photo_url ? 'Качи нов файл (снимка или PDF)' : 'Качи снимка или PDF на талон'}</div>
+          <input type="file" id="talonFile2" accept="image/*,application/pdf" style="display:none;">
           <div id="talonStatus2" class="hint"></div>
         </div>` : ''}
       </div>
