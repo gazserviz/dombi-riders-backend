@@ -20,7 +20,7 @@ let VEHICLE = null;
 const canEdit = () => ['admin','manager'].includes(CURRENT_USER.role);
 
 const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', hybrid_electric:'Хибрид/Електро', moto:'Мотор', scooter:'Скутер', bike:'Е-колело' };
-const FUEL_LABELS = { petrol:'Бензин', diesel:'Дизел', hybrid:'Хибрид', electric:'Електрическа', lpg:'Газ' };
+const FUEL_LABELS = { petrol:'Бензин', diesel:'Дизел', hybrid:'Хибрид', electric:'Електрическа', lpg:'Газ', petrol_lpg:'Бензин/Газ' };
 const SERVICE_TYPE_LABELS = { maintenance:'Профилактика', repair:'Ремонт', inspection:'Преглед', tires:'Гуми', wash:'Измиване', oil_change:'Смяна на масло', timing_belt:'Ангренажен ремък (ГРМ)', other:'Друго' };
 const COST_TYPE_LABELS = { insurance_civil:'Гражданска отговорност', insurance_casco:'Каско', vignette:'Винетка', tax:'Данък', parking:'Паркинг', fine:'Глоба', other_recurring:'Друго' };
 const PURPOSE_LABELS = { dombi_courier:'Куриер на Dombi Riders', other_platform:'Друга платформа', personal_use:'Лично ползване' };
@@ -515,17 +515,21 @@ function talonTab(v) {
           </table></div>
           <div style="margin-top:10px;">${v.talon_confirmed ? '<span class="badge badge-green">Потвърдени</span>' : '<span class="badge badge-warn">Очаква потвърждение</span>'}</div>
         ` : ''}
-        ${canWrite && hasData && !v.talon_confirmed ? `
+        ${canWrite && hasData ? `
         <div class="panel" style="margin-top:16px;background:rgba(255,255,255,.03);">
-          <h3 style="margin-top:0;">Прегледай и потвърди</h3>
-          <p class="hint">AI разчитането не винаги е 100% точно — провери и коригирай всяко поле преди да го приложиш към основните данни на колата.</p>
+          <h3 style="margin-top:0;">${v.talon_confirmed ? 'Коригирай данните' : 'Прегледай и потвърди'}</h3>
+          <p class="hint">AI разчитането не винаги е 100% точно — провери и коригирай всяко поле преди да го приложиш към основните данни на колата. Може да коригирате по всяко време, дори след потвърждение.</p>
           <form id="talonConfirmForm">
             ${TALON_FIELD_MAP.map(f => `
-              <div class="field"><label>${f.label}</label><input name="${f.key}" type="${f.type}" value="${td[f.key] != null ? td[f.key] : ''}"></div>
+              <div class="field"><label>${f.label}</label>${
+                f.key === 'fuel'
+                  ? `<select name="fuel">${Object.entries(FUEL_LABELS).map(([k,label]) => `<option value="${k}" ${String(td.fuel||'').toLowerCase()===k?'selected':''}>${label}</option>`).join('')}</select>`
+                  : `<input name="${f.key}" type="${f.type}" value="${td[f.key] != null ? td[f.key] : ''}">`
+              }</div>
             `).join('')}
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-              <button type="submit" class="btn btn-primary btn-sm">Потвърди и въведи в основните данни</button>
-              <button type="button" class="btn btn-ghost btn-sm" id="talonDismissBtn">Само маркирай като прегледан (без промяна)</button>
+              <button type="submit" class="btn btn-primary btn-sm">${v.talon_confirmed ? 'Запази корекциите' : 'Потвърди и въведи в основните данни'}</button>
+              ${!v.talon_confirmed ? `<button type="button" class="btn btn-ghost btn-sm" id="talonDismissBtn">Само маркирай като прегледан (без промяна)</button>` : ''}
             </div>
           </form>
         </div>` : ''}
@@ -807,8 +811,11 @@ function bindForms() {
     Object.keys(data).forEach(k => { if (data[k] === '') delete data[k]; });
     if (data.year) data.year = Number(data.year);
     if (data.seats) data.seats = Number(data.seats);
+    // Обновяваме и суровите talon_data с коригираните стойности, за да не остават
+    // старите (неточни) AI-разчетени данни видими другаде след потвърждение.
+    const updatedTalonData = { ...(VEHICLE.talon_data || {}), ...data };
     try {
-      await Api.post(`/api/vehicles/${vehicleId}/talon-confirm`, { talon_data: VEHICLE.talon_data, apply_to_fields: data });
+      await Api.post(`/api/vehicles/${vehicleId}/talon-confirm`, { talon_data: updatedTalonData, apply_to_fields: data });
       await init();
       activateTab('overview');
     } catch (err) { alert(err.message); }

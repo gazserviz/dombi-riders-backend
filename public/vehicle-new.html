@@ -68,6 +68,7 @@ async function init() {
                 <option value="hybrid">Хибрид</option>
                 <option value="electric">Електрическа</option>
                 <option value="lpg">Газ</option>
+                <option value="petrol_lpg">Бензин/Газ</option>
               </select>
             </div>
           </div>
@@ -170,8 +171,17 @@ async function init() {
     });
   }
 
+  let vehicleFormSubmitting = false;
   document.getElementById('vehicleForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    // Пази от двойно/тройно натискане на "Запази колата" (особено докато AI
+    // разчита PDF талон — това отнема няколко секунди), което иначе създава
+    // няколко еднакви записа за една и съща кола.
+    if (vehicleFormSubmitting) return;
+    vehicleFormSubmitting = true;
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const submitBtnOriginalText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Запазване…'; }
     const errorBox = document.getElementById('errorBox');
     const successBox = document.getElementById('successBox');
     errorBox.classList.remove('show'); successBox.classList.remove('show');
@@ -197,6 +207,9 @@ async function init() {
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.classList.add('show');
+    } finally {
+      vehicleFormSubmitting = false;
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = submitBtnOriginalText; }
     }
   });
 }

@@ -18,6 +18,15 @@
   .talon-card table{width:100%;font-size:.78rem;}
   .talon-card table td{padding:3px 0;border:none;white-space:normal;}
   .talon-card table td:first-child{color:var(--muted);width:40%;}
+  .print-only{display:none;}
+  @media print{
+    #gridHost, .toolbar{display:none !important;}
+    .print-only{display:block !important;}
+    .print-only .talon-print-item{page-break-after:always;padding:16px 0;}
+    .print-only .talon-print-item h2{font-family:'Anton',sans-serif;margin:0 0 4px;}
+    .print-only .talon-print-item p{color:#444;font-size:.85rem;margin:0 0 10px;}
+    .print-only .talon-print-item img{max-width:100%;max-height:85vh;display:block;margin:0 auto;}
+  }
 </style>
 </head>
 <body>
@@ -81,11 +90,17 @@ async function init() {
         <input type="checkbox" id="missingOnly" style="width:auto;"> само без потвърдени данни
       </label>
       <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="printAllBtn">🖨 Печат на всички талони</button>
+      <button class="btn btn-ghost btn-sm" id="downloadAllBtn">⬇ Изтегли всички талони</button>
     </div>
-    <div id="gridHost" class="loading">Зареждане…</div>`;
+    <div id="bulkStatus" class="hint"></div>
+    <div id="gridHost" class="loading">Зареждане…</div>
+    <div id="printAllHost" class="print-only"></div>`;
 
   document.getElementById('searchInput').addEventListener('input', applyFilter);
   document.getElementById('missingOnly').addEventListener('change', applyFilter);
+  document.getElementById('printAllBtn').addEventListener('click', printAllTalons);
+  document.getElementById('downloadAllBtn').addEventListener('click', downloadAllTalons);
 
   try {
     const { vehicles } = await Api.get('/api/vehicles');
@@ -95,6 +110,68 @@ async function init() {
     document.getElementById('gridHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
   }
 }
+
+// изчаква да се заредят всички <img> в контейнера (или timeout), за да не
+// принтираме празни/наполовина заредени снимки
+function waitForImages(container, timeoutMs) {
+  const imgs = Array.from(container.querySelectorAll('img'));
+  if (!imgs.length) return Promise.resolve();
+  const loaders = imgs.map(img => new Promise(resolve => {
+    if (img.complete) return resolve();
+    img.addEventListener('load', resolve, { once: true });
+    img.addEventListener('error', resolve, { once: true });
+  }));
+  return Promise.race([Promise.all(loaders), new Promise(r => setTimeout(r, timeoutMs))]);
+}
+
+async function printAllTalons() {
+  const withPhoto = ALL_VEHICLES.filter(v => v.talon_photo_url);
+  if (!withPhoto.length) { alert('Няма качени талони за печат.'); return; }
+  const images = withPhoto.filter(v => !/\.pdf$/i.test(v.talon_photo_url));
+  const pdfs = withPhoto.filter(v => /\.pdf$/i.test(v.talon_photo_url));
+  const printHost = document.getElementById('printAllHost');
+  printHost.innerHTML = `
+    ${pdfs.length ? `
+      <div class="talon-print-item">
+        <h2>PDF файлове на талони</h2>
+        <p>Тези талони са качени като PDF — отворете и принтирайте всеки поотделно (браузърът не може да ги вгради автоматично в общия печат):</p>
+        <ul>${pdfs.map(v => `<li><a href="${v.talon_photo_url}" target="_blank" rel="noopener">${v.plate_number} — ${v.make} ${v.model}</a></li>`).join('')}</ul>
+      </div>` : ''}
+    ${images.map(v => `
+      <div class="talon-print-item">
+        <h2>${v.plate_number} — ${v.make} ${v.model}</h2>
+        <p>${v.year || ''}</p>
+        <img src="${v.talon_photo_url}">
+      </div>
+    `).join('')}
+  `;
+  await waitForImages(printHost, 4000);
+  window.print();
+}
+
+async function downloadAllTalons() {
+  const withPhoto = ALL_VEHICLES.filter(v => v.talon_photo_url);
+  if (!withPhoto.length) { alert('Няма качени талони за изтегляне.'); return; }
+  const statusEl = document.getElementById('bulkStatus');
+  const btn = document.getElementById('downloadAllBtn');
+  btn.disabled = true;
+  for (let i = 0; i < withPhoto.length; i++) {
+    const v = withPhoto[i];
+    statusEl.textContent = `Изтегляне на файлове… ${i + 1}/${withPhoto.length} (${v.plate_number})`;
+    const ext = (v.talon_photo_url.match(/\.[a-zA-Z0-9]+$/) || ['.jpg'])[0];
+    const a = document.createElement('a');
+    a.href = v.talon_photo_url;
+    a.download = `talon-${v.plate_number}${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // малка пауза между файловете, за да не блокира браузърът multiple downloads наведнъж
+    await new Promise(r => setTimeout(r, 500));
+  }
+  statusEl.textContent = `Готово — изтеглени ${withPhoto.length} файла. Браузърът може да е поискал разрешение за множество изтегляния.`;
+  btn.disabled = false;
+}
+
 init();
 </script>
 </body>
