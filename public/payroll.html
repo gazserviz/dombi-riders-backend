@@ -28,6 +28,11 @@ function signBadge(status) {
 
 let CURRENT_USER = null;
 let DIRECTORY = [];
+// имена по ID за ВСИЧКИ служители (вкл. спрени/неактивни) — DIRECTORY идва от
+// /api/wallet/directory, което показва само status:'active', затова таблицата
+// с исторически седмични заплати на спрян служител иначе показва суровото ID
+// вместо името му (виж loadPayrollStats)
+let ALL_NAMES_BY_ID = {};
 let selectedProfileId = null;
 let earningsVisible = true;
 
@@ -299,7 +304,9 @@ async function loadPayrollStats() {
       if (e.paid) row.paid += Number(e.net_amount || 0);
       row.weeks += 1;
     });
-    const nameById = Object.fromEntries(DIRECTORY.map(u => [u.id, u.full_name]));
+    const nameById = Object.keys(ALL_NAMES_BY_ID).length
+      ? ALL_NAMES_BY_ID
+      : Object.fromEntries(DIRECTORY.map(u => [u.id, u.full_name]));
     const profileRows = [...byProfile.entries()]
       .map(([id, r]) => ({ id, name: nameById[id] || id, ...r, unpaid: r.net - r.paid }))
       .sort((a, b) => b.unpaid - a.unpaid);
@@ -347,6 +354,13 @@ async function init() {
   // включва и мениджъри — мениджър може едновременно да изпълнява и шофьорска
   // работа (виж партньорските комисионни), затова не ограничаваме само до role==='driver'
   DIRECTORY = users.filter(u => u.role !== 'admin');
+
+  if (isAdmin) {
+    try {
+      const { users: allUsers } = await Api.get('/api/users');
+      ALL_NAMES_BY_ID = Object.fromEntries(allUsers.map(u => [u.id, u.full_name]));
+    } catch (e) { /* не е фатално — таблицата просто ще пада обратно към DIRECTORY */ }
+  }
 
   document.getElementById('app-content').innerHTML = `
     ${isAdmin ? `
