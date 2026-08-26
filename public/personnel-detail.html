@@ -76,7 +76,7 @@ async function loadFile() {
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
           <button type="button" class="btn btn-ghost btn-sm" id="toggleStatusBtn">${profile.status === 'active' ? 'Спри профила' : 'Активирай профила'}</button>
           <button type="button" class="btn btn-ghost btn-sm" id="sendPersonnelLinkBtn">Изпрати линк за допълване на досие</button>
-          ${CURRENT_USER.role === 'admin' ? `
+          ${['admin', 'super_admin'].includes(CURRENT_USER.role) ? `
           <button type="button" class="btn btn-ghost btn-sm" id="toggleBlacklistBtn">${profile.blacklisted ? 'Извади от черен списък' : 'Вкарай в черен списък'}</button>
           ${!IS_SELF ? `<button type="button" class="btn btn-ghost btn-sm" id="deleteEmployeeBtn" style="color:var(--danger);">Изтрий служителя</button>` : ''}` : ''}
         </div>
@@ -122,7 +122,7 @@ async function loadFile() {
           <div class="field"><label>Име</label><input name="full_name" value="${profile.full_name || ''}" required></div>
           <div class="field"><label>Телефон</label><input name="phone" value="${profile.phone || ''}"></div>
         </div>
-        ${CURRENT_USER.role === 'admin' ? `
+        ${['admin', 'super_admin'].includes(CURRENT_USER.role) ? `
         <div class="field-row">
           <div class="field"><label>Имейл</label><input name="email" type="email" value="${profile.email || ''}" required></div>
           <div class="field"><label>Роля</label>
@@ -193,7 +193,7 @@ async function loadFile() {
     <div class="panel">
       <div class="panel-head"><h2>Портфейл</h2></div>
       <div id="walletHost" class="loading">Зареждане…</div>
-      ${CURRENT_USER.role === 'admin' ? `
+      ${['admin', 'super_admin'].includes(CURRENT_USER.role) ? `
       <h3 style="margin-top:20px;">Ръчна корекция на баланс</h3>
       <p class="hint">За начални салда, бонуси или корекции — не е истински банков превод, само вътрешна счетоводна корекция.</p>
       <div class="error-box" id="walletAdjError"></div>
@@ -219,7 +219,7 @@ async function loadFile() {
       <div id="earningsHost" style="margin-top:14px;" class="loading">Зареждане…</div>
     </div>` : ''}
 
-    ${profile.role === 'manager' && (CURRENT_USER.role === 'admin' || IS_SELF) ? `
+    ${profile.role === 'manager' && (['admin', 'super_admin'].includes(CURRENT_USER.role) || IS_SELF) ? `
     <div class="panel">
       <div class="panel-head"><h2>Комисионна (дивидент) като мениджър</h2></div>
       <p class="hint">Компенсация за екипа шофьори, зачислени към този мениджър (виж полето „Мениджър“ в досието на всеки шофьор) — процент от заработката на екипа или фиксирана сума на седмица/месец. Пълната таблица с всички партньори е на страница „Партньорски комисионни“.</p>
@@ -227,26 +227,26 @@ async function loadFile() {
       <div class="success-box" id="commissionSuccess"></div>
       <form id="commissionForm">
         <div class="field"><label>Тип компенсация</label>
-          <select name="comp_type" id="compTypeSelect" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}>
+          <select name="comp_type" id="compTypeSelect" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}>
             <option value="percentage">Процент от заработката на екипа</option>
             <option value="fixed">Фиксирана сума на период</option>
             <option value="per_active_driver">На активен шофьор (седмично)</option>
           </select>
         </div>
-        <div class="field" id="percentageField"><label>Процент (%)</label><input name="percentage" type="number" step="0.01" min="0" max="100" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+        <div class="field" id="percentageField"><label>Процент (%)</label><input name="percentage" type="number" step="0.01" min="0" max="100" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}></div>
         <div class="field-row" id="fixedFields">
-          <div class="field"><label>Фиксирана сума (€)</label><input name="fixed_amount" type="number" step="0.01" min="0" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+          <div class="field"><label>Фиксирана сума (€)</label><input name="fixed_amount" type="number" step="0.01" min="0" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}></div>
           <div class="field"><label>Период</label>
-            <select name="fixed_period" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}><option value="week">Седмично</option><option value="month">Месечно</option></select>
+            <select name="fixed_period" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}><option value="week">Седмично</option><option value="month">Месечно</option></select>
           </div>
         </div>
         <div class="field-row" id="perActiveDriverFields">
-          <div class="field"><label>Сума на активен шофьор (€)</label><input name="per_driver_amount" type="number" step="0.01" min="0" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
-          <div class="field"><label>Праг за "активен" (€ за седмицата)</label><input name="qualifying_threshold" type="number" step="0.01" min="0" value="30" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
+          <div class="field"><label>Сума на активен шофьор (€)</label><input name="per_driver_amount" type="number" step="0.01" min="0" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}></div>
+          <div class="field"><label>Праг за "активен" (€ за седмицата)</label><input name="qualifying_threshold" type="number" step="0.01" min="0" value="30" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}></div>
         </div>
-        <div class="field"><label>Бележки</label><input name="notes" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}></div>
-        <div class="field"><label><input type="checkbox" name="active" style="width:auto;display:inline-block;margin-right:6px;" ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}>Активна комисионна</label></div>
-        ${CURRENT_USER.role === 'admin' ? `<button type="submit" class="btn btn-primary btn-sm">Запази</button>` : ''}
+        <div class="field"><label>Бележки</label><input name="notes" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}></div>
+        <div class="field"><label><input type="checkbox" name="active" style="width:auto;display:inline-block;margin-right:6px;" ${!['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'disabled' : ''}>Активна комисионна</label></div>
+        ${['admin', 'super_admin'].includes(CURRENT_USER.role) ? `<button type="submit" class="btn btn-primary btn-sm">Запази</button>` : ''}
       </form>
       <div class="panel-head" style="margin-top:18px;"><h3>Статистика за период</h3></div>
       <div id="commissionPeriodPicker"></div>
@@ -589,7 +589,7 @@ async function loadEarnings() {
               <td>${fmtMoney(e.deduction_amount)}</td>
               <td><strong>${fmtMoney(e.net_amount)}</strong></td>
               <td>${e.paid ? '<span class="badge badge-green">Платено</span>' : '<span class="badge badge-warn">Дължимо</span>'}</td>
-              <td>${(CURRENT_USER.role === 'admin' && !e.paid) ? `<button type="button" class="btn btn-ghost btn-sm earn-mark-paid-btn" data-id="${e.id}" style="padding:2px 8px;font-size:.68rem;">Маркирай платено</button>` : ''}</td>
+              <td>${(['admin', 'super_admin'].includes(CURRENT_USER.role) && !e.paid) ? `<button type="button" class="btn btn-ghost btn-sm earn-mark-paid-btn" data-id="${e.id}" style="padding:2px 8px;font-size:.68rem;">Маркирай платено</button>` : ''}</td>
             </tr>`).join('')}
         </tbody>
       </table></div>` : `<p class="hint">Няма записи за избрания период.</p>`}
@@ -645,7 +645,7 @@ async function initCommissionPanel() {
     eb.classList.add('show');
   }
 
-  if (CURRENT_USER.role === 'admin') {
+  if (['admin', 'super_admin'].includes(CURRENT_USER.role)) {
     document.getElementById('commissionForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const errorBox = document.getElementById('commissionError');
@@ -777,7 +777,7 @@ async function init() {
 
   TARGET_ID = qs('id') || CURRENT_USER.id;
   IS_SELF = TARGET_ID === CURRENT_USER.id;
-  CAN_EDIT = ['admin', 'manager'].includes(CURRENT_USER.role);
+  CAN_EDIT = ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role);
 
   if (!IS_SELF && !CAN_EDIT) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате това досие.</div>`;

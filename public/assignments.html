@@ -142,7 +142,7 @@ async function loadAssignments(vehiclesById) {
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
-  if (!['admin','manager'].includes(CURRENT_USER.role)) {
+  if (!['admin','manager','super_admin'].includes(CURRENT_USER.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да управлявате зачисления.</div>`;
     return;
   }

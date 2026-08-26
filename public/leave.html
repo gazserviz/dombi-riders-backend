@@ -83,7 +83,7 @@ async function loadOwnRequests() {
 async function loadTeamRequests() {
   const host = document.getElementById('teamRequestsHost');
   if (!host) return;
-  const isAdmin = CURRENT_USER.role === 'admin';
+  const isAdmin = ['admin', 'super_admin'].includes(CURRENT_USER.role);
   const url = isAdmin ? '/api/hr/leave/requests' : '/api/hr/leave/requests?scope=team';
   const { requests } = await Api.get(url);
   const { users } = await Api.get('/api/wallet/directory');
@@ -108,7 +108,7 @@ async function refreshAll() {
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
-  const isAdminOrManager = ['admin', 'manager'].includes(CURRENT_USER.role);
+  const isAdminOrManager = ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role);
 
   document.getElementById('app-content').innerHTML = `
     <div class="panel">
@@ -145,7 +145,7 @@ async function init() {
 
     ${isAdminOrManager ? `
     <div class="panel">
-      <div class="panel-head"><h2>${CURRENT_USER.role === 'admin' ? 'Всички заявки' : 'Заявки на моя екип'}</h2></div>
+      <div class="panel-head"><h2>${['admin', 'super_admin'].includes(CURRENT_USER.role) ? 'Всички заявки' : 'Заявки на моя екип'}</h2></div>
       <div id="teamRequestsHost" class="loading">Зареждане…</div>
     </div>` : ''}
   `;

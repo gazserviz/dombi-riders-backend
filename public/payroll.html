@@ -38,7 +38,7 @@ let earningsVisible = true;
 
 async function loadEntries() {
   const host = document.getElementById('entriesHost');
-  const isAdmin = ['admin', 'manager'].includes(CURRENT_USER.role);
+  const isAdmin = ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role);
   const profileId = isAdmin ? selectedProfileId : CURRENT_USER.id;
   if (!profileId) { host.innerHTML = `<p class="hint">Изберете служител.</p>`; return; }
 
@@ -348,7 +348,7 @@ async function loadPayrollStats() {
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
-  const isAdmin = ['admin', 'manager'].includes(CURRENT_USER.role);
+  const isAdmin = ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role);
 
   const { users } = await Api.get('/api/wallet/directory');
   // включва и мениджъри — мениджър може едновременно да изпълнява и шофьорска

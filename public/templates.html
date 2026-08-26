@@ -45,7 +45,7 @@ async function loadTemplate(docType) {
   const data = await Api.get(`/api/templates/${docType}`);
   const t = data.template;
   const tokens = DOC_TYPE_TOKENS[docType] || [];
-  const isAdmin = CURRENT_USER.role === 'admin';
+  const isAdmin = ['admin', 'super_admin'].includes(CURRENT_USER.role);
 
   content.innerHTML = `
     <div class="panel">
@@ -128,7 +128,7 @@ async function loadTemplate(docType) {
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
-  if (!['admin','manager'].includes(CURRENT_USER.role)) {
+  if (!['admin','manager','super_admin'].includes(CURRENT_USER.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате шаблоните.</div>`;
     return;
   }

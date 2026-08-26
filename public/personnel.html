@@ -124,7 +124,7 @@ function managerFilterOptions() {
 async function init() {
   const user = await mountShell();
   if (!user) return;
-  if (!['admin', 'manager'].includes(user.role)) {
+  if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате досиетата на служителите.</div>`;
     return;
   }
@@ -134,7 +134,7 @@ async function init() {
       Картотека на документите на всеки служител — лична карта, шофьорска книжка, трудови/граждански договори,
       договори за наем на коли и приемо-предавателни протоколи, с аларма за изтичащи документи (30 дни).
     </p>
-    ${user.role === 'admin' ? `
+    ${['admin', 'super_admin'].includes(user.role) ? `
     <div class="panel">
       <div class="panel-head"><h2>Удръжки по подразбиране (седмично, по вид договор)</h2></div>
       <p class="hint">Използват се автоматично при съставяне на нов трудов/граждански договор — винаги могат да бъдат променени ръчно за конкретен служител/седмица. Стойностите по подразбиране са 0 €, докато не бъдат зададени тук.</p>
@@ -197,7 +197,7 @@ async function init() {
       <div id="tableHost" class="loading">Зареждане…</div>
     </div>`;
 
-  if (user.role === 'admin') {
+  if (['admin', 'super_admin'].includes(user.role)) {
     try {
       const { defaults } = await Api.get('/api/hr/deduction-defaults');
       const form = document.getElementById('deductionsForm');

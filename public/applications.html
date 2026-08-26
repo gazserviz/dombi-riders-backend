@@ -167,7 +167,7 @@ function applicationsTable(apps, isAdmin) {
 async function refresh() {
   const host = document.getElementById('tableHost');
   const { applications } = await Api.get(`/api/hr/applications?status=${activeStatus}`);
-  const isAdmin = CURRENT_USER.role === 'admin';
+  const isAdmin = ['admin', 'super_admin'].includes(CURRENT_USER.role);
   host.innerHTML = applicationsTable(applications, isAdmin);
 
   host.querySelectorAll('.toggle-detail-btn').forEach(btn => {
@@ -256,7 +256,7 @@ async function refresh() {
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
-  if (!['admin', 'manager'].includes(CURRENT_USER.role)) {
+  if (!['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате кандидатурите.</div>`;
     return;
   }

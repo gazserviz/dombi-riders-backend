@@ -132,7 +132,7 @@ function renderEntries(entries) {
 }
 
 async function loadManualEntries(from, to) {
-  if (CURRENT_USER.role !== 'admin') return;
+  if (!['admin', 'super_admin'].includes(CURRENT_USER.role)) return;
   const host = document.getElementById('manualEntriesHost');
   const { entries } = await Api.get(`/api/finance/entries?from=${from}&to=${to}`);
   if (!entries.length) { host.innerHTML = `<p class="hint">Няма ръчно въведени пера за периода.</p>`; return; }
@@ -178,11 +178,11 @@ async function loadReport() {
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
-  if (!['admin', 'manager'].includes(CURRENT_USER.role)) {
+  if (!['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате счетоводния отчет.</div>`;
     return;
   }
-  const isAdmin = CURRENT_USER.role === 'admin';
+  const isAdmin = ['admin', 'super_admin'].includes(CURRENT_USER.role);
 
   document.getElementById('app-content').innerHTML = `
     <div class="toolbar no-print">

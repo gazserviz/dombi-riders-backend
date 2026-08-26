@@ -17,7 +17,7 @@ const params = new URLSearchParams(location.search);
 const vehicleId = params.get('id');
 let CURRENT_USER = null;
 let VEHICLE = null;
-const canEdit = () => ['admin','manager'].includes(CURRENT_USER.role);
+const canEdit = () => ['admin','manager','super_admin'].includes(CURRENT_USER.role);
 
 const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', hybrid_electric:'Хибрид/Електро', moto:'Мотор', scooter:'Скутер', bike:'Е-колело' };
 const FUEL_LABELS = { petrol:'Бензин', diesel:'Дизел', hybrid:'Хибрид', electric:'Електрическа', lpg:'Газ', petrol_lpg:'Бензин/Газ' };
@@ -576,7 +576,7 @@ async function init() {
       Api.get(`/api/vehicles/${vehicleId}/odometer`),
       Api.get(`/api/vehicles/${vehicleId}/inspections`),
     ];
-    if (['admin','manager'].includes(CURRENT_USER.role)) {
+    if (['admin','manager','super_admin'].includes(CURRENT_USER.role)) {
       promises.push(Api.get(`/api/vehicles/${vehicleId}/recurring-costs`));
     }
     const [{ vehicle }, { records }, { equipment }, { assignments }, { protocols }, odo, { inspections }, costsRes] = await Promise.all(promises);
@@ -585,7 +585,7 @@ async function init() {
 
     let usersById = {};
     let managerUsers = [];
-    if (['admin','manager'].includes(CURRENT_USER.role)) {
+    if (['admin','manager','super_admin'].includes(CURRENT_USER.role)) {
       try {
         const { users } = await Api.get('/api/users');
         usersById = Object.fromEntries(users.map(u=>[u.id,u.full_name]));

@@ -18,7 +18,7 @@ const STATUS_LABELS = { draft:['Чернова','badge-muted'], active:['Акт�
 async function init() {
   const user = await mountShell();
   if (!user) return;
-  if (!['admin','manager'].includes(user.role)) {
+  if (!['admin','manager','super_admin'].includes(user.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате договори.</div>`;
     return;
   }
@@ -28,7 +28,7 @@ async function init() {
   const [{ contracts }, { vehicles }] = await Promise.all([Api.get('/api/contracts'), Api.get('/api/vehicles')]);
   const vehiclesById = Object.fromEntries(vehicles.map(v => [v.id, v]));
 
-  const canEdit = ['admin','manager'].includes(user.role);
+  const canEdit = ['admin','manager','super_admin'].includes(user.role);
 
   content.innerHTML = `
     <div class="toolbar no-print"><div class="spacer"></div>

@@ -231,7 +231,7 @@ function openCompose(prefill) {
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
-  if (CURRENT_USER.role !== 'admin') {
+  if (!['admin', 'super_admin'].includes(CURRENT_USER.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате пощенската кутия.</div>`;
     return;
   }

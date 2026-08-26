@@ -78,7 +78,7 @@ function applyFilter() {
 async function init() {
   const user = await mountShell();
   if (!user) return;
-  if (!['admin','manager'].includes(user.role)) {
+  if (!['admin','manager','super_admin'].includes(user.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате картотеката на талони.</div>`;
     return;
   }

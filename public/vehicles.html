@@ -87,7 +87,7 @@ async function importVehiclesCsv(file) {
 }
 
 function renderToolbar() {
-  const canAdd = ['admin','manager'].includes(CURRENT_USER.role);
+  const canAdd = ['admin','manager','super_admin'].includes(CURRENT_USER.role);
   return `
     <div class="toolbar">
       <input type="text" id="searchInput" placeholder="Търси по номер, марка, модел…" style="min-width:240px;">
@@ -117,7 +117,7 @@ function renderTable(vehicles) {
   if (!vehicles.length) {
     return `<div class="empty-state">Няма коли, отговарящи на филтъра.</div>`;
   }
-  const canDelete = CURRENT_USER.role === 'admin';
+  const canDelete = ['admin', 'super_admin'].includes(CURRENT_USER.role);
   return `
     <div class="table-wrap">
       <table>

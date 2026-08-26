@@ -148,7 +148,7 @@ async function resetConfig() {
 async function init() {
   const user = await mountShell();
   if (!user) return;
-  if (user.role !== 'admin') {
+  if (!['admin', 'super_admin'].includes(user.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Само администратор може да редактира менюто.</div>`;
     return;
   }

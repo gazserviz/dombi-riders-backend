@@ -38,7 +38,7 @@ const STATUS_LABELS = { draft: 'Чернова', active: 'Активен', compl
 async function init() {
   const user = await mountShell();
   if (!user) return;
-  if (!['admin','manager'].includes(user.role)) {
+  if (!['admin','manager','super_admin'].includes(user.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате договори.</div>`;
     return;
   }
@@ -112,7 +112,7 @@ async function init() {
             <div><span>Пробег при предаване: </span>${contract.start_odometer_km != null ? contract.start_odometer_km + ' км' : '—'}</div>
             <div><span>Пробег при връщане: </span>${contract.end_odometer_km != null ? contract.end_odometer_km + ' км' : '—'}</div>
           </div>
-          ${user.role === 'admin' || user.role === 'manager' ? `
+          ${['admin', 'manager', 'super_admin'].includes(user.role) ? `
           <form id="odoEditForm" class="no-print" style="margin-top:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
             <div class="field" style="margin:0;"><label>Пробег при предаване (км)</label><input name="start_odometer_km" type="number" min="0" value="${contract.start_odometer_km ?? ''}"></div>
             <div class="field" style="margin:0;"><label>Пробег при връщане (км)</label><input name="end_odometer_km" type="number" min="0" value="${contract.end_odometer_km ?? ''}"></div>

@@ -214,7 +214,7 @@ async function loadApproveQueue() {
 }
 
 async function loadAdminOverview() {
-  if (CURRENT_USER.role !== 'admin') return;
+  if (!['admin', 'super_admin'].includes(CURRENT_USER.role)) return;
   const host = document.getElementById('adminOverviewHost');
   const { wallets } = await Api.get('/api/wallet/users');
   host.innerHTML = `
@@ -330,7 +330,7 @@ async function init() {
       <div id="approveQueueHost" class="loading">Зареждане…</div>
     </div>
 
-    ${CURRENT_USER.role === 'admin' ? `
+    ${['admin', 'super_admin'].includes(CURRENT_USER.role) ? `
     <div class="grid-2">
       <div class="panel">
         <div class="panel-head"><h2>Всички портфейли</h2></div>
