@@ -25,11 +25,54 @@ const TYPE_ICONS = {
   vehicle: '🚗', service: '🔧', recurring_cost: '💳', assignment: '🧾',
   protocol: '📋', contract: '📄', payment: '💰',
 };
+const TYPE_LABELS = {
+  vehicle: 'Коли', service: 'Сервиз', recurring_cost: 'Периодичен разход',
+  assignment: 'Зачисления', protocol: 'Протоколи', contract: 'Договори', payment: 'Плащания',
+};
+
+let ALL_USERS = [];
+
+function renderRows(items) {
+  return items.length ? items.map(it => `
+    <div class="activity-row">
+      <div class="ic">${TYPE_ICONS[it.type] || '•'}</div>
+      <div class="main">
+        <a href="${it.link}">${it.text}</a>
+        <div class="meta">${fmtDateTime(it.at)}${it.actor ? ' · ' + it.actor : ''}${it.city ? ' · ' + it.city : ''}</div>
+      </div>
+    </div>`).join('') : `<div class="empty-state">Няма регистрирана активност за избраните филтри.</div>`;
+}
+
+async function loadActivity() {
+  const listHost = document.getElementById('activityListHost');
+  const headHost = document.getElementById('activityHead');
+  listHost.innerHTML = `<div class="loading">Зареждане…</div>`;
+
+  const params = new URLSearchParams();
+  const from = document.getElementById('fromInput').value;
+  const to = document.getElementById('toInput').value;
+  const actorId = document.getElementById('employeeSelect').value;
+  const city = document.getElementById('citySelect').value;
+  const type = document.getElementById('typeSelect').value;
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (actorId) params.set('actor_id', actorId);
+  if (city) params.set('city', city);
+  if (type) params.set('type', type);
+
+  try {
+    const { items } = await Api.get(`/api/activity?${params.toString()}`);
+    headHost.textContent = `Последни ${items.length} действия в системата`;
+    listHost.innerHTML = renderRows(items);
+  } catch (err) {
+    listHost.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
 
 async function init() {
   const user = await mountShell();
   if (!user) return;
-  if (user.role !== 'admin') {
+  if (!['admin', 'super_admin'].includes(user.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате дневника на активността.</div>`;
     return;
   }
@@ -37,24 +80,67 @@ async function init() {
   content.innerHTML = `<div class="loading">Зареждане…</div>`;
 
   try {
-    const { items } = await Api.get('/api/activity');
-    content.innerHTML = `
-      <div class="panel">
-        <div class="panel-head"><h2>Последни ${items.length} действия в системата</h2></div>
-        <div>
-          ${items.length ? items.map(it => `
-            <div class="activity-row">
-              <div class="ic">${TYPE_ICONS[it.type] || '•'}</div>
-              <div class="main">
-                <a href="${it.link}">${it.text}</a>
-                <div class="meta">${fmtDateTime(it.at)}${it.actor ? ' · ' + it.actor : ''}</div>
-              </div>
-            </div>`).join('') : `<div class="empty-state">Няма регистрирана активност.</div>`}
-        </div>
-      </div>`;
+    const { users } = await Api.get('/api/users');
+    ALL_USERS = users;
   } catch (err) {
-    content.innerHTML = `<div class="error-box show">${err.message}</div>`;
+    ALL_USERS = [];
   }
+
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>Филтри</h2></div>
+      <div class="toolbar">
+        <div class="field"><label>От</label><input type="date" id="fromInput"></div>
+        <div class="field"><label>До</label><input type="date" id="toInput"></div>
+        <div class="field"><label>Служител</label>
+          <select id="employeeSelect">
+            <option value="">— всички —</option>
+            ${ALL_USERS.map(u => `<option value="${u.id}">${escapeHtml(u.full_name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Град</label>
+          <select id="citySelect">${cityOptions('').replace('— няма —', '— всички —')}</select>
+        </div>
+        <div class="field"><label>Дейност</label>
+          <select id="typeSelect">
+            <option value="">— всички —</option>
+            ${Object.keys(TYPE_ICONS).map(t => `<option value="${t}">${TYPE_ICONS[t]} ${TYPE_LABELS[t] || t}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="periodPickerHost"></div>
+      <div class="toolbar" style="margin-top:8px;">
+        <button type="button" class="btn btn-primary btn-sm" id="applyFilterBtn">Приложи филтри</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="clearFilterBtn">Изчисти</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2 id="activityHead">Дневник на активността</h2></div>
+      <div id="activityListHost"></div>
+    </div>`;
+
+  mountPeriodPicker(
+    document.getElementById('periodPickerHost'),
+    document.getElementById('fromInput'),
+    document.getElementById('toInput'),
+    { useMonthPreset: true, weekPresetMode: 'range', wireWeekEnd: false, onApply: () => loadActivity() },
+  );
+
+  document.getElementById('applyFilterBtn').addEventListener('click', loadActivity);
+  document.getElementById('employeeSelect').addEventListener('change', loadActivity);
+  document.getElementById('citySelect').addEventListener('change', loadActivity);
+  document.getElementById('typeSelect').addEventListener('change', loadActivity);
+  document.getElementById('clearFilterBtn').addEventListener('click', () => {
+    document.getElementById('fromInput').value = '';
+    document.getElementById('toInput').value = '';
+    document.getElementById('employeeSelect').value = '';
+    document.getElementById('citySelect').value = '';
+    document.getElementById('typeSelect').value = '';
+    loadActivity();
+  });
+
+  await loadActivity();
 }
 init();
 </script>
