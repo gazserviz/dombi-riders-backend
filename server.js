@@ -315,7 +315,12 @@ function serveStatic(req, res, urlPath) {
   if (urlPath.startsWith('/uploads/')) {
     filePath = path.join(UPLOADS_DIR, urlPath.replace('/uploads/', ''));
   } else {
-    filePath = path.join(PUBLIC_DIR, urlPath === '/' ? 'login.html' : urlPath);
+    // "/" вече показва публичния маркетинг сайт (index.html), не login.html —
+    // за да може dombi.bg (custom domain, сочещ насам) да показва началната
+    // страница, а не служебния login. Служителите влизат директно на
+    // /login.html (връзката не се е променила, само голото "/" вече значи
+    // друго).
+    filePath = path.join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
   }
   const resolved = path.normalize(filePath);
   if (!resolved.startsWith(PUBLIC_DIR) && !resolved.startsWith(UPLOADS_DIR)) {
@@ -372,6 +377,11 @@ const PUBLIC_CORS_PATHS = new Set([
   // витрината с коли на dombi.bg (Render Static Site, отделен произход) чете
   // само тук — публично, без сесия, без регистрационни номера (виж db.js)
   '/api/public/fleet-showcase',
+  // съдържанието на началната страница (текстове, редактирани от админ панела
+  // „Начална страница (сайт)“) — публичният сайт го чете без сесия
+  '/api/site-content',
+  // формата „Заяви наем на кола“ на публичния сайт — POST без сесия
+  '/api/rent-requests',
 ]);
 
 async function handleApi(req, res, pathname, query) {
@@ -389,6 +399,63 @@ async function handleApi(req, res, pathname, query) {
     // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (публично, без сесия) ----------------
     if (pathname === '/api/public/fleet-showcase' && req.method === 'GET') {
       return sendJson(res, 200, { cars: db.getPublicFleetShowcase() });
+    }
+
+    // ---- СЪДЪРЖАНИЕ НА НАЧАЛНАТА СТРАНИЦА (dombi.bg) ----------------------
+    // GET е публичен (без сесия, CORS) — четe го маркетинг сайтът. PUT е само
+    // за админ/мениджър — вика се от /site-editor.html (същия произход).
+    if (pathname === '/api/site-content' && req.method === 'GET') {
+      return sendJson(res, 200, { content: db.getSiteContent() });
+    }
+    if (pathname === '/api/site-content' && req.method === 'PUT') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 200, { content: db.updateSiteContent(body) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // ---- ЗАПИТВАНИЯ ЗА НАЕМ (форма „Заяви наем на кола“, dombi.bg) --------
+    if (pathname === '/api/rent-requests' && req.method === 'POST') {
+      if (rateLimited(`rent:${clientIp(req)}`, { max: 8, windowMs: 30 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много запитвания от този адрес. Опитайте по-късно.' });
+      }
+      const body = await readJsonBody(req);
+      if (!body.name || !body.phone) {
+        return sendJson(res, 400, { error: 'Липсват задължителни полета (име, телефон)' });
+      }
+      const VALID_RENT_PURPOSE = new Set(['dombi', 'other-work', 'personal']);
+      const rec = db.createRentRequest({
+        name: escapeHtml(String(body.name).slice(0, 200)),
+        phone: escapeHtml(String(body.phone).slice(0, 30)),
+        email: body.email ? escapeHtml(String(body.email).slice(0, 200)) : null,
+        city: body.city ? escapeHtml(String(body.city).slice(0, 100)) : null,
+        car_id: body.car_id ? escapeHtml(String(body.car_id).slice(0, 80)) : null,
+        car_name: body.car_name ? escapeHtml(String(body.car_name).slice(0, 120)) : null,
+        purpose: VALID_RENT_PURPOSE.has(body.purpose) ? body.purpose : null,
+        rent_period: body.rent_period ? escapeHtml(String(body.rent_period).slice(0, 120)) : null,
+        message: body.message ? escapeHtml(String(body.message).slice(0, 1000)) : null,
+      });
+      // известяваме офиса по имейл — best-effort: заявката се записва и връща
+      // успешно дори ако пощата не е конфигурирана/се провали
+      try {
+        await mail.sendMail({
+          to: 'office@dombi.bg',
+          subject: 'Ново запитване за наем на кола — dombi.bg',
+          text: `Ново запитване за наем на кола:\n\nИме: ${rec.name}\nТелефон: ${rec.phone}\nИмейл: ${rec.email || '-'}\nГрад: ${rec.city || '-'}\nКола: ${rec.car_name || '-'}\nЦел: ${rec.purpose || '-'}\nПериод: ${rec.rent_period || '-'}\nСъобщение: ${rec.message || '-'}\n\nВсички запитвания: https://dombi-riders-backend.onrender.com/site-editor.html`,
+        });
+      } catch (err) {
+        console.error('Грешка при изпращане на имейл известие за запитване за наем:', err.message);
+      }
+      return sendJson(res, 201, { request: { id: rec.id } });
+    }
+    if (pathname === '/api/rent-requests' && req.method === 'GET') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      return sendJson(res, 200, { requests: db.listRentRequests() });
     }
 
     // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (админ панел) -------------------------
