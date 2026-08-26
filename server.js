@@ -217,7 +217,9 @@ function generateTempPassword(fullName) {
 }
 
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+const ALLOWED_TALON_MIME = new Set([...ALLOWED_IMAGE_MIME, 'application/pdf']);
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024; // 12MB декодирано
+const MAX_TALON_BYTES = 20 * 1024 * 1024; // 20MB декодирано (PDF сканове са по-обемисти от снимки)
 
 function saveBase64Image(dataUrl, prefix) {
   const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUrl || '');
@@ -228,6 +230,22 @@ function saveBase64Image(dataUrl, prefix) {
   const buffer = Buffer.from(match[2], 'base64');
   if (!buffer.length) throw new Error('Празен файл');
   if (buffer.length > MAX_IMAGE_BYTES) throw new Error('Снимката е твърде голяма (макс. 12MB)');
+  const filename = `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+  return { url: `/uploads/${filename}`, mimeType, base64: match[2] };
+}
+
+// като saveBase64Image, но за талони — освен снимка приема и PDF файл
+// (сканирано свидетелство за регистрация), който AI-то може да прочете директно.
+function saveBase64Talon(dataUrl, prefix) {
+  const match = /^data:([\w.+-]+\/[\w.+-]+);base64,(.+)$/.exec(dataUrl || '');
+  if (!match) throw new Error('Невалиден формат на файла');
+  const mimeType = match[1].toLowerCase();
+  if (!ALLOWED_TALON_MIME.has(mimeType)) throw new Error('Неподдържан тип файл — приемат се снимки (JPEG/PNG/WEBP) или PDF');
+  const ext = mimeType === 'application/pdf' ? 'pdf' : mimeType.split('/')[1].replace('jpeg', 'jpg');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length) throw new Error('Празен файл');
+  if (buffer.length > MAX_TALON_BYTES) throw new Error('Файлът е твърде голям (макс. 20MB)');
   const filename = `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
   fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
   return { url: `/uploads/${filename}`, mimeType, base64: match[2] };
@@ -796,7 +814,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
       const body = await readJsonBody(req);
-      const { mimeType, base64 } = saveBase64Image(body.photo, 'talon-preview');
+      const { mimeType, base64 } = saveBase64Talon(body.photo, 'talon-preview');
       try {
         const extracted = await callClaudeVision(base64, mimeType);
         return sendJson(res, 200, { extracted });
@@ -817,7 +835,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
       const body = await readJsonBody(req);
-      const { url, mimeType, base64 } = saveBase64Image(body.photo, 'talon');
+      const { url, mimeType, base64 } = saveBase64Talon(body.photo, 'talon');
       db.updateVehicle(talonMatch[1], { talon_photo_url: url });
       try {
         const extracted = await callClaudeVision(base64, mimeType);
