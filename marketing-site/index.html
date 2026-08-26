@@ -318,6 +318,11 @@
   .contact-line span,.contact-line a{font-size:.98rem;font-weight:700;color:#fff;}
   .map-embed{border-radius:20px;overflow:hidden;border:1px solid var(--panel-line);min-height:300px;filter:grayscale(.3) invert(.92) contrast(.9);}
   .map-embed iframe{width:100%;height:100%;min-height:300px;border:0;display:block;}
+  .map-consent{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;min-height:300px;padding:24px;text-align:center;background:var(--panel);}
+  .map-consent p{margin:0;color:var(--muted);font-size:.85rem;max-width:280px;}
+  .map-load-btn{background:var(--green);color:#07120a;border:0;border-radius:999px;padding:10px 22px;font-weight:700;font-size:.85rem;cursor:pointer;font-family:inherit;}
+  .map-load-btn:hover{filter:brightness(1.08);}
+  .map-consent-addr{color:var(--text);font-size:.8rem;opacity:.85;}
   .todo-flag{display:inline-block;background:#3a2c00;color:#ffcf4d;font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:6px;margin-left:8px;vertical-align:middle;text-transform:uppercase;}
 
   /* ===== FOOTER ===== */
@@ -809,9 +814,34 @@
         <div class="contact-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg><div><b>Адрес на офиса</b><span id="sc-contact-address">гр. София, ул. Павел Красов 22</span></div></div>
         <div class="contact-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><div><b>Работно време на офиса</b><span id="sc-contact-hours">Пон–Пет, 09:00–18:00</span></div></div>
       </div>
-      <div class="map-embed">
-        <iframe src="https://www.google.com/maps?q=%D1%83%D0%BB.%20%D0%9F%D0%B0%D0%B2%D0%B5%D0%BB%20%D0%9A%D1%80%D0%B0%D1%81%D0%BE%D0%B2%2022%2C%20%D0%A1%D0%BE%D1%84%D0%B8%D1%8F&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+      <div class="map-embed" id="mapEmbed" data-loaded="0">
+        <div class="map-consent" id="mapConsent">
+          <p>Картата на Google Maps се зарежда само след Ваше съгласие.</p>
+          <button type="button" id="mapLoadBtn" class="map-load-btn">Зареди картата</button>
+          <span class="map-consent-addr">гр. София, ул. Павел Красов 22</span>
+        </div>
       </div>
+      <script>
+        (function(){
+          var btn = document.getElementById('mapLoadBtn');
+          if (!btn) return;
+          btn.addEventListener('click', function(){
+            var wrap = document.getElementById('mapEmbed');
+            if (!wrap || wrap.getAttribute('data-loaded') === '1') return;
+            wrap.setAttribute('data-loaded', '1');
+            var iframe = document.createElement('iframe');
+            iframe.src = 'https://www.google.com/maps?q=%D1%83%D0%BB.%20%D0%9F%D0%B0%D0%B2%D0%B5%D0%BB%20%D0%9A%D1%80%D0%B0%D1%81%D0%BE%D0%B2%2022%2C%20%D0%A1%D0%BE%D1%84%D0%B8%D1%8F&output=embed';
+            iframe.loading = 'lazy';
+            iframe.referrerPolicy = 'no-referrer-when-downgrade';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.minHeight = '300px';
+            iframe.style.border = '0';
+            wrap.innerHTML = '';
+            wrap.appendChild(iframe);
+          });
+        })();
+      </script>
     </div>
   </div>
 </section>
