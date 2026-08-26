@@ -184,6 +184,33 @@ function requireRole(req, res, roles) {
   return user;
 }
 
+// заменя requireRole() навсякъде, където достъпът трябва да е конфигурируем
+// от супер администратора (виж lib/permissions-catalog.js за каталога на
+// модули/действия и public/permissions.html за самата настройка). super_admin
+// винаги минава — виж db.hasPermission().
+function requirePermission(req, res, moduleKey, actionKey) {
+  const user = requireAuth(req, res);
+  if (!user) return null;
+  if (!db.hasPermission(user, moduleKey, actionKey)) {
+    sendJson(res, 403, { error: 'Нямате права за това действие' });
+    return null;
+  }
+  return user;
+}
+
+// само за конфигурацията на самата система за права/роли — НЕ минава през
+// матрицата (не може супер администраторският контрол да бъде изключен през
+// собствената си настройка).
+function requireSuperAdmin(req, res) {
+  const user = requireAuth(req, res);
+  if (!user) return null;
+  if (user.role !== 'super_admin') {
+    sendJson(res, 403, { error: 'Само супер администратор може да прави това' });
+    return null;
+  }
+  return user;
+}
+
 // достъп до кандидатура: админ вижда/оправлява всички; мениджър — само
 // изрично назначените му от админ (виж db.assignApplicationManager). Без
 // назначение (manager_id: null) кандидатурата е видима само за админ —
@@ -426,7 +453,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { content: db.getSiteContent() });
     }
     if (pathname === '/api/site-content' && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       try {
@@ -471,7 +498,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 201, { request: { id: rec.id } });
     }
     if (pathname === '/api/rent-requests' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'view');
       if (!user) return;
       return sendJson(res, 200, { requests: db.listRentRequests() });
     }
@@ -480,7 +507,7 @@ async function handleApi(req, res, pathname, query) {
     // Политиката за поверителност (viж /privacy.html, т. 8.2 и т. 10).
     const rentRequestMatch = pathname.match(/^\/api\/rent-requests\/([\w-]+)$/);
     if (rentRequestMatch && req.method === 'DELETE') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'manage');
       if (!user) return;
       try {
         db.deleteRentRequest(rentRequestMatch[1]);
@@ -492,12 +519,12 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (админ панел) -------------------------
     if (pathname === '/api/admin/fleet-showcase' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'view');
       if (!user) return;
       return sendJson(res, 200, { items: db.listFleetShowcase() });
     }
     if (pathname === '/api/admin/fleet-showcase' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       try {
@@ -507,7 +534,7 @@ async function handleApi(req, res, pathname, query) {
       }
     }
     if (pathname === '/api/admin/fleet-showcase/reorder' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!Array.isArray(body.ids)) return sendJson(res, 400, { error: 'Липсва ids (масив)' });
@@ -515,7 +542,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const fleetShowcaseItemMatch = pathname.match(/^\/api\/admin\/fleet-showcase\/([\w-]+)$/);
     if (fleetShowcaseItemMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       try {
@@ -525,7 +552,7 @@ async function handleApi(req, res, pathname, query) {
       }
     }
     if (fleetShowcaseItemMatch && req.method === 'DELETE') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'manage');
       if (!user) return;
       try {
         db.deleteFleetShowcaseItem(fleetShowcaseItemMatch[1]);
@@ -536,7 +563,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const fleetShowcaseImageMatch = pathname.match(/^\/api\/admin\/fleet-showcase\/([\w-]+)\/image$/);
     if (fleetShowcaseImageMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'site_editor', 'manage');
       if (!user) return;
       const item = db.getFleetShowcaseItem(fleetShowcaseImageMatch[1]);
       if (!item) return sendJson(res, 404, { error: 'Записът от витрината не е намерен' });
@@ -580,7 +607,27 @@ async function handleApi(req, res, pathname, query) {
 
     if (pathname === '/api/me' && req.method === 'GET') {
       const user = getCurrentUser(req);
-      return sendJson(res, 200, { user });
+      // nav_access: кои страници от менюто вижда точно ТОЗИ потребител според
+      // конфигурируемата от супер администратора матрица (виж
+      // lib/db.js:getNavAccessMap) — ползва се от mountShell() в app.js както
+      // за да построи sidebar-а, така и за да заключи самата страница, ако
+      // потребителят стигне до нея по директен линк без да я вижда в менюто.
+      const nav_access = user ? db.getNavAccessMap(user) : {};
+      return sendJson(res, 200, { user, nav_access });
+    }
+
+    // ---- ПРАВА И ДОСТЪПИ (само супер администратор) ---------------------
+    if (pathname === '/api/permissions-matrix' && req.method === 'GET') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      return sendJson(res, 200, { matrix: db.getPermissionsMatrix(), catalog: db.getPermissionsCatalog() });
+    }
+    if (pathname === '/api/permissions-matrix' && req.method === 'PUT') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const matrix = db.savePermissionsMatrix(body);
+      return sendJson(res, 200, { matrix });
     }
 
     // ---- НАСТРОЙКИ НА МЕНЮТО (навигация) -------------------------------
@@ -593,7 +640,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { config: db.getNavConfig() });
     }
     if (pathname === '/api/nav-config' && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'nav_settings', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const groups = body.groups;
@@ -615,7 +662,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { config: db.setNavConfig({ groups: cleanGroups }) });
     }
     if (pathname === '/api/nav-config/reset' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'nav_settings', 'manage');
       if (!user) return;
       db.resetNavConfig();
       return sendJson(res, 200, { config: null });
@@ -623,14 +670,22 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- USERS (admin) -----------------------------------------------
     if (pathname === '/api/users' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'users', 'view');
       if (!user) return;
       return sendJson(res, 200, { users: db.listUsers() });
     }
     if (pathname === '/api/users' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'users', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
+      // само супер администратор може да създава друг супер администратор —
+      // иначе обикновен админ би могъл сам да си "издаде" най-високо ниво
+      if (body.role === 'super_admin' && user.role !== 'super_admin') {
+        return sendJson(res, 403, { error: 'Само супер администратор може да задава роля "Супер администратор"' });
+      }
+      if (body.role && !db.ROLES.includes(body.role)) {
+        return sendJson(res, 400, { error: 'Невалидна роля' });
+      }
       // ако админ не въведе парола, генерираме автоматично по шаблон "име123"
       // (виж generateTempPassword) — връщаме я еднократно в отговора, за да
       // може админът да я копира/сподели със служителя
@@ -645,9 +700,32 @@ async function handleApi(req, res, pathname, query) {
     }
     const userMatch = pathname.match(/^\/api\/users\/([\w-]+)$/);
     if (userMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'users', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
+      const target = db.findUserById(userMatch[1]);
+      if (!target) return sendJson(res, 404, { error: 'Потребителят не е намерен' });
+      // защита срещу ескалация/саботаж на супер администраторското ниво:
+      //  - само супер администратор може да ЗАДАВА ролята super_admin,
+      //  - само супер администратор може да РЕДАКТИРА вече съществуващ
+      //    супер администратор (роля, статус, права) — обикновен админ не
+      //    може да го спре/понижи/размени правата му,
+      //  - не може да се остане без нито един супер администратор в системата.
+      if (body.role === 'super_admin' && user.role !== 'super_admin') {
+        return sendJson(res, 403, { error: 'Само супер администратор може да задава роля "Супер администратор"' });
+      }
+      if (body.role && !db.ROLES.includes(body.role)) {
+        return sendJson(res, 400, { error: 'Невалидна роля' });
+      }
+      if (target.role === 'super_admin' && user.role !== 'super_admin') {
+        return sendJson(res, 403, { error: 'Само супер администратор може да редактира супер администратор' });
+      }
+      const removesLastSuperAdmin = target.role === 'super_admin'
+        && ((body.role && body.role !== 'super_admin') || (body.status && body.status !== 'active'))
+        && db.countSuperAdmins(db.readDb()) <= 1;
+      if (removesLastSuperAdmin) {
+        return sendJson(res, 400, { error: 'Не може да останете без нито един супер администратор в системата' });
+      }
       const updated = db.updateUser(userMatch[1], body);
       return sendJson(res, 200, { user: updated });
     }
@@ -656,10 +734,13 @@ async function handleApi(req, res, pathname, query) {
     // шаблон "име123"; винаги маркира профила да поиска смяна при вход.
     const userResetPasswordMatch = pathname.match(/^\/api\/users\/([\w-]+)\/reset-password$/);
     if (userResetPasswordMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'users', 'manage');
       if (!user) return;
       const target = db.findUserById(userResetPasswordMatch[1]);
       if (!target) return sendJson(res, 404, { error: 'Потребителят не е намерен' });
+      if (target.role === 'super_admin' && user.role !== 'super_admin') {
+        return sendJson(res, 403, { error: 'Само супер администратор може да нулира паролата на супер администратор' });
+      }
       const body = await readJsonBody(req);
       const newPassword = (body.password && String(body.password).length >= 4)
         ? body.password
@@ -689,7 +770,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { vehicles: db.listVehicles() });
     }
     if (pathname === '/api/vehicles' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const vehicle = db.createVehicle({ ...body, created_by: user.id });
@@ -704,7 +785,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { vehicle });
     }
     if (vehicleMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const vehicle = db.updateVehicle(vehicleMatch[1], body);
@@ -712,7 +793,7 @@ async function handleApi(req, res, pathname, query) {
     }
     if (vehicleMatch && req.method === 'DELETE') {
       // само admin — трайно изтриване на кола (напр. чистене на демо данни)
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'vehicles', 'delete');
       if (!user) return;
       try {
         const vehicle = db.deleteVehicle(vehicleMatch[1]);
@@ -733,7 +814,7 @@ async function handleApi(req, res, pathname, query) {
       });
     }
     if (odoMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (body.km == null || isNaN(Number(body.km))) {
@@ -750,7 +831,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { equipment: db.listEquipment(eqListMatch[1]) });
     }
     if (eqListMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const item = db.addEquipment(eqListMatch[1], body);
@@ -764,7 +845,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { records: db.listServiceRecords(srListMatch[1]) });
     }
     if (srListMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.addServiceRecord(srListMatch[1], { ...body, created_by: user.id });
@@ -779,7 +860,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { inspections: db.listInspections(inspListMatch[1]) });
     }
     if (inspListMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.inspector_id) {
@@ -796,12 +877,12 @@ async function handleApi(req, res, pathname, query) {
     // recurring costs
     const rcListMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/recurring-costs$/);
     if (rcListMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'view');
       if (!user) return;
       return sendJson(res, 200, { costs: db.listRecurringCosts(rcListMatch[1]) });
     }
     if (rcListMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.addRecurringCost(rcListMatch[1], body);
@@ -811,7 +892,7 @@ async function handleApi(req, res, pathname, query) {
     // talon photo -> AI extraction, ПРЕДИ да съществува запис за колата
     // (използва се от формата "Нова кола", където vehicle_id още няма)
     if (pathname === '/api/talon-scan-preview' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const { mimeType, base64 } = saveBase64Talon(body.photo, 'talon-preview');
@@ -832,7 +913,7 @@ async function handleApi(req, res, pathname, query) {
     // talon photo -> AI extraction
     const talonMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/talon-scan$/);
     if (talonMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const { url, mimeType, base64 } = saveBase64Talon(body.photo, 'talon');
@@ -856,7 +937,7 @@ async function handleApi(req, res, pathname, query) {
 
     const talonConfirmMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/talon-confirm$/);
     if (talonConfirmMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const vehicle = db.updateVehicle(talonConfirmMatch[1], {
@@ -873,7 +954,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { assignments: db.listAssignments({ vehicleId: query.vehicle_id, driverId: query.driver_id }) });
     }
     if (pathname === '/api/assignments' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'assignments', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       // Протоколът и договорът за наем са ЗАДЪЛЖИТЕЛНИ при всяко зачисляване
@@ -889,7 +970,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const endAssignMatch = pathname.match(/^\/api\/assignments\/([\w-]+)\/end$/);
     if (endAssignMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'assignments', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.endAssignment(endAssignMatch[1], body);
@@ -900,7 +981,7 @@ async function handleApi(req, res, pathname, query) {
     // съставяне на договор за наем и приемо-предавателен протокол (готови
     // за разписване от esign панела, вместо да се съставят на отделни стъпки)
     if (pathname === '/api/assignments/one-click' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'assignments', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.vehicle_id || !body.driver_id) {
@@ -924,7 +1005,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { protocols: db.listProtocols({ vehicleId: query.vehicle_id }) });
     }
     if (pathname === '/api/protocols' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'protocols', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const photos = (body.photos || []).map((dataUrl, i) => {
@@ -942,7 +1023,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { protocol: rec });
     }
     if (protocolMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'protocols', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.updateProtocol(protocolMatch[1], body);
@@ -961,12 +1042,12 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- RENTAL CONTRACTS ---------------------------------------------
     if (pathname === '/api/contracts' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'contracts', 'view');
       if (!user) return;
       return sendJson(res, 200, { contracts: db.listContracts({ vehicleId: query.vehicle_id }) });
     }
     if (pathname === '/api/contracts' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'contracts', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.createContract({ ...body, created_by: user.id });
@@ -974,14 +1055,14 @@ async function handleApi(req, res, pathname, query) {
     }
     const contractMatch = pathname.match(/^\/api\/contracts\/([\w-]+)$/);
     if (contractMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'contracts', 'view');
       if (!user) return;
       const rec = db.getContract(contractMatch[1]);
       if (!rec) return sendJson(res, 404, { error: 'Не е намерен' });
       return sendJson(res, 200, { contract: rec });
     }
     if (contractMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'contracts', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.updateContract(contractMatch[1], body);
@@ -991,7 +1072,7 @@ async function handleApi(req, res, pathname, query) {
     // изтегляне на договор като .docx / .pdf (вградена бланка или качен шаблон)
     const contractDocMatch = pathname.match(/^\/api\/contracts\/([\w-]+)\/(docx|pdf)$/);
     if (contractDocMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'contracts', 'view');
       if (!user) return;
       const rec = db.getContract(contractDocMatch[1]);
       if (!rec) return sendJson(res, 404, { error: 'Не е намерен' });
@@ -1001,12 +1082,12 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- PAYMENTS (приходи/разходи) -----------------------------------
     if (pathname === '/api/payments' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'contracts', 'view');
       if (!user) return;
       return sendJson(res, 200, { payments: db.listPayments({ vehicleId: query.vehicle_id }) });
     }
     if (pathname === '/api/payments' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'contracts', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.addPayment(body);
@@ -1040,7 +1121,7 @@ async function handleApi(req, res, pathname, query) {
 
     // преглед на всички портфейли (само админ/мениджър) — за общ преглед
     if (pathname === '/api/wallet/users' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'wallet', 'view');
       if (!user) return;
       const wallets = db.listUsers().map(u => ({
         user_id: u.id, full_name: u.full_name, role: u.role,
@@ -1128,7 +1209,7 @@ async function handleApi(req, res, pathname, query) {
 
     // ръчна корекция на баланс (само админ) — депозит/тегление/корекция
     if (pathname === '/api/wallet/adjustments' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'wallet', 'adjust');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.user_id || body.amount == null || isNaN(Number(body.amount))) {
@@ -1143,18 +1224,18 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- СЧЕТОВОДСТВО (общ финансов отчет + ръчна счетоводна книга) -------
     if (pathname === '/api/finance/report' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'finance', 'view');
       if (!user) return;
       const report = db.getCompanyFinanceReport({ from: query.from, to: query.to });
       return sendJson(res, 200, report);
     }
     if (pathname === '/api/finance/entries' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'finance', 'view');
       if (!user) return;
       return sendJson(res, 200, { entries: db.listFinanceEntries({ from: query.from, to: query.to }) });
     }
     if (pathname === '/api/finance/entries' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'finance', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       try {
@@ -1171,7 +1252,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const financeEntryMatch = pathname.match(/^\/api\/finance\/entries\/([\w-]+)$/);
     if (financeEntryMatch && req.method === 'DELETE') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'finance', 'manage');
       if (!user) return;
       try {
         db.deleteFinanceEntry(financeEntryMatch[1]);
@@ -1183,12 +1264,12 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- БЕКЪПИ (автоматични резервни копия на базата, виж lib/backup.js) -
     if (pathname === '/api/backups' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'backups', 'view');
       if (!user) return;
       return sendJson(res, 200, { backups: backup.listBackups(), dataDir: backup.DATA_DIR });
     }
     if (pathname === '/api/backups/run' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'backups', 'manage');
       if (!user) return;
       try {
         const filename = backup.writeBackup(db.readDb(), { reason: 'manual' });
@@ -1199,7 +1280,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const backupDownloadMatch = pathname.match(/^\/api\/backups\/([\w.-]+)\/download$/);
     if (backupDownloadMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'backups', 'view');
       if (!user) return;
       try {
         const raw = backup.readBackupFile(decodeURIComponent(backupDownloadMatch[1]));
@@ -1214,7 +1295,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const backupRestoreMatch = pathname.match(/^\/api\/backups\/([\w.-]+)\/restore$/);
     if (backupRestoreMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'backups', 'manage');
       if (!user) return;
       try {
         const raw = backup.readBackupFile(decodeURIComponent(backupRestoreMatch[1]));
@@ -1231,7 +1312,7 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- ПОЩЕНСКА КУТИЯ (office@dombi.bg през Zoho Mail, виж lib/mail.js) -
     if (pathname === '/api/mail/inbox' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'mail', 'view');
       if (!user) return;
       try {
         const limit = Math.min(Math.max(parseInt(query.limit, 10) || 30, 1), 100);
@@ -1242,7 +1323,7 @@ async function handleApi(req, res, pathname, query) {
       }
     }
     if (pathname === '/api/mail/sent' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'mail', 'view');
       if (!user) return;
       try {
         const limit = Math.min(Math.max(parseInt(query.limit, 10) || 30, 1), 100);
@@ -1254,7 +1335,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const mailMessageMatch = pathname.match(/^\/api\/mail\/message\/([\w-]+)$/);
     if (mailMessageMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'mail', 'view');
       if (!user) return;
       try {
         const folder = query.folder || 'INBOX';
@@ -1267,7 +1348,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const mailAttachmentMatch = pathname.match(/^\/api\/mail\/message\/([\w-]+)\/attachment\/(\d+)$/);
     if (mailAttachmentMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'mail', 'view');
       if (!user) return;
       try {
         const folder = query.folder || 'INBOX';
@@ -1283,7 +1364,7 @@ async function handleApi(req, res, pathname, query) {
       }
     }
     if (pathname === '/api/mail/send' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'mail', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.to || !body.subject || !body.text) {
@@ -1325,7 +1406,7 @@ async function handleApi(req, res, pathname, query) {
     // граждански договори, договори за наем и протоколи, на едно място +
     // изтичащи документи (виж getEmployeeDocumentAlerts, обединено в /api/dashboard).
     if (pathname === '/api/hr/personnel' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'view');
       if (!user) return;
       const alerts = db.getEmployeeDocumentAlerts();
       const nextAlertByProfile = {};
@@ -1373,7 +1454,7 @@ async function handleApi(req, res, pathname, query) {
       }
     }
     if (personnelMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const allowed = ['egn', 'address', 'city', 'manager_id', 'full_name', 'phone', 'status',
@@ -1395,7 +1476,7 @@ async function handleApi(req, res, pathname, query) {
     }
     // трайно изтриване на служител (само admin) — блокирано, ако има свързана история
     if (personnelMatch && req.method === 'DELETE') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'hr_personnel', 'delete');
       if (!user) return;
       if (personnelMatch[1] === user.id) {
         return sendJson(res, 400, { error: 'Не можете да изтриете собствения си профил.' });
@@ -1410,7 +1491,7 @@ async function handleApi(req, res, pathname, query) {
     // черен списък (само admin)
     const personnelBlacklistMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/blacklist$/);
     if (personnelBlacklistMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'hr_personnel', 'delete');
       if (!user) return;
       const body = await readJsonBody(req);
       try {
@@ -1426,7 +1507,7 @@ async function handleApi(req, res, pathname, query) {
     // ЛК/книжка/ЕГН/адрес/телефон — без вход в системата (виж и линка за кандидатури по-долу)
     const personnelSendLinkMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/send-link$/);
     if (personnelSendLinkMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       try {
         const profile = db.generatePersonnelLink(personnelSendLinkMatch[1]);
@@ -1443,7 +1524,7 @@ async function handleApi(req, res, pathname, query) {
     // където кандидатите вече качват лице/гръб поотделно при кандидатстване)
     const personnelIdPhotoMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/id-card-photo$/);
     if (personnelIdPhotoMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'idcard');
@@ -1453,7 +1534,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const personnelLicensePhotoMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/license-photo$/);
     if (personnelLicensePhotoMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'license');
@@ -1463,7 +1544,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const personnelSelfiePhotoMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)\/selfie-photo$/);
     if (personnelSelfiePhotoMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'selfie');
@@ -1473,12 +1554,12 @@ async function handleApi(req, res, pathname, query) {
 
     // трудови / граждански договори (седмични удръжки по подразбиране, ръчно променими)
     if (pathname === '/api/hr/deduction-defaults' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'payroll', 'view');
       if (!user) return;
       return sendJson(res, 200, { defaults: db.getDeductionDefaults() });
     }
     if (pathname === '/api/hr/deduction-defaults' && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'payroll', 'finalize');
       if (!user) return;
       const body = await readJsonBody(req);
       return sendJson(res, 200, { defaults: db.setDeductionDefaults(body) });
@@ -1496,7 +1577,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { contracts: db.listEmploymentContracts(targetId) });
     }
     if (employmentContractsMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.profile_id || !body.contract_type || !body.start_date) {
@@ -1507,7 +1588,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const employmentContractMatch = pathname.match(/^\/api\/hr\/employment-contracts\/([\w-]+)$/);
     if (employmentContractMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.updateEmploymentContract(employmentContractMatch[1], body);
@@ -1535,7 +1616,7 @@ async function handleApi(req, res, pathname, query) {
     // добавяме доказателство (снимка/PDF) на хартиения оригинал към записа.
     const employmentContractScanMatch = pathname.match(/^\/api\/hr\/employment-contracts\/([\w-]+)\/scan$/);
     if (employmentContractScanMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
       const rec = db.getEmploymentContract(employmentContractScanMatch[1]);
       if (!rec) return sendJson(res, 404, { error: 'Договорът не е намерен' });
@@ -1581,7 +1662,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { entries, earnings_visible: !viewingOwnWithoutEarnings });
     }
     if (pathname === '/api/hr/payroll' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'payroll', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.profile_id || !body.week_start || !body.week_end) {
@@ -1607,7 +1688,7 @@ async function handleApi(req, res, pathname, query) {
     // платформа, сумите се СЪБИРАТ в един запис (source: 'bolt+glovo') —
     // както при еднократния бекфил на историята.
     if (pathname === '/api/hr/payroll/import/status' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'payroll', 'view');
       if (!user) return;
       return sendJson(res, 200, { available: earningsImport.isAvailable() });
     }
@@ -1631,7 +1712,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/hr/payroll/import/preview' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'payroll', 'manage');
       if (!user) return;
       if (!earningsImport.isAvailable()) {
         return sendJson(res, 503, { error: 'Импортът изисква пакета "xlsx", който не е наличен в тази среда (виж бележката в lib/earnings-import.js).' });
@@ -1656,7 +1737,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/hr/payroll/import/apply' && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'payroll', 'manage');
       if (!user) return;
       if (!earningsImport.isAvailable()) {
         return sendJson(res, 503, { error: 'Импортът изисква пакета "xlsx", който не е наличен в тази среда.' });
@@ -1789,7 +1870,7 @@ async function handleApi(req, res, pathname, query) {
 
     const payrollPaidMatch = pathname.match(/^\/api\/hr\/payroll\/([\w-]+)\/mark-paid$/);
     if (payrollPaidMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'payroll', 'finalize');
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.markPayrollPaid(payrollPaidMatch[1], body.paid !== false);
@@ -1816,7 +1897,7 @@ async function handleApi(req, res, pathname, query) {
 
     const leaveBalanceSetMatch = pathname.match(/^\/api\/hr\/leave\/balance\/([\w-]+)$/);
     if (leaveBalanceSetMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'leave', 'manage_balance');
       if (!user) return;
       const body = await readJsonBody(req);
       const year = Number(body.year) || new Date().getFullYear();
@@ -1864,7 +1945,7 @@ async function handleApi(req, res, pathname, query) {
 
     const leaveDecideMatch = pathname.match(/^\/api\/hr\/leave\/requests\/([\w-]+)\/decide$/);
     if (leaveDecideMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'leave', 'decide');
       if (!user) return;
       const target = db.getLeaveRequest(leaveDecideMatch[1]);
       if (!target) return sendJson(res, 404, { error: 'Заявката не е намерена' });
@@ -1910,7 +1991,7 @@ async function handleApi(req, res, pathname, query) {
     // им — приблизителна демонстрационна база, докато не бъде готов реалният
     // импорт на таблиците с поръчки/приходи (виж db.getPartnerStats).
     if (pathname === '/api/hr/partners' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'partners', 'view');
       if (!user) return;
       const partners = db.listUsers()
         .filter(u => u.role === 'manager')
@@ -1940,7 +2021,7 @@ async function handleApi(req, res, pathname, query) {
       });
     }
     if (partnerMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'partners', 'manage');
       if (!user) return;
       const targetId = partnerMatch[1];
       const profile = db.findUserById(targetId);
@@ -2183,7 +2264,7 @@ async function handleApi(req, res, pathname, query) {
     // canAccessApplication/db.assignApplicationManager) — назначението е
     // начинът, по който админът решава кой мениджър какво вижда и оправлява.
     if (pathname === '/api/hr/applications' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'applications', 'view');
       if (!user) return;
       let applications = db.listJobApplications({ status: query.status });
       if (user.role === 'manager') applications = applications.filter(a => a.manager_id === user.id);
@@ -2191,7 +2272,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const applicationMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)$/);
     if (applicationMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'applications', 'view');
       if (!user) return;
       const app = db.getJobApplication(applicationMatch[1]);
       if (!app) return sendJson(res, 404, { error: 'Не е намерена' });
@@ -2202,7 +2283,7 @@ async function handleApi(req, res, pathname, query) {
     // (виж canAccessApplication по-горе); manager_id: null/отсъстващо = без
     // назначение (видима само за админ)
     if (applicationMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'applications', 'edit');
       if (!user) return;
       const app = db.getJobApplication(applicationMatch[1]);
       if (!app) return sendJson(res, 404, { error: 'Не е намерена' });
@@ -2223,7 +2304,7 @@ async function handleApi(req, res, pathname, query) {
     // необратимо изтриване на лични данни (ЕГН, снимки на документи и др.),
     // затова е по-строго от reject/send-link (admin+manager).
     if (applicationMatch && req.method === 'DELETE') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'applications', 'edit');
       if (!user) return;
       const app = db.getJobApplication(applicationMatch[1]);
       if (!app) return sendJson(res, 404, { error: 'Не е намерена' });
@@ -2244,7 +2325,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const applicationApproveMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)\/approve$/);
     if (applicationApproveMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'applications', 'approve');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.email) return sendJson(res, 400, { error: 'Нужен е имейл за новия профил' });
@@ -2263,7 +2344,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const applicationRejectMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)\/reject$/);
     if (applicationRejectMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'applications', 'manage');
       if (!user) return;
       const existing = db.getJobApplication(applicationRejectMatch[1]);
       if (!existing) return sendJson(res, 404, { error: 'Не е намерена' });
@@ -2281,7 +2362,7 @@ async function handleApi(req, res, pathname, query) {
     // ръчно (Viber/SMS) — изпращането никога не блокира генерирането на линка.
     const applicationSendLinkMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)\/send-link$/);
     if (applicationSendLinkMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'applications', 'manage');
       if (!user) return;
       const existingApp = db.getJobApplication(applicationSendLinkMatch[1]);
       if (!existingApp) return sendJson(res, 404, { error: 'Не е намерена' });
@@ -2326,7 +2407,7 @@ async function handleApi(req, res, pathname, query) {
     // защото съдържанието им е различно по същество (виж lib/doc-render.js).
     const templateMatch = pathname.match(/^\/api\/templates\/(protocol|contract|employment_contract_labor|employment_contract_civil)$/);
     if (templateMatch && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'templates', 'view');
       if (!user) return;
       const template = db.getDocumentTemplate(templateMatch[1]);
       const sofficeAvailable = await docxToPdf.checkSoffice();
@@ -2337,7 +2418,7 @@ async function handleApi(req, res, pathname, query) {
       });
     }
     if (templateMatch && req.method === 'PUT') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'templates', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       const patch = { source: 'builtin', content: body.content || '', file_url: null, file_name: null, updated_by: user.id };
@@ -2346,7 +2427,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const templateUploadMatch = pathname.match(/^\/api\/templates\/(protocol|contract|employment_contract_labor|employment_contract_civil)\/upload$/);
     if (templateUploadMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'templates', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
       if (!body.file_base64) return sendJson(res, 400, { error: 'Липсва файл' });
@@ -2378,7 +2459,7 @@ async function handleApi(req, res, pathname, query) {
 
     const esignInPersonMatch = pathname.match(/^\/api\/esign\/(protocol|contract|employment_contract)\/([\w-]+)\/in-person$/);
     if (esignInPersonMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'esign', 'manage');
       if (!user) return;
       const [, documentType, documentId] = esignInPersonMatch;
       const target = esignTarget(documentType);
@@ -2414,7 +2495,7 @@ async function handleApi(req, res, pathname, query) {
 
     const esignRemoteSendMatch = pathname.match(/^\/api\/esign\/(protocol|contract|employment_contract)\/([\w-]+)\/remote\/send$/);
     if (esignRemoteSendMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'esign', 'manage');
       if (!user) return;
       const [, documentType, documentId] = esignRemoteSendMatch;
       const target = esignTarget(documentType);
@@ -2452,7 +2533,7 @@ async function handleApi(req, res, pathname, query) {
 
     const esignRemoteRefreshMatch = pathname.match(/^\/api\/esign\/(protocol|contract|employment_contract)\/([\w-]+)\/remote\/refresh$/);
     if (esignRemoteRefreshMatch && req.method === 'POST') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'esign', 'manage');
       if (!user) return;
       const [, documentType, documentId] = esignRemoteRefreshMatch;
       const target = esignTarget(documentType);
@@ -2475,21 +2556,21 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- STATS ----------------------------------------------------------
     if (pathname === '/api/stats' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'stats', 'view');
       if (!user) return;
       return sendJson(res, 200, db.getFleetStats());
     }
 
     // ---- DASHBOARD (начало) ---------------------------------------------
     if (pathname === '/api/dashboard' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin', 'manager']);
+      const user = requirePermission(req, res, 'stats', 'view');
       if (!user) return;
       return sendJson(res, 200, db.getDashboardData());
     }
 
     // ---- ACTIVITY LOG (дневник на активността) ---------------------------
     if (pathname === '/api/activity' && req.method === 'GET') {
-      const user = requireRole(req, res, ['admin']);
+      const user = requirePermission(req, res, 'activity_log', 'view');
       if (!user) return;
       return sendJson(res, 200, { items: db.getActivityFeed(80) });
     }
@@ -2535,6 +2616,13 @@ const server = http.createServer((req, res) => {
     if (migrated) console.log('Мигрирани нехеширани пароли → scrypt хеш.');
   } catch (e) {
     console.error('Грешка при миграция на пароли:', e.message);
+  }
+
+  try {
+    const promotedId = db.migrateSuperAdmin();
+    if (promotedId) console.log(`Няма супер администратор — акаунт ${promotedId} е повишен автоматично.`);
+  } catch (e) {
+    console.error('Грешка при миграция на супер администратор:', e.message);
   }
 
   try {
