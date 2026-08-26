@@ -99,7 +99,7 @@ function overviewTab(v) {
           <div class="panel-head"><h3 style="margin:0;">Документи и застраховки</h3>${canEdit() ? `<button class="btn btn-ghost btn-sm" id="editDocsBtn">Редактирай</button>` : ''}</div>
           <div id="docsView">
             <table>
-              <tr><td>Годна регистрация</td><td>${fmtDate(v.registration_expiry)}</td></tr>
+              <tr><td>Добавена в системата на</td><td>${fmtDate(v.created_at)}</td></tr>
               <tr><td>Винетка</td><td>${fmtDate(v.vignette_expiry)}</td></tr>
               <tr><td>Технически преглед</td><td>${fmtDate(v.inspection_expiry)}</td></tr>
             </table>
@@ -119,7 +119,6 @@ function overviewTab(v) {
           ${canEdit() ? `
           <form id="docsForm" style="display:none;margin-top:6px;">
             <div class="field-row">
-              <div class="field"><label>Годна регистрация до</label><input name="registration_expiry" type="date" value="${v.registration_expiry||''}"></div>
               <div class="field"><label>Винетка до</label><input name="vignette_expiry" type="date" value="${v.vignette_expiry||''}"></div>
             </div>
             <div class="field"><label>Технически преглед до</label><input name="inspection_expiry" type="date" value="${v.inspection_expiry||''}"></div>
@@ -495,7 +494,6 @@ const TALON_FIELD_MAP = [
   { key: 'color', label: 'Цвят', type: 'text' },
   { key: 'fuel', label: 'Гориво', type: 'text' },
   { key: 'seats', label: 'Места', type: 'number' },
-  { key: 'registration_expiry', label: 'Годна регистрация до', type: 'date' },
 ];
 
 function talonTab(v) {
