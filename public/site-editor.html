@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Начална страница (сайт) — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .se-row{display:flex;gap:12px;flex-wrap:wrap;}
+  .se-row .field{flex:1;min-width:220px;}
+  .se-card{border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px;background:#00000022;}
+  .se-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .se-card-head b{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  .se-save-bar{position:sticky;bottom:0;background:var(--bg,#0c0f0d);padding:14px 0;margin-top:8px;border-top:1px solid var(--line);display:flex;align-items:center;gap:14px;}
+  .se-save-msg{font-size:.82rem;}
+  .se-save-msg.ok{color:var(--green);}
+  .se-save-msg.bad{color:var(--danger,#ff6b6b);}
+  .rr-table{width:100%;border-collapse:collapse;font-size:.82rem;}
+  .rr-table th,.rr-table td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;}
+  .rr-table th{color:var(--muted);font-weight:700;text-transform:uppercase;font-size:.7rem;letter-spacing:.04em;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/site-editor.html" data-title="Начална страница (сайт)"></div>
+
+<div class="wrap" style="max-width:980px;">
+  <p class="hint" style="margin-bottom:18px;">
+    Тук се редактират текстовете на публичния сайт <b>dombi.bg</b> — промените излизат на живо веднага след запис (сайтът ги презарежда автоматично при отваряне).
+    Списъкът с коли под наем се управлява отделно, в <a href="/fleet-showcase.html">„Витрина на сайта (коли)“</a>.
+  </p>
+
+  <div class="tabs" id="seTabs">
+    <div class="tab active" data-tab="hero">Начало и За нас</div>
+    <div class="tab" data-tab="services">Услуги</div>
+    <div class="tab" data-tab="how">Как работим · Предимства</div>
+    <div class="tab" data-tab="testi">Отзиви</div>
+    <div class="tab" data-tab="forms">Наем · Кандидатстване</div>
+    <div class="tab" data-tab="contact">Контакти · Футър</div>
+    <div class="tab" data-tab="requests">Запитвания за наем</div>
+  </div>
+
+  <form id="seForm">
+    <div class="tab-panel active" data-panel="hero">
+      <div class="panel">
+        <div class="panel-head"><b>Заглавен блок (hero)</b></div>
+        <div class="field"><label>Надпис над заглавието</label><input data-path="hero.eyebrow"></div>
+        <div class="se-row">
+          <div class="field"><label>Заглавие — ред 1</label><input data-path="hero.title_line1"></div>
+          <div class="field"><label>Заглавие — ред 2 (осветен)</label><input data-path="hero.title_line2"></div>
+        </div>
+        <div class="field"><label>Основен текст</label><textarea rows="3" data-path="hero.lead"></textarea></div>
+        <div class="se-row">
+          <div class="field"><label>Текст на основния бутон</label><input data-path="hero.cta_primary"></div>
+          <div class="field"><label>Текст на втория бутон</label><input data-path="hero.cta_secondary"></div>
+        </div>
+        <div class="se-row">
+          <div class="field"><label>Телефон (показван)</label><input data-path="hero.phone_display"></div>
+          <div class="field"><label>Телефон (за tel: линк, напр. +359887252727)</label><input data-path="hero.phone_tel"></div>
+        </div>
+        <div class="field"><label>4-те кратки предимства до заглавието</label>
+          <div class="se-row">
+            <input data-path="hero.quick_list.0" placeholder="1">
+            <input data-path="hero.quick_list.1" placeholder="2">
+          </div>
+          <div class="se-row" style="margin-top:8px;">
+            <input data-path="hero.quick_list.2" placeholder="3">
+            <input data-path="hero.quick_list.3" placeholder="4">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><b>Секция „За нас“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="about.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="about.title"></div>
+        <div class="field"><label>Текст</label><textarea rows="4" data-path="about.text"></textarea></div>
+        <div class="field"><label>4-те стат карти</label>
+          <div class="se-card"><div class="se-row"><input data-path="about.stats.0.title" placeholder="Заглавие 1"><input data-path="about.stats.0.sub" placeholder="Подтекст 1"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="about.stats.1.title" placeholder="Заглавие 2"><input data-path="about.stats.1.sub" placeholder="Подтекст 2"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="about.stats.2.title" placeholder="Заглавие 3"><input data-path="about.stats.2.sub" placeholder="Подтекст 3"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="about.stats.3.title" placeholder="Заглавие 4"><input data-path="about.stats.3.sub" placeholder="Подтекст 4"></div></div>
+        </div>
+        <div class="panel-head"><b>Кутия „Фирмени данни“</b></div>
+        <div class="se-row">
+          <div class="field"><label>Име на фирмата</label><input data-path="about.company_name"></div>
+          <div class="field"><label>ЕИК</label><input data-path="about.eik"></div>
+        </div>
+        <div class="se-row">
+          <div class="field"><label>Офис</label><input data-path="about.office"></div>
+          <div class="field"><label>Дейност</label><input data-path="about.activity"></div>
+        </div>
+        <div class="se-row">
+          <div class="field"><label>Партньори</label><input data-path="about.partners"></div>
+          <div class="field"><label>Телефон</label><input data-path="about.phone"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="services">
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Услуги“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="services.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="services.title"></div>
+        <div class="field"><label>Подзаглавие</label><input data-path="services.subtitle"></div>
+        <div class="field"><label>4-те карти (икони С кола / С е-колело / Със скутер / С мотор — фиксирани по позиция)</label>
+          <div class="se-card"><div class="se-row"><input data-path="services.cards.0.title" placeholder="Заглавие"><input data-path="services.cards.0.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="services.cards.1.title" placeholder="Заглавие"><input data-path="services.cards.1.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="services.cards.2.title" placeholder="Заглавие"><input data-path="services.cards.2.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="services.cards.3.title" placeholder="Заглавие"><input data-path="services.cards.3.desc" placeholder="Описание"></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Коли под наем“ (заглавен текст — самите коли са в „Витрина на сайта“)</b></div>
+        <div class="field"><label>Надпис</label><input data-path="cars_section.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="cars_section.title"></div>
+        <div class="field"><label>Подзаглавие</label><input data-path="cars_section.subtitle"></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="how">
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Как работим“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="how.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="how.title"></div>
+        <div class="field"><label>Подзаглавие</label><input data-path="how.subtitle"></div>
+        <div class="field"><label>4-те стъпки</label>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.0.title" placeholder="Заглавие"><input data-path="how.steps.0.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.1.title" placeholder="Заглавие"><input data-path="how.steps.1.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.2.title" placeholder="Заглавие"><input data-path="how.steps.2.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.3.title" placeholder="Заглавие"><input data-path="how.steps.3.desc" placeholder="Описание"></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Защо Dombi Riders“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="benefits.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="benefits.title"></div>
+        <div class="field"><label>6-те предимства (фиксирани по позиция — иконите не се сменят)</label>
+          <div class="se-card"><div class="se-row"><input data-path="benefits.items.0.title" placeholder="Заглавие"><input data-path="benefits.items.0.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="benefits.items.1.title" placeholder="Заглавие"><input data-path="benefits.items.1.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="benefits.items.2.title" placeholder="Заглавие"><input data-path="benefits.items.2.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="benefits.items.3.title" placeholder="Заглавие"><input data-path="benefits.items.3.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="benefits.items.4.title" placeholder="Заглавие"><input data-path="benefits.items.4.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="benefits.items.5.title" placeholder="Заглавие"><input data-path="benefits.items.5.desc" placeholder="Описание"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="testi">
+      <div class="panel">
+        <div class="panel-head"><b>Отзиви</b></div>
+        <div class="se-row">
+          <div class="field"><label>Надпис</label><input data-path="testimonials.eyebrow"></div>
+          <div class="field"><label>Заглавие</label><input data-path="testimonials.title"></div>
+        </div>
+        <div id="testiList"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="testiAddBtn">+ Добави отзив</button>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="forms">
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Заяви наем на кола“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="rent_section.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="rent_section.title"></div>
+        <div class="field"><label>Текст</label><textarea rows="2" data-path="rent_section.text"></textarea></div>
+        <div class="field"><label>4-те точки</label>
+          <input data-path="rent_section.bullets.0" style="margin-bottom:6px;">
+          <input data-path="rent_section.bullets.1" style="margin-bottom:6px;">
+          <input data-path="rent_section.bullets.2" style="margin-bottom:6px;">
+          <input data-path="rent_section.bullets.3">
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Кандидатствай“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="apply_section.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="apply_section.title"></div>
+        <div class="field"><label>Текст</label><textarea rows="2" data-path="apply_section.text"></textarea></div>
+        <div class="field"><label>Първите 3 точки (4-та, с линк към „коли под наем“, е фиксирана)</label>
+          <input data-path="apply_section.bullets.0" style="margin-bottom:6px;">
+          <input data-path="apply_section.bullets.1" style="margin-bottom:6px;">
+          <input data-path="apply_section.bullets.2">
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="contact">
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Контакти“</b></div>
+        <div class="se-row">
+          <div class="field"><label>Надпис</label><input data-path="contact.eyebrow"></div>
+          <div class="field"><label>Заглавие</label><input data-path="contact.title"></div>
+        </div>
+        <div class="se-row">
+          <div class="field"><label>Телефон (показван)</label><input data-path="contact.phone_display"></div>
+          <div class="field"><label>Телефон (tel: линк)</label><input data-path="contact.phone_tel"></div>
+        </div>
+        <div class="se-row">
+          <div class="field"><label>Имейл</label><input data-path="contact.email"></div>
+          <div class="field"><label>Работно време</label><input data-path="contact.office_hours"></div>
+        </div>
+        <div class="field"><label>Адрес на офиса</label><input data-path="contact.office_address"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b>Футър</b></div>
+        <div class="field"><label>Кратко описание под логото</label><textarea rows="2" data-path="footer.tagline"></textarea></div>
+        <div class="field"><label>Текст в долната лента (до © годината)</label><input data-path="footer.made_with_text"></div>
+        <div class="panel-head" style="margin-top:14px;"><b>Социални мрежи</b></div>
+        <p class="hint" style="margin-top:-6px;">Празно поле = иконата не се показва в футъра.</p>
+        <div class="se-row">
+          <div class="field"><label>Facebook линк</label><input data-path="footer.social.facebook" placeholder="https://facebook.com/..."></div>
+          <div class="field"><label>WhatsApp линк</label><input data-path="footer.social.whatsapp" placeholder="https://wa.me/359..."></div>
+        </div>
+        <div class="field"><label>Instagram линк</label><input data-path="footer.social.instagram" placeholder="https://instagram.com/..."></div>
+      </div>
+    </div>
+
+    <div class="se-save-bar">
+      <button type="submit" class="btn btn-primary">Запази промените</button>
+      <span class="se-save-msg" id="seSaveMsg"></span>
+    </div>
+  </form>
+
+  <div class="tab-panel" data-panel="requests">
+    <div class="panel">
+      <div class="panel-head"><b>Последни запитвания за наем на кола</b></div>
+      <p class="hint">Всяко запитване от формата „Заяви наем на кола“ на сайта също се изпраща по имейл на office@dombi.bg — тук е само за бърз преглед.</p>
+      <div style="overflow-x:auto;">
+        <table class="rr-table" id="rrTable">
+          <thead><tr><th>Дата</th><th>Име</th><th>Телефон</th><th>Имейл</th><th>Град</th><th>Кола</th><th>Цел</th><th>Съобщение</th></tr></thead>
+          <tbody id="rrBody"></tbody>
+        </table>
+      </div>
+      <p class="hint" id="rrEmpty" style="display:none;">Все още няма запитвания.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+let CONTENT = null;
+
+function getByPath(obj, path) {
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function setByPath(root, path, value) {
+  const keys = path.split('.');
+  let cur = root;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = keys[i];
+    const nextIsIndex = /^\d+$/.test(keys[i + 1]);
+    if (cur[k] === undefined || typeof cur[k] !== 'object') cur[k] = nextIsIndex ? [] : {};
+    cur = cur[k];
+  }
+  cur[keys[keys.length - 1]] = value;
+}
+
+function fillFormFromContent(content) {
+  document.querySelectorAll('#seForm [data-path]').forEach(el => {
+    const v = getByPath(content, el.dataset.path);
+    if (typeof v === 'string') el.value = v;
+  });
+}
+
+function collectFormContent() {
+  const out = {};
+  document.querySelectorAll('#seForm [data-path]').forEach(el => {
+    setByPath(out, el.dataset.path, el.value);
+  });
+  return out;
+}
+
+/* ---- Отзиви: динамичен, добавящ/премахващ се списък ---- */
+let testiItems = [];
+function renderTestiList() {
+  const host = document.getElementById('testiList');
+  host.innerHTML = testiItems.map((t, i) => `
+    <div class="se-card" data-testi="${i}">
+      <div class="se-card-head"><b>Отзив ${i + 1}</b><button type="button" class="btn btn-ghost btn-sm testi-remove" data-i="${i}">Премахни</button></div>
+      <div class="field"><label>Цитат</label><textarea rows="2" class="testi-quote" data-i="${i}">${escapeHtml(t.quote || '')}</textarea></div>
+      <div class="se-row">
+        <div class="field"><label>Име</label><input class="testi-name" data-i="${i}" value="${escapeHtml(t.name || '')}"></div>
+        <div class="field"><label>Подпис (напр. „Със скутер · Варна“)</label><input class="testi-sub" data-i="${i}" value="${escapeHtml(t.sub || '')}"></div>
+      </div>
+    </div>`).join('') || '<p class="hint">Няма добавени отзиви.</p>';
+
+  host.querySelectorAll('.testi-remove').forEach(btn => btn.addEventListener('click', () => {
+    testiItems.splice(Number(btn.dataset.i), 1);
+    syncTestiFromInputs(false);
+    renderTestiList();
+  }));
+  host.querySelectorAll('.testi-quote, .testi-name, .testi-sub').forEach(el => {
+    el.addEventListener('input', () => syncTestiFromInputs(false));
+  });
+}
+function syncTestiFromInputs(rerender) {
+  document.querySelectorAll('#testiList [data-testi]').forEach(card => {
+    const i = Number(card.dataset.testi);
+    if (!testiItems[i]) return;
+    testiItems[i].quote = card.querySelector('.testi-quote').value;
+    testiItems[i].name = card.querySelector('.testi-name').value;
+    testiItems[i].sub = card.querySelector('.testi-sub').value;
+  });
+  if (rerender) renderTestiList();
+}
+document.getElementById('testiAddBtn').addEventListener('click', () => {
+  syncTestiFromInputs(false);
+  testiItems.push({ quote: '', name: 'Райдър', sub: '' });
+  renderTestiList();
+});
+
+/* ---- Табове ---- */
+document.getElementById('seTabs').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('#seTabs .tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab-panel[data-panel="${tab.dataset.tab}"]`).classList.add('active');
+  if (tab.dataset.tab === 'requests') loadRentRequests();
+});
+
+/* ---- Зареждане ---- */
+async function loadContent() {
+  const { content } = await Api.get('/api/site-content');
+  CONTENT = content;
+  fillFormFromContent(content);
+  testiItems = (content.testimonials && content.testimonials.items || []).map(t => ({ ...t }));
+  renderTestiList();
+}
+
+document.getElementById('seForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  syncTestiFromInputs(false);
+  const msg = document.getElementById('seSaveMsg');
+  msg.textContent = 'Записване…';
+  msg.className = 'se-save-msg';
+  const payload = collectFormContent();
+  payload.testimonials = payload.testimonials || {};
+  payload.testimonials.items = testiItems.filter(t => (t.quote || '').trim());
+  try {
+    const { content } = await Api.put('/api/site-content', payload);
+    CONTENT = content;
+    fillFormFromContent(content);
+    msg.textContent = 'Записано ✓ — сайтът вече показва новия текст.';
+    msg.className = 'se-save-msg ok';
+  } catch (err) {
+    msg.textContent = 'Грешка: ' + err.message;
+    msg.className = 'se-save-msg bad';
+  }
+});
+
+/* ---- Запитвания за наем ---- */
+let rrLoaded = false;
+async function loadRentRequests() {
+  if (rrLoaded) return;
+  rrLoaded = true;
+  try {
+    const { requests } = await Api.get('/api/rent-requests');
+    const body = document.getElementById('rrBody');
+    const empty = document.getElementById('rrEmpty');
+    if (!requests.length) { empty.style.display = 'block'; return; }
+    body.innerHTML = requests.slice(0, 100).map(r => `
+      <tr>
+        <td>${fmtDate ? fmtDate(r.created_at) : new Date(r.created_at).toLocaleDateString('bg-BG')}</td>
+        <td>${escapeHtml(r.name || '')}</td>
+        <td>${escapeHtml(r.phone || '')}</td>
+        <td>${escapeHtml(r.email || '—')}</td>
+        <td>${escapeHtml(r.city || '—')}</td>
+        <td>${escapeHtml(r.car_name || '—')}</td>
+        <td>${escapeHtml(r.purpose || '—')}</td>
+        <td>${escapeHtml(r.message || '—')}</td>
+      </tr>`).join('');
+  } catch (err) {
+    rrLoaded = false;
+    console.error(err);
+  }
+}
+
+loadContent().catch(err => {
+  document.getElementById('seSaveMsg').textContent = 'Грешка при зареждане: ' + err.message;
+  document.getElementById('seSaveMsg').className = 'se-save-msg bad';
+});
+</script>
+</body>
+</html>
