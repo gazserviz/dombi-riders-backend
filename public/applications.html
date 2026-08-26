@@ -35,19 +35,40 @@ let expandedId = null;
 
 const OPEN_STATUSES = ['pending', 'link_sent', 'details_completed'];
 
+function managerLabel(managerId) {
+  const m = MANAGERS.find(x => x.id === managerId);
+  return m ? `${m.full_name} (${ROLE_LABELS[m.role] || m.role})` : null;
+}
+
+function managerAssignHtml(app, isAdmin) {
+  if (isAdmin) {
+    return `
+      <div class="field" style="max-width:320px;margin-bottom:14px;">
+        <label>Назначен мениджър <span class="hint">(вижда и оправлява само той + админ)</span></label>
+        <select class="assign-manager-select" data-id="${app.id}">
+          <option value="">— без избор —</option>
+          ${MANAGERS.map(m => `<option value="${m.id}" ${app.manager_id === m.id ? 'selected' : ''}>${m.full_name} (${ROLE_LABELS[m.role] || m.role})</option>`).join('')}
+        </select>
+      </div>`;
+  }
+  return `<p class="hint" style="margin-bottom:14px;">Назначен мениджър: <strong>${managerLabel(app.manager_id) || '— без избор —'}</strong></p>`;
+}
+
 function applicationDetailHtml(app, isAdmin) {
   const suggestedEmail = app.email || '';
   const isOpen = OPEN_STATUSES.includes(app.status);
   const detailsGiven = app.egn || app.id_card_number || app.driver_license_number;
   return `
-    <tr><td colspan="6">
+    <tr><td colspan="7">
       <div class="panel" style="margin:0;background:var(--panel-2);">
+        ${managerAssignHtml(app, isAdmin)}
         ${['pending', 'link_sent'].includes(app.status) ? `
         <div class="hint" style="margin-bottom:14px;">
           ${detailsGiven ? '' : 'Кандидатурата е само от кратката форма — липсват лична карта/книжка/ЕГН/избор на договор. '}
           Изпрати линк, по който кандидатът сам да ги допълни, преди да одобриш.
+          ${app.email ? `Ще се изпрати автоматично на <strong>${app.email}</strong> през фирмената поща.` : 'Кандидатът няма посочен имейл — линкът ще трябва да се изпрати ръчно (Viber/SMS).'}
           <button type="button" class="btn btn-ghost btn-sm send-link-btn" data-id="${app.id}" style="margin-left:8px;">
-            ${app.status === 'link_sent' ? '🔗 Генерирай нов линк' : '🔗 Изпрати линк за довършване'}
+            ${app.status === 'link_sent' ? '🔗 Генерирай и изпрати нов линк' : '🔗 Изпрати линк за довършване'}
           </button>
         </div>` : ''}
         <div class="grid-2">
@@ -79,10 +100,10 @@ function applicationDetailHtml(app, isAdmin) {
             <form class="approve-form" data-id="${app.id}">
               <div class="field"><label>Имейл за новия профил *</label><input name="email" type="email" required value="${suggestedEmail}"></div>
               <div class="field"><label>Временна парола (по избор — генерира се автоматично, ако е празно)</label><input name="temp_password"></div>
-              <div class="field"><label>Мениджър</label>
+              <div class="field"><label>Мениджър <span class="hint">(на новия профил — по подразбиране назначения по-горе)</span></label>
                 <select name="manager_id">
                   <option value="">— няма —</option>
-                  ${MANAGERS.map(m => `<option value="${m.id}">${m.full_name} (${ROLE_LABELS[m.role] || m.role})</option>`).join('')}
+                  ${MANAGERS.map(m => `<option value="${m.id}" ${app.manager_id === m.id ? 'selected' : ''}>${m.full_name} (${ROLE_LABELS[m.role] || m.role})</option>`).join('')}
                 </select>
               </div>
               <button type="submit" class="btn btn-primary btn-sm">Одобри и създай профил</button>
@@ -104,7 +125,7 @@ function applicationsTable(apps, isAdmin) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Дата</th><th>Име</th><th>Телефон</th><th>Договор</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>Дата</th><th>Име</th><th>Телефон</th><th>Договор</th><th>Мениджър</th><th>Статус</th><th></th></tr></thead>
         <tbody>
           ${apps.map(a => `
             <tr>
@@ -112,6 +133,7 @@ function applicationsTable(apps, isAdmin) {
               <td><strong>${a.full_name}</strong>${a.email ? `<div class="sub" style="color:var(--muted);font-size:.78rem;">${a.email}</div>` : ''}</td>
               <td>${a.phone}</td>
               <td>${EC_TYPE_LABELS[a.desired_contract_type] || a.desired_contract_type}${a.desired_hours_per_day ? ' · ' + a.desired_hours_per_day + 'ч' : ''}</td>
+              <td>${managerLabel(a.manager_id) || '<span class="hint">— без —</span>'}</td>
               <td>${appStatusBadge(a.status)}</td>
               <td><button type="button" class="btn btn-ghost btn-sm toggle-detail-btn" data-id="${a.id}">${expandedId === a.id ? 'Скрий' : 'Преглед'}</button></td>
             </tr>
@@ -167,14 +189,32 @@ async function refresh() {
       } catch (err) { alert(err.message); }
     });
   });
-  host.querySelectorAll('.send-link-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  host.querySelectorAll('.assign-manager-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
       try {
-        const { link } = await Api.post(`/api/hr/applications/${btn.dataset.id}/send-link`, {});
-        try { await navigator.clipboard.writeText(link); } catch (e) { /* без достъп до клипборда — показваме линка директно */ }
-        prompt('Линкът е копиран (ако браузърът позволи). Изпрати го на кандидата през Viber/SMS/имейл:', link);
+        await Api.put(`/api/hr/applications/${sel.dataset.id}`, { manager_id: sel.value || null });
         await refresh();
       } catch (err) { alert(err.message); }
+    });
+  });
+  host.querySelectorAll('.send-link-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const { link, emailed, email_error } = await Api.post(`/api/hr/applications/${btn.dataset.id}/send-link`, {});
+        if (emailed) {
+          alert(`Линкът е изпратен автоматично по имейл на кандидата.\n\n${link}`);
+        } else {
+          try { await navigator.clipboard.writeText(link); } catch (e) { /* без достъп до клипборда */ }
+          const reason = email_error ? `\n\nПощата не успя да изпрати автоматично (${email_error}).` : '\n\nКандидатът няма посочен имейл.';
+          prompt(`Линкът е копиран (ако браузърът позволи).${reason} Изпрати го ръчно (Viber/SMS/имейл):`, link);
+        }
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+      }
     });
   });
 }
