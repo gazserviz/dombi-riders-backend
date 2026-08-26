@@ -2572,7 +2572,18 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/activity' && req.method === 'GET') {
       const user = requirePermission(req, res, 'activity_log', 'view');
       if (!user) return;
-      return sendJson(res, 200, { items: db.getActivityFeed(80) });
+      const hasFilters = !!(query.from || query.to || query.actor_id || query.city || query.type);
+      // без филтри пазим стария по-тесен таван (80) — с филтри вдигаме прага,
+      // защото филтрирането се прилага след селекцията и иначе би "скрило"
+      // резултати, които реално съществуват, но са извън първите 80 записа
+      const limit = hasFilters ? 400 : 80;
+      return sendJson(res, 200, { items: db.getActivityFeed(limit, {
+        from: query.from || null,
+        to: query.to || null,
+        actorId: query.actor_id || null,
+        city: query.city || null,
+        type: query.type || null,
+      }) });
     }
 
     sendJson(res, 404, { error: 'Няма такъв маршрут' });
