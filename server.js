@@ -457,6 +457,20 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       return sendJson(res, 200, { requests: db.listRentRequests() });
     }
+    // трайно изтрива заявка за наем — прилага срока на съхранение (до 6
+    // месеца за заявки без сключен договор) и правото на изтриване от
+    // Политиката за поверителност (viж /privacy.html, т. 8.2 и т. 10).
+    const rentRequestMatch = pathname.match(/^\/api\/rent-requests\/([\w-]+)$/);
+    if (rentRequestMatch && req.method === 'DELETE') {
+      const user = requireRole(req, res, ['admin', 'manager']);
+      if (!user) return;
+      try {
+        db.deleteRentRequest(rentRequestMatch[1]);
+      } catch (err) {
+        return sendJson(res, 404, { error: err.message });
+      }
+      return sendJson(res, 200, { deleted: true });
+    }
 
     // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (админ панел) -------------------------
     if (pathname === '/api/admin/fleet-showcase' && req.method === 'GET') {
@@ -2184,6 +2198,31 @@ async function handleApi(req, res, pathname, query) {
       }
       const updated = db.assignApplicationManager(applicationMatch[1], body.manager_id || null);
       return sendJson(res, 200, { application: updated });
+    }
+    // трайно изтрива кандидатура — прилага срока на съхранение (до 6 месеца
+    // за неодобрени кандидатури) и правото на изтриване от Политиката за
+    // поверителност (viж /privacy.html, т. 8.1 и т. 10). Само админ — това е
+    // необратимо изтриване на лични данни (ЕГН, снимки на документи и др.),
+    // затова е по-строго от reject/send-link (admin+manager).
+    if (applicationMatch && req.method === 'DELETE') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      const app = db.getJobApplication(applicationMatch[1]);
+      if (!app) return sendJson(res, 404, { error: 'Не е намерена' });
+      const removed = db.deleteJobApplication(applicationMatch[1]);
+      const photoFields = [
+        'id_card_photo_front_url', 'id_card_photo_back_url', 'selfie_photo_url',
+        'driver_license_photo_front_url', 'driver_license_photo_back_url',
+        'protection_status_photo_url', 'residence_permit_photo_url', 'nap_certificate_photo_url',
+      ];
+      for (const field of photoFields) {
+        const url = removed[field];
+        if (url && url.startsWith('/uploads/')) {
+          const filePath = path.join(UPLOADS_DIR, url.replace('/uploads/', ''));
+          fs.unlink(filePath, () => {}); // best-effort — не блокираме отговора
+        }
+      }
+      return sendJson(res, 200, { deleted: true });
     }
     const applicationApproveMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)\/approve$/);
     if (applicationApproveMatch && req.method === 'POST') {
