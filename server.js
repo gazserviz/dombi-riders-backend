@@ -184,6 +184,16 @@ function requireRole(req, res, roles) {
   return user;
 }
 
+// достъп до кандидатура: админ вижда/оправлява всички; мениджър — само
+// изрично назначените му от админ (виж db.assignApplicationManager). Без
+// назначение (manager_id: null) кандидатурата е видима само за админ —
+// така админът контролира кой мениджър какво вижда, вместо всичко да е
+// видимо по подразбиране за всеки мениджър.
+function canAccessApplication(user, app) {
+  if (user.role === 'admin') return true;
+  return user.role === 'manager' && app.manager_id === user.id;
+}
+
 // ---------------------------------------------------------------------------
 // автогенерирана първоначална парола по шаблон "име123" (напр. "Иван
 // Иванов" -> "ivan123") — ползва се при създаване на потребител, ако админ
@@ -2070,10 +2080,15 @@ async function handleApi(req, res, pathname, query) {
     }
 
     // ---- КАНДИДАТУРИ (админ преглед и одобрение) --------------------------
+    // мениджър вижда само кандидатурите, назначени му от админ (виж
+    // canAccessApplication/db.assignApplicationManager) — назначението е
+    // начинът, по който админът решава кой мениджър какво вижда и оправлява.
     if (pathname === '/api/hr/applications' && req.method === 'GET') {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
-      return sendJson(res, 200, { applications: db.listJobApplications({ status: query.status }) });
+      let applications = db.listJobApplications({ status: query.status });
+      if (user.role === 'manager') applications = applications.filter(a => a.manager_id === user.id);
+      return sendJson(res, 200, { applications });
     }
     const applicationMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)$/);
     if (applicationMatch && req.method === 'GET') {
@@ -2081,7 +2096,27 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const app = db.getJobApplication(applicationMatch[1]);
       if (!app) return sendJson(res, 404, { error: 'Не е намерена' });
+      if (!canAccessApplication(user, app)) return sendJson(res, 403, { error: 'Нямате права за тази кандидатура' });
       return sendJson(res, 200, { application: app });
+    }
+    // назначава/премахва отговорния мениджър за кандидатурата — само админ
+    // (виж canAccessApplication по-горе); manager_id: null/отсъстващо = без
+    // назначение (видима само за админ)
+    if (applicationMatch && req.method === 'PUT') {
+      const user = requireRole(req, res, ['admin']);
+      if (!user) return;
+      const app = db.getJobApplication(applicationMatch[1]);
+      if (!app) return sendJson(res, 404, { error: 'Не е намерена' });
+      const body = await readJsonBody(req);
+      if (!('manager_id' in body)) return sendJson(res, 400, { error: 'Липсва manager_id' });
+      if (body.manager_id) {
+        const manager = db.findUserById(body.manager_id);
+        if (!manager || !['admin', 'manager'].includes(manager.role)) {
+          return sendJson(res, 400, { error: 'Невалиден мениджър' });
+        }
+      }
+      const updated = db.assignApplicationManager(applicationMatch[1], body.manager_id || null);
+      return sendJson(res, 200, { application: updated });
     }
     const applicationApproveMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)\/approve$/);
     if (applicationApproveMatch && req.method === 'POST') {
@@ -2106,23 +2141,57 @@ async function handleApi(req, res, pathname, query) {
     if (applicationRejectMatch && req.method === 'POST') {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
+      const existing = db.getJobApplication(applicationRejectMatch[1]);
+      if (!existing) return sendJson(res, 404, { error: 'Не е намерена' });
+      if (!canAccessApplication(user, existing)) return sendJson(res, 403, { error: 'Нямате права за тази кандидатура' });
       const body = await readJsonBody(req);
       const app = db.rejectJobApplication(applicationRejectMatch[1], { reviewed_by: user.id, decision_note: body.decision_note });
       return sendJson(res, 200, { application: app });
     }
     // с 1 клик: генерира уникален линк за довършване на кандидатурата (ЛК/
-    // книжка/ЕГН/адрес/избор на договор), който админът копира и изпраща сам
-    // на кандидата (Viber/SMS/имейл — системата няма собствен пращач на писма).
+    // книжка/ЕГН/адрес/избор на договор) И го изпраща директно на имейла на
+    // кандидата през вградената фирмена поща (виж lib/mail.js — office@dombi.bg
+    // през Zoho SMTP). Ако кандидатът няма посочен имейл, или пощата не е
+    // конфигурирана (липсват MAIL_USER/MAIL_PASSWORD в Render), линкът пак се
+    // генерира и връща в отговора, за да може админът да го копира/изпрати
+    // ръчно (Viber/SMS) — изпращането никога не блокира генерирането на линка.
     const applicationSendLinkMatch = pathname.match(/^\/api\/hr\/applications\/([\w-]+)\/send-link$/);
     if (applicationSendLinkMatch && req.method === 'POST') {
       const user = requireRole(req, res, ['admin', 'manager']);
       if (!user) return;
+      const existingApp = db.getJobApplication(applicationSendLinkMatch[1]);
+      if (!existingApp) return sendJson(res, 404, { error: 'Не е намерена' });
+      if (!canAccessApplication(user, existingApp)) return sendJson(res, 403, { error: 'Нямате права за тази кандидатура' });
+      const body = await readJsonBody(req);
       try {
+        // назначаването на мениджър от този диалог е позволено само на админ —
+        // мениджър не може да преназначава кандидатури през send-link
+        if (user.role === 'admin' && 'manager_id' in body) {
+          db.assignApplicationManager(applicationSendLinkMatch[1], body.manager_id || null);
+        }
         const app = db.generateApplicationLink(applicationSendLinkMatch[1]);
         const proto = req.headers['x-forwarded-proto'] || 'https';
         const host = req.headers.host;
         const link = `${proto}://${host}/apply-details.html?token=${app.application_token}`;
-        return sendJson(res, 200, { application: app, link });
+        let emailed = false;
+        let emailError = null;
+        if (app.email) {
+          try {
+            await mail.sendMail({
+              to: app.email,
+              subject: 'Довършете кандидатурата си — Dombi Riders',
+              text: `Здравейте, ${app.full_name || ''}!\n\n` +
+                `Почти сте готови — остана само да качите снимки на личната си карта и книжка и да изберете вид договор.\n\n` +
+                `Довършете кандидатурата си тук: ${link}\n\n` +
+                `Линкът е личен — не го споделяйте с други хора.\n\n` +
+                `Екипът на Dombi Riders`,
+            });
+            emailed = true;
+          } catch (err) {
+            emailError = err.message;
+          }
+        }
+        return sendJson(res, 200, { application: app, link, emailed, email_error: emailError });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
       }
