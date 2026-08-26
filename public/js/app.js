@@ -26,7 +26,7 @@ const Api = {
   del(url) { return this.call('DELETE', url); },
 };
 
-const ROLE_LABELS = { admin: 'Администратор', manager: 'Мениджър', driver: 'Шофьор' };
+const ROLE_LABELS = { super_admin: 'Супер администратор', admin: 'Администратор', manager: 'Мениджър', driver: 'Шофьор' };
 
 // споделен списък с градове (за падащото меню на служителя и филтъра в
 // „Досиета на служители“) — най-големите градове в България по население
@@ -83,8 +83,17 @@ const NAV = [
     { href: '/activity.html', icon: '🕘', label: 'Дневник на активността', roles: ['admin'] },
     { href: '/backups.html', icon: '💾', label: 'Резервни копия', roles: ['admin'] },
     { href: '/nav-settings.html', icon: '🧭', label: 'Навигация на менюто', roles: ['admin'] },
+    { href: '/permissions.html', icon: '🔐', label: 'Права и достъпи', roles: ['super_admin'] },
   ]},
 ];
+
+// ---------------------------------------------------------------------------
+// roles по-горе е само fallback (ползва се, ако /api/me по някаква причина
+// не върне nav_access — виж mountShell). Истинската, конфигурируема от
+// супер администратора видимост идва от сървъра (lib/permissions-catalog.js
+// + lib/db.js:getNavAccessMap), за да може супер администраторът реално да
+// променя кой какво вижда, без redeploy на кода.
+// ---------------------------------------------------------------------------
 
 function escapeHtml(str) {
   return String(str == null ? '' : str)
@@ -193,6 +202,15 @@ async function mountShell() {
     return null;
   }
   const user = me.user;
+  // nav_access: конфигурируема от супер администратора видимост по страница
+  // (виж /api/me в server.js + lib/db.js:getNavAccessMap). Ако по някаква
+  // причина сървърът не я върне (стар кеш и т.н.), падаме обратно към
+  // хардкоднатите roles в NAV масива по-горе, за да не счупим достъпа.
+  const navAccess = me.nav_access || null;
+  function hrefAllowed(item) {
+    if (navAccess && Object.prototype.hasOwnProperty.call(navAccess, item.href)) return navAccess[item.href];
+    return item.roles.includes(user.role);
+  }
   const activeHref = mountPoint.dataset.active || '';
   const title = mountPoint.dataset.title || '';
 
@@ -203,7 +221,7 @@ async function mountShell() {
   } catch (e) { /* без запазена конфигурация — ползваме менюто по подразбиране */ }
 
   const navHtml = effectiveNav.map(group => {
-    const items = group.items.filter(i => i.roles.includes(user.role));
+    const items = group.items.filter(hrefAllowed);
     if (!items.length) return '';
     return `
       <div class="nav-group">
@@ -328,6 +346,18 @@ async function mountShell() {
   burgerBtn.addEventListener('click', toggleSidebar);
   backdropEl.addEventListener('click', closeSidebar);
   sidebarEl.querySelectorAll('.nav-link').forEach(a => a.addEventListener('click', closeSidebar));
+
+  // достъп до самата страница (не само видимостта на линка в менюто) —
+  // конфигурируем от супер администратора (виж navAccess по-горе). Ако
+  // потребителят стигне тук по директен URL до страница, която не му е
+  // разрешена, показваме съобщение вместо да рендираме съдържанието и
+  // връщаме null — всяка страница вече проверява `if (!user) return;` веднага
+  // след mountShell(), така че инициализацията ѝ спира естествено тук.
+  if (activeHref && navAccess && Object.prototype.hasOwnProperty.call(navAccess, activeHref) && !navAccess[activeHref]) {
+    document.getElementById('app-content').innerHTML =
+      `<div class="error-box show">Нямате достъп до тази страница. Ако смятате, че е грешка, свържете се със супер администратор.</div>`;
+    return null;
+  }
 
   return user;
 }
