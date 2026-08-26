@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Права и достъпи — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .perm-table{width:100%;border-collapse:collapse;}
+  .perm-table th,.perm-table td{padding:8px 10px;font-size:.82rem;border-bottom:1px solid var(--line);vertical-align:middle;}
+  .perm-table th{text-align:left;color:var(--muted);font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;}
+  .perm-table td.role-col, .perm-table th.role-col{text-align:center;width:90px;}
+  .perm-table tr.module-row td{padding-top:16px;font-weight:700;border-bottom:none;}
+  .perm-table .action-label{padding-left:14px;color:var(--muted);}
+  .role-chk{width:18px;height:18px;cursor:pointer;}
+  .role-chk:disabled{cursor:not-allowed;opacity:.4;}
+  .super-note{font-size:.72rem;color:var(--muted);}
+  .save-bar{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:12px;margin-top:16px;border-radius:0 0 var(--radius) var(--radius);}
+  .save-bar .hint{margin:0;flex:1;}
+  .override-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line);}
+  .override-row .key{font-family:monospace;font-size:.78rem;background:#00000030;padding:2px 8px;border-radius:6px;}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .tabs button.active{background:var(--green);color:#04140a;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/permissions.html" data-title="Права и достъпи"></div>
+
+<script src="/js/app.js"></script>
+<script>
+let CATALOG = null;
+let MATRIX = null;
+let ALL_USERS = [];
+const EDIT_ROLES = ['driver', 'manager', 'admin']; // super_admin винаги е вкл. — не се показва отделно
+
+function navLabel(href) {
+  for (const g of NAV) {
+    const item = g.items.find(i => i.href === href);
+    if (item) return `${item.icon} ${item.label}`;
+  }
+  return href;
+}
+
+function renderNavSection() {
+  const hrefs = Object.keys(MATRIX.nav);
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>Видимост на страниците в менюто</h2></div>
+      <p class="hint">Кой вижда всяка страница в sidebar-а — и достъпва самата страница, дори по директен линк. Супер администраторът вижда винаги всичко.</p>
+      <div class="table-wrap"><table class="perm-table">
+        <thead><tr><th>Страница</th>${EDIT_ROLES.map(r => `<th class="role-col">${ROLE_LABELS[r]}</th>`).join('')}<th class="role-col">Супер админ</th></tr></thead>
+        <tbody>
+          ${hrefs.map(href => `
+            <tr data-nav="${href}">
+              <td>${escapeHtml(navLabel(href))}</td>
+              ${EDIT_ROLES.map(r => `<td class="role-col"><input type="checkbox" class="role-chk nav-chk" data-href="${href}" data-role="${r}" ${MATRIX.nav[href].includes(r) ? 'checked' : ''}></td>`).join('')}
+              <td class="role-col"><input type="checkbox" class="role-chk" checked disabled></td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+function renderActionsSection() {
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>Права за действия (създаване / редакция / изтриване)</h2></div>
+      <p class="hint">Кой може реално да пипа данните във всеки модул — прилага се на самия сървър, независимо какво показва менюто.</p>
+      <div class="table-wrap"><table class="perm-table">
+        <thead><tr><th>Модул / действие</th>${EDIT_ROLES.map(r => `<th class="role-col">${ROLE_LABELS[r]}</th>`).join('')}<th class="role-col">Супер админ</th></tr></thead>
+        <tbody>
+          ${CATALOG.actionModules.map(mod => `
+            <tr class="module-row"><td colspan="${EDIT_ROLES.length + 2}">${escapeHtml(mod.label)}</td></tr>
+            ${mod.actions.map(a => `
+              <tr data-module="${mod.key}" data-action="${a.key}">
+                <td class="action-label">${escapeHtml(a.label)}</td>
+                ${EDIT_ROLES.map(r => `<td class="role-col"><input type="checkbox" class="role-chk action-chk" data-module="${mod.key}" data-action="${a.key}" data-role="${r}" ${(MATRIX.actions[mod.key][a.key] || []).includes(r) ? 'checked' : ''}></td>`).join('')}
+                <td class="role-col"><input type="checkbox" class="role-chk" checked disabled></td>
+              </tr>`).join('')}
+          `).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+function allOverrideKeys() {
+  const keys = [];
+  Object.keys(CATALOG.navDefaults).forEach(href => keys.push({ value: `nav:${href}`, label: `Страница: ${navLabel(href)}` }));
+  CATALOG.actionModules.forEach(mod => mod.actions.forEach(a => keys.push({ value: `${mod.key}.${a.key}`, label: `${mod.label} — ${a.label}` })));
+  return keys;
+}
+
+function renderOverridesSection() {
+  const keys = allOverrideKeys();
+  const editableUsers = ALL_USERS.filter(u => u.role !== 'super_admin');
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>Изключения за конкретен потребител</h2></div>
+      <p class="hint">По избор — override за точно ЕДИН човек, независимо от ролята му (напр. точно този шофьор да вижда счетоводството, или точно този мениджър — не). Има превес пред таблиците по-горе.</p>
+      <div class="field">
+        <label>Служител</label>
+        <select id="overrideUserSelect">
+          <option value="">— избери служител —</option>
+          ${editableUsers.map(u => `<option value="${u.id}">${escapeHtml(u.full_name)} (${ROLE_LABELS[u.role] || u.role})</option>`).join('')}
+        </select>
+      </div>
+      <div id="overrideEditorHost"></div>
+    </div>`;
+}
+
+function overrideEditorHtml(user) {
+  const keys = allOverrideKeys();
+  const perms = user.permissions || {};
+  const activeKeys = Object.keys(perms).filter(k => (k.startsWith('nav:') || k.includes('.')) && (perms[k] === true || perms[k] === false));
+  return `
+    <div id="currentOverrides">
+      ${activeKeys.length ? activeKeys.map(k => `
+        <div class="override-row" data-key="${escapeHtml(k)}">
+          <span class="key">${escapeHtml(k)}</span>
+          <span class="badge ${perms[k] ? 'badge-green' : 'badge-danger'}">${perms[k] ? 'Позволено' : 'Забранено'}</span>
+          <button type="button" class="btn btn-ghost btn-sm remove-override-btn" data-key="${escapeHtml(k)}">✕ Премахни</button>
+        </div>`).join('') : '<p class="hint">Няма изключения за този служител.</p>'}
+    </div>
+    <div class="toolbar" style="margin-top:12px;">
+      <select id="newOverrideKey" style="min-width:260px;">
+        ${keys.map(k => `<option value="${k.value}">${escapeHtml(k.label)}</option>`).join('')}
+      </select>
+      <select id="newOverrideValue">
+        <option value="true">Позволи</option>
+        <option value="false">Забрани</option>
+      </select>
+      <button type="button" class="btn btn-primary btn-sm" id="addOverrideBtn">Добави</button>
+    </div>`;
+}
+
+async function wireOverrideEditor() {
+  const select = document.getElementById('overrideUserSelect');
+  const host = document.getElementById('overrideEditorHost');
+  select.addEventListener('change', () => {
+    const user = ALL_USERS.find(u => u.id === select.value);
+    if (!user) { host.innerHTML = ''; return; }
+    host.innerHTML = overrideEditorHtml(user);
+    wireOverrideActions(user);
+  });
+}
+
+function wireOverrideActions(user) {
+  const host = document.getElementById('overrideEditorHost');
+  host.querySelectorAll('.remove-override-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const permissions = { ...(user.permissions || {}) };
+      delete permissions[btn.dataset.key];
+      try {
+        const { user: updated } = await Api.put(`/api/users/${user.id}`, { permissions });
+        Object.assign(user, updated);
+        const idx = ALL_USERS.findIndex(u => u.id === user.id);
+        if (idx !== -1) ALL_USERS[idx] = updated;
+        host.innerHTML = overrideEditorHtml(user);
+        wireOverrideActions(user);
+      } catch (err) { alert(err.message); }
+    });
+  });
+  const addBtn = document.getElementById('addOverrideBtn');
+  addBtn.addEventListener('click', async () => {
+    const key = document.getElementById('newOverrideKey').value;
+    const value = document.getElementById('newOverrideValue').value === 'true';
+    const permissions = { ...(user.permissions || {}), [key]: value };
+    try {
+      const { user: updated } = await Api.put(`/api/users/${user.id}`, { permissions });
+      Object.assign(user, updated);
+      const idx = ALL_USERS.findIndex(u => u.id === user.id);
+      if (idx !== -1) ALL_USERS[idx] = updated;
+      host.innerHTML = overrideEditorHtml(user);
+      wireOverrideActions(user);
+    } catch (err) { alert(err.message); }
+  });
+}
+
+function collectMatrixFromForm() {
+  const nav = {};
+  Object.keys(MATRIX.nav).forEach(href => {
+    nav[href] = EDIT_ROLES.filter(r => document.querySelector(`.nav-chk[data-href="${CSS.escape(href)}"][data-role="${r}"]`).checked);
+  });
+  const actions = {};
+  CATALOG.actionModules.forEach(mod => {
+    actions[mod.key] = {};
+    mod.actions.forEach(a => {
+      actions[mod.key][a.key] = EDIT_ROLES.filter(r => document.querySelector(`.action-chk[data-module="${mod.key}"][data-action="${a.key}"][data-role="${r}"]`).checked);
+    });
+  });
+  return { nav, actions };
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (user.role !== 'super_admin') {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Само супер администратор има достъп до тази страница.</div>`;
+    return;
+  }
+  const content = document.getElementById('app-content');
+  content.innerHTML = `<div class="loading">Зареждане…</div>`;
+
+  try {
+    const [{ matrix, catalog }, { users }] = await Promise.all([
+      Api.get('/api/permissions-matrix'),
+      Api.get('/api/users'),
+    ]);
+    MATRIX = matrix;
+    CATALOG = catalog;
+    ALL_USERS = users;
+  } catch (err) {
+    content.innerHTML = `<div class="error-box show">${err.message}</div>`;
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="success-box" id="successBox"></div>
+    <div class="error-box" id="errorBox"></div>
+    ${renderNavSection()}
+    ${renderActionsSection()}
+    ${renderOverridesSection()}
+    <div class="save-bar">
+      <p class="hint">Промените по таблиците по-горе се прилагат само след „Запази“. Изключенията за конкретен служител се пазят веднага.</p>
+      <button type="button" class="btn btn-primary" id="saveMatrixBtn">Запази промените</button>
+    </div>`;
+
+  wireOverrideEditor();
+
+  document.getElementById('saveMatrixBtn').addEventListener('click', async () => {
+    const errorBox = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const patch = collectMatrixFromForm();
+    try {
+      const { matrix } = await Api.put('/api/permissions-matrix', patch);
+      MATRIX = matrix;
+      successBox.textContent = 'Правата са запазени.';
+      successBox.classList.add('show');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>

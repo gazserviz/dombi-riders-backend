@@ -39,7 +39,8 @@
 <script src="/js/app.js"></script>
 <script>
 const ROLE_DESC = {
-  admin: 'Пълен достъп — управлява потребители, роли и всички модули.',
+  super_admin: 'Най-високо ниво — единствената роля, която може да определя правата и достъпа на всички останали (виж „Права и достъпи“). Винаги пълен достъп навсякъде.',
+  admin: 'Пълен достъп по подразбиране — управлява потребители, роли и всички модули (обхватът може да бъде стеснен от супер администратор в „Права и достъпи“).',
   manager: 'Оперативен достъп — коли, договори, протоколи, статистики.',
   driver: 'Достъп само до собствените си зачисления и протоколи.',
 };
@@ -77,13 +78,17 @@ function wireTempPasswordBox(container) {
   closeBtn.addEventListener('click', () => box.remove());
 }
 
-function usersTable(users) {
+function usersTable(users, viewerIsSuperAdmin) {
   return `
     <div class="table-wrap">
       <table class="users-table">
         <thead><tr><th>Потребител</th><th>Роля</th><th>Статус</th><th title="Право да одобрява преводи между портфейли / да вижда собствената си заработка в модул Заплати">Права</th><th>Действия</th></tr></thead>
         <tbody>
-          ${users.map(u => `
+          ${users.map(u => {
+            // само супер администратор може да пипа профила на друг супер
+            // администратор (роля/статус/парола) — виж защитата и в server.js
+            const locked = u.role === 'super_admin' && !viewerIsSuperAdmin;
+            return `
             <tr>
               <td class="user-cell">
                 <span class="u-name">${escapeHtml(u.full_name)}</span>
@@ -91,30 +96,34 @@ function usersTable(users) {
                 ${u.phone ? `<span class="u-sub">${escapeHtml(u.phone)}</span>` : ''}
               </td>
               <td>
-                <select class="role-select" data-id="${u.id}">
-                  <option value="admin" ${u.role==='admin'?'selected':''}>Администратор</option>
-                  <option value="manager" ${u.role==='manager'?'selected':''}>Мениджър</option>
-                  <option value="driver" ${u.role==='driver'?'selected':''}>Шофьор</option>
-                </select>
+                ${locked
+                  ? `<span class="badge badge-green">${ROLE_LABELS.super_admin}</span>`
+                  : `<select class="role-select" data-id="${u.id}">
+                      ${viewerIsSuperAdmin ? `<option value="super_admin" ${u.role==='super_admin'?'selected':''}>Супер администратор</option>` : ''}
+                      <option value="admin" ${u.role==='admin'?'selected':''}>Администратор</option>
+                      <option value="manager" ${u.role==='manager'?'selected':''}>Мениджър</option>
+                      <option value="driver" ${u.role==='driver'?'selected':''}>Шофьор</option>
+                    </select>`}
               </td>
               <td>${u.status==='active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}</td>
               <td>
                 <div class="perm-group">
-                  ${u.role === 'admin'
+                  ${['admin','super_admin'].includes(u.role)
                     ? '<span class="hint">Винаги (админ)</span>'
                     : `<label><input type="checkbox" class="approve-transfers-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_approve_transfers ? 'checked' : ''}> Преводи</label>`}
-                  ${['admin','manager'].includes(u.role)
-                    ? (u.role === 'admin' ? '' : '<span class="hint">Заработка: винаги</span>')
+                  ${['admin','super_admin','manager'].includes(u.role)
+                    ? (u.role === 'manager' ? '<span class="hint">Заработка: винаги</span>' : '')
                     : `<label><input type="checkbox" class="view-earnings-toggle" data-id="${u.id}" ${u.permissions && u.permissions.can_view_earnings ? 'checked' : ''}> Заработка</label>`}
                 </div>
               </td>
               <td>
                 <div class="row-actions">
-                  <button class="btn btn-ghost btn-sm toggle-status-btn" data-id="${u.id}" data-status="${u.status}">${u.status==='active'?'Спри':'Активирай'}</button>
-                  <button class="btn btn-ghost btn-sm reset-password-btn" data-id="${u.id}" data-name="${escapeHtml(u.full_name)}">🔑 Нова парола</button>
+                  <button class="btn btn-ghost btn-sm toggle-status-btn" data-id="${u.id}" data-status="${u.status}" ${locked?'disabled':''}>${u.status==='active'?'Спри':'Активирай'}</button>
+                  <button class="btn btn-ghost btn-sm reset-password-btn" data-id="${u.id}" data-name="${escapeHtml(u.full_name)}" ${locked?'disabled':''}>🔑 Нова парола</button>
                 </div>
               </td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>`;
@@ -123,10 +132,11 @@ function usersTable(users) {
 async function init() {
   const user = await mountShell();
   if (!user) return;
-  if (user.role !== 'admin') {
+  if (!['admin','super_admin'].includes(user.role)) {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Само администратор може да управлява потребители и роли.</div>`;
     return;
   }
+  const isSuperAdmin = user.role === 'super_admin';
   const content = document.getElementById('app-content');
   content.innerHTML = `
     <div class="grid-2">
@@ -149,6 +159,7 @@ async function init() {
               <option value="driver">Шофьор</option>
               <option value="manager">Мениджър</option>
               <option value="admin">Администратор</option>
+              ${isSuperAdmin ? '<option value="super_admin">Супер администратор</option>' : ''}
             </select>
           </div>
           <p class="hint" id="roleDesc">${ROLE_DESC.driver}</p>
@@ -158,10 +169,12 @@ async function init() {
       <div class="panel">
         <h2>Роли в системата</h2>
         <div class="table-wrap"><table>
+          ${isSuperAdmin ? `<tr><td><span class="badge badge-green">Супер админ</span></td><td>${ROLE_DESC.super_admin}</td></tr>` : ''}
           <tr><td><span class="badge badge-green">Админ</span></td><td>${ROLE_DESC.admin}</td></tr>
           <tr><td><span class="badge badge-warn">Мениджър</span></td><td>${ROLE_DESC.manager}</td></tr>
           <tr><td><span class="badge badge-muted">Шофьор</span></td><td>${ROLE_DESC.driver}</td></tr>
         </table></div>
+        ${isSuperAdmin ? `<a href="/permissions.html" class="btn btn-ghost btn-sm" style="margin-top:10px;">🔐 Настрой права и достъпи →</a>` : ''}
       </div>
     </div>
     <div class="panel">
@@ -176,11 +189,11 @@ async function init() {
 
   async function refreshTable() {
     const { users } = await Api.get('/api/users');
-    document.getElementById('tableHost').innerHTML = usersTable(users);
+    document.getElementById('tableHost').innerHTML = usersTable(users, isSuperAdmin);
     document.querySelectorAll('.role-select').forEach(sel => {
       sel.addEventListener('change', async () => {
         try { await Api.put(`/api/users/${sel.dataset.id}`, { role: sel.value }); }
-        catch (err) { alert(err.message); }
+        catch (err) { alert(err.message); refreshTable(); }
       });
     });
     document.querySelectorAll('.toggle-status-btn').forEach(btn => {
