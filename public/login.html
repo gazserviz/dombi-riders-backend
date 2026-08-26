@@ -40,6 +40,23 @@
 
 <script src="/js/app.js"></script>
 <script>
+// избира първата достъпна "начална" страница по nav_access (виж
+// server.js/api/me + lib/db.js:getNavAccessMap) — вместо да сочим твърдо
+// /home.html, което е забранено за роля "шофьор" (и вече може да бъде
+// стеснено допълнително от супер администратор в /permissions.html). Пада
+// обратно към /home.html, ако нищо от предпочетения списък не е достъпно —
+// mountShell() там ще покаже ясно съобщение вместо счупена страница.
+const LANDING_PREFERENCE = ['/home.html', '/vehicles.html', '/wallet.html', '/payroll.html', '/personnel-detail.html'];
+async function landingPageFor() {
+  try {
+    const { nav_access } = await Api.get('/api/me');
+    const found = LANDING_PREFERENCE.find(href => nav_access && nav_access[href]);
+    return found || '/home.html';
+  } catch (e) {
+    return '/home.html';
+  }
+}
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const errorBox = document.getElementById('errorBox');
@@ -48,7 +65,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   const password = document.getElementById('password').value;
   try {
     await Api.post('/api/login', { email, password });
-    window.location.href = '/home.html';
+    window.location.href = await landingPageFor();
   } catch (err) {
     errorBox.textContent = err.message;
     errorBox.classList.add('show');
@@ -56,7 +73,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 });
 
 // ако вече е логнат, пренасочваме директно
-Api.get('/api/me').then(({ user }) => { if (user) window.location.href = '/home.html'; }).catch(()=>{});
+Api.get('/api/me').then(async ({ user }) => { if (user) window.location.href = await landingPageFor(); }).catch(()=>{});
 </script>
 </body>
 </html>
