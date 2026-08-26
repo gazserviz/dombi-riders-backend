@@ -51,16 +51,49 @@ function overviewTab(v) {
       </div>
       <div class="grid-2">
         <div class="panel">
-          <h3>Основни данни</h3>
-          <table>
-            <tr><td>Марка / Модел</td><td><strong>${v.make} ${v.model}</strong></td></tr>
-            <tr><td>Година</td><td>${v.year||'—'}</td></tr>
-            <tr><td>Цвят</td><td>${v.color||'—'}</td></tr>
-            <tr><td>VIN / Рама</td><td>${v.vin||'—'}</td></tr>
-            <tr><td>Гориво</td><td>${FUEL_LABELS[v.fuel]||v.fuel||'—'}</td></tr>
-            <tr><td>Скоростна кутия</td><td>${v.transmission==='automatic'?'Автоматична':'Ръчна'}</td></tr>
-            <tr><td>Места</td><td>${v.seats||'—'}</td></tr>
-          </table>
+          <div class="panel-head"><h3 style="margin:0;">Основни данни</h3>${canEdit() ? `<button class="btn btn-ghost btn-sm" id="editBasicBtn">Редактирай</button>` : ''}</div>
+          <div id="basicView">
+            <table>
+              <tr><td>Рег. номер</td><td><strong>${v.plate_number||'—'}</strong></td></tr>
+              <tr><td>Марка / Модел</td><td><strong>${v.make} ${v.model}</strong></td></tr>
+              <tr><td>Година</td><td>${v.year||'—'}</td></tr>
+              <tr><td>Цвят</td><td>${v.color||'—'}</td></tr>
+              <tr><td>VIN / Рама</td><td>${v.vin||'—'}</td></tr>
+              <tr><td>Гориво</td><td>${FUEL_LABELS[v.fuel]||v.fuel||'—'}</td></tr>
+              <tr><td>Скоростна кутия</td><td>${v.transmission==='automatic'?'Автоматична':'Ръчна'}</td></tr>
+              <tr><td>Места</td><td>${v.seats||'—'}</td></tr>
+            </table>
+          </div>
+          ${canEdit() ? `
+          <form id="basicForm" style="display:none;margin-top:6px;">
+            <div class="field-row">
+              <div class="field"><label>Рег. номер</label><input name="plate_number" value="${v.plate_number||''}"></div>
+              <div class="field"><label>VIN / Рама</label><input name="vin" value="${v.vin||''}"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label>Марка</label><input name="make" value="${v.make||''}"></div>
+              <div class="field"><label>Модел</label><input name="model" value="${v.model||''}"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label>Година</label><input name="year" type="number" value="${v.year||''}"></div>
+              <div class="field"><label>Цвят</label><input name="color" value="${v.color||''}"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label>Гориво</label>
+                <select name="fuel">
+                  ${Object.entries(FUEL_LABELS).map(([k,label]) => `<option value="${k}" ${v.fuel===k?'selected':''}>${label}</option>`).join('')}
+                </select>
+              </div>
+              <div class="field"><label>Скоростна кутия</label>
+                <select name="transmission">
+                  <option value="manual" ${v.transmission!=='automatic'?'selected':''}>Ръчна</option>
+                  <option value="automatic" ${v.transmission==='automatic'?'selected':''}>Автоматична</option>
+                </select>
+              </div>
+            </div>
+            <div class="field"><label>Места</label><input name="seats" type="number" value="${v.seats||''}"></div>
+            <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+          </form>` : ''}
         </div>
         <div class="panel">
           <div class="panel-head"><h3 style="margin:0;">Документи и застраховки</h3>${canEdit() ? `<button class="btn btn-ghost btn-sm" id="editDocsBtn">Редактирай</button>` : ''}</div>
@@ -449,19 +482,51 @@ function inspectionsTab(list, managerUsers, usersById) {
     </div>`;
 }
 
+// Съответствие между ключовете от AI разчитането на талона и истинските
+// колони на колата — използва се за формата "Прегледай и потвърди", за да
+// може администраторът РЪЧНО (след проверка/корекция) да ги въведе в
+// основните данни. Никога не се прилага автоматично без изричен клик.
+const TALON_FIELD_MAP = [
+  { key: 'plate_number', label: 'Рег. номер', type: 'text' },
+  { key: 'vin', label: 'VIN / Рама', type: 'text' },
+  { key: 'make', label: 'Марка', type: 'text' },
+  { key: 'model', label: 'Модел', type: 'text' },
+  { key: 'year', label: 'Година', type: 'number' },
+  { key: 'color', label: 'Цвят', type: 'text' },
+  { key: 'fuel', label: 'Гориво', type: 'text' },
+  { key: 'seats', label: 'Места', type: 'number' },
+  { key: 'registration_expiry', label: 'Годна регистрация до', type: 'date' },
+];
+
 function talonTab(v) {
   const canWrite = canEdit();
+  const td = v.talon_data || {};
+  const hasData = Object.keys(td).length > 0;
   return `
     <div class="tab-panel" id="tab-talon">
       <div class="panel">
         <h2>Данни от талон</h2>
         ${v.talon_photo_url ? `<div class="photo-grid" style="max-width:220px;"><img src="${v.talon_photo_url}"></div>` : `<p>Няма качена снимка на талон.</p>`}
-        ${v.talon_data && Object.keys(v.talon_data).length ? `
+        ${hasData ? `
           <div class="table-wrap" style="margin-top:14px;"><table>
-            ${Object.entries(v.talon_data).filter(([,val])=>val!=null&&val!=='').map(([k,val])=>`<tr><td>${k}</td><td>${val}</td></tr>`).join('')}
+            ${Object.entries(td).filter(([,val])=>val!=null&&val!=='').map(([k,val])=>`<tr><td>${k}</td><td>${val}</td></tr>`).join('')}
           </table></div>
           <div style="margin-top:10px;">${v.talon_confirmed ? '<span class="badge badge-green">Потвърдени</span>' : '<span class="badge badge-warn">Очаква потвърждение</span>'}</div>
         ` : ''}
+        ${canWrite && hasData && !v.talon_confirmed ? `
+        <div class="panel" style="margin-top:16px;background:rgba(255,255,255,.03);">
+          <h3 style="margin-top:0;">Прегледай и потвърди</h3>
+          <p class="hint">AI разчитането не винаги е 100% точно — провери и коригирай всяко поле преди да го приложиш към основните данни на колата.</p>
+          <form id="talonConfirmForm">
+            ${TALON_FIELD_MAP.map(f => `
+              <div class="field"><label>${f.label}</label><input name="${f.key}" type="${f.type}" value="${td[f.key] != null ? td[f.key] : ''}"></div>
+            `).join('')}
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+              <button type="submit" class="btn btn-primary btn-sm">Потвърди и въведи в основните данни</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="talonDismissBtn">Само маркирай като прегледан (без промяна)</button>
+            </div>
+          </form>
+        </div>` : ''}
         ${canWrite ? `
         <div style="margin-top:16px;">
           <div class="photo-upload-btn" id="talonUploadBtn2">📷 ${v.talon_photo_url ? 'Качи нова снимка' : 'Качи снимка на талон'}</div>
@@ -555,6 +620,29 @@ function setBusy(busy) {
 }
 
 function bindForms() {
+  const editBasicBtn = document.getElementById('editBasicBtn');
+  if (editBasicBtn) editBasicBtn.addEventListener('click', () => {
+    const view = document.getElementById('basicView');
+    const form = document.getElementById('basicForm');
+    const editing = form.style.display !== 'none';
+    form.style.display = editing ? 'none' : 'block';
+    view.style.display = editing ? 'block' : 'none';
+    editBasicBtn.textContent = editing ? 'Редактирай' : 'Отказ';
+  });
+  const basicForm = document.getElementById('basicForm');
+  if (basicForm) basicForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    if (data.year) data.year = Number(data.year);
+    if (data.seats) data.seats = Number(data.seats);
+    try {
+      await Api.put(`/api/vehicles/${vehicleId}`, data);
+      await init();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
   const editDocsBtn = document.getElementById('editDocsBtn');
   if (editDocsBtn) editDocsBtn.addEventListener('click', () => {
     const view = document.getElementById('docsView');
@@ -704,6 +792,31 @@ function bindForms() {
     const data = Object.fromEntries(new FormData(e.target).entries());
     try {
       await Api.post(`/api/vehicles/${vehicleId}/equipment`, data);
+      await init();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+
+  const talonConfirmForm = document.getElementById('talonConfirmForm');
+  if (talonConfirmForm) talonConfirmForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    Object.keys(data).forEach(k => { if (data[k] === '') delete data[k]; });
+    if (data.year) data.year = Number(data.year);
+    if (data.seats) data.seats = Number(data.seats);
+    try {
+      await Api.post(`/api/vehicles/${vehicleId}/talon-confirm`, { talon_data: VEHICLE.talon_data, apply_to_fields: data });
+      await init();
+      activateTab('overview');
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  });
+  const talonDismissBtn = document.getElementById('talonDismissBtn');
+  if (talonDismissBtn) talonDismissBtn.addEventListener('click', async () => {
+    setBusy(true);
+    try {
+      await Api.post(`/api/vehicles/${vehicleId}/talon-confirm`, { talon_data: VEHICLE.talon_data, apply_to_fields: {} });
       await init();
     } catch (err) { alert(err.message); }
     finally { setBusy(false); }
