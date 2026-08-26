@@ -225,10 +225,10 @@
   <div class="tab-panel" data-panel="requests">
     <div class="panel">
       <div class="panel-head"><b>Последни запитвания за наем на кола</b></div>
-      <p class="hint">Всяко запитване от формата „Заяви наем на кола“ на сайта също се изпраща по имейл на office@dombi.bg — тук е само за бърз преглед.</p>
+      <p class="hint">Всяко запитване от формата „Заяви наем на кола“ на сайта също се изпраща по имейл на office@dombi.bg — тук е само за бърз преглед. Съгласно Политиката за поверителност (т. 8.2) запитванията, които не са довели до сключен договор, се пазят до 6 месеца — по-старите са отбелязани и могат да се изтрият оттук.</p>
       <div style="overflow-x:auto;">
         <table class="rr-table" id="rrTable">
-          <thead><tr><th>Дата</th><th>Име</th><th>Телефон</th><th>Имейл</th><th>Град</th><th>Кола</th><th>Цел</th><th>Съобщение</th></tr></thead>
+          <thead><tr><th>Дата</th><th>Име</th><th>Телефон</th><th>Имейл</th><th>Град</th><th>Кола</th><th>Цел</th><th>Съобщение</th><th></th></tr></thead>
           <tbody id="rrBody"></tbody>
         </table>
       </div>
@@ -353,6 +353,14 @@ document.getElementById('seForm').addEventListener('submit', async e => {
 
 /* ---- Запитвания за наем ---- */
 let rrLoaded = false;
+// Политика за поверителност, т. 8.2: запитвания без сключен договор се пазят
+// до 6 месеца — маркираме по-старите, за да могат админ/мениджър да ги изтрият.
+function rrIsOld(dateStr) {
+  if (!dateStr) return false;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - 6);
+  return new Date(dateStr) < cutoff;
+}
 async function loadRentRequests() {
   if (rrLoaded) return;
   rrLoaded = true;
@@ -363,7 +371,7 @@ async function loadRentRequests() {
     if (!requests.length) { empty.style.display = 'block'; return; }
     body.innerHTML = requests.slice(0, 100).map(r => `
       <tr>
-        <td>${fmtDate ? fmtDate(r.created_at) : new Date(r.created_at).toLocaleDateString('bg-BG')}</td>
+        <td>${fmtDate ? fmtDate(r.created_at) : new Date(r.created_at).toLocaleDateString('bg-BG')}${rrIsOld(r.created_at) ? ' <span class="badge badge-danger" title="По-старо от 6 месеца">6+ мес.</span>' : ''}</td>
         <td>${escapeHtml(r.name || '')}</td>
         <td>${escapeHtml(r.phone || '')}</td>
         <td>${escapeHtml(r.email || '—')}</td>
@@ -371,7 +379,22 @@ async function loadRentRequests() {
         <td>${escapeHtml(r.car_name || '—')}</td>
         <td>${escapeHtml(r.purpose || '—')}</td>
         <td>${escapeHtml(r.message || '—')}</td>
+        <td><button type="button" class="btn btn-ghost btn-sm rr-delete-btn" data-id="${r.id}">Изтрий</button></td>
       </tr>`).join('');
+    body.querySelectorAll('.rr-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Да се изтрие ли трайно това запитване за наем?')) return;
+        btn.disabled = true;
+        try {
+          await Api.del(`/api/rent-requests/${btn.dataset.id}`);
+          rrLoaded = false;
+          await loadRentRequests();
+        } catch (err) {
+          alert(err.message);
+          btn.disabled = false;
+        }
+      });
+    });
   } catch (err) {
     rrLoaded = false;
     console.error(err);

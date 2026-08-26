@@ -27,6 +27,21 @@ const VEHICLE_LABELS = { own_car: 'Собствена кола', company_car: '�
 const NATIONALITY_LABELS = { bulgarian: 'България', ukrainian: 'Украйна', uzbek: 'Узбекистан', other: 'Друга' };
 const GLOVO_BOLT_LABELS = { yes: 'Да', no: 'Не' };
 function photoLink(url) { return url ? `<a href="${url}" target="_blank">Преглед</a>` : '—'; }
+// Политика за поверителност, т. 8.1: неодобрени кандидатури се пазят до 6
+// месеца — маркираме визуално по-старите, за да могат админ/мениджър да ги
+// изтрият навреме (виж deleteBtn по-долу).
+function isOlderThanMonths(dateStr, months) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  return d < cutoff;
+}
+function retentionBadge(app) {
+  if (app.status === 'approved') return '';
+  if (!isOlderThanMonths(app.created_at, 6)) return '';
+  return ` <span class="badge badge-danger" title="По-стара от 6 месеца — съгласно Политиката за поверителност (т. 8.1) следва да бъде изтрита, ако не е одобрена.">по-стара от 6 мес.</span>`;
+}
 
 let CURRENT_USER = null;
 let MANAGERS = [];
@@ -116,6 +131,11 @@ function applicationDetailHtml(app, isAdmin) {
           <button type="button" class="btn btn-ghost btn-sm reject-btn" data-id="${app.id}">Отхвърли кандидатурата</button>
         </div>` : ''}
         ${app.status === 'rejected' && app.decision_note ? `<p class="hint" style="margin-top:10px;">Причина: ${app.decision_note}</p>` : ''}
+        ${isAdmin ? `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--panel-line, #ffffff14);">
+          <p class="hint">Трайно изтрива кандидатурата и всички приложени снимки на документи (ЕГН, лична карта, книжка) — съгласно Политиката за поверителност (т. 8.1 и т. 10). Действието е необратимо.</p>
+          <button type="button" class="btn btn-ghost btn-sm delete-app-btn" data-id="${app.id}" style="color:var(--danger,#ff5a5a);">🗑️ Изтрий кандидатурата (GDPR)</button>
+        </div>` : ''}
       </div>
     </td></tr>`;
 }
@@ -129,7 +149,7 @@ function applicationsTable(apps, isAdmin) {
         <tbody>
           ${apps.map(a => `
             <tr>
-              <td>${fmtDate(a.created_at)}</td>
+              <td>${fmtDate(a.created_at)}${retentionBadge(a)}</td>
               <td><strong>${a.full_name}</strong>${a.email ? `<div class="sub" style="color:var(--muted);font-size:.78rem;">${a.email}</div>` : ''}</td>
               <td>${a.phone}</td>
               <td>${EC_TYPE_LABELS[a.desired_contract_type] || a.desired_contract_type}${a.desired_hours_per_day ? ' · ' + a.desired_hours_per_day + 'ч' : ''}</td>
@@ -187,6 +207,20 @@ async function refresh() {
         expandedId = null;
         await refresh();
       } catch (err) { alert(err.message); }
+    });
+  });
+  host.querySelectorAll('.delete-app-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Да се изтрие ли трайно тази кандидатура заедно с всички приложени снимки на документи? Действието е необратимо.')) return;
+      btn.disabled = true;
+      try {
+        await Api.del(`/api/hr/applications/${btn.dataset.id}`);
+        expandedId = null;
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+        btn.disabled = false;
+      }
     });
   });
   host.querySelectorAll('.assign-manager-select').forEach(sel => {
