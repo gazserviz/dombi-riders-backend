@@ -198,6 +198,18 @@ function requirePermission(req, res, moduleKey, actionKey) {
   return user;
 }
 
+// super_admin трябва винаги да има поне правата на admin/manager. Много от
+// маршрутите по-долу проверяват достъп до ЧУЖД запис (не собствения профил)
+// с твърд списък от роли, вместо през configurable requirePermission/
+// hasPermission — ползвайте тези помощни функции там, за да не остава
+// super_admin случайно извън тях (виж "Fix super_admin lockout" за фона).
+function isAdminOrAbove(user) {
+  return user.role === 'admin' || user.role === 'super_admin';
+}
+function isManagerOrAbove(user) {
+  return user.role === 'admin' || user.role === 'manager' || user.role === 'super_admin';
+}
+
 // само за конфигурацията на самата система за права/роли — НЕ минава през
 // матрицата (не може супер администраторският контрол да бъде изключен през
 // собствената си настройка).
@@ -217,7 +229,7 @@ function requireSuperAdmin(req, res) {
 // така админът контролира кой мениджър какво вижда, вместо всичко да е
 // видимо по подразбиране за всеки мениджър.
 function canAccessApplication(user, app) {
-  if (user.role === 'admin') return true;
+  if (isAdminOrAbove(user)) return true;
   return user.role === 'manager' && app.manager_id === user.id;
 }
 
@@ -1135,7 +1147,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetId = walletUserMatch[1];
-      if (targetId !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (targetId !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       return sendJson(res, 200, {
@@ -1196,8 +1208,8 @@ async function handleApi(req, res, pathname, query) {
         const rec = db.cancelWalletTransfer(walletCancelMatch[1], user.id);
         return sendJson(res, 200, { transfer: rec });
       } catch (err) {
-        if (user.role === 'admin') {
-          // админ може да отменя чужди чакащи заявки (отхвърля ги вместо одобрение)
+        if (isAdminOrAbove(user)) {
+          // админ (и super_admin) може да отменя чужди чакащи заявки (отхвърля ги вместо одобрение)
           try {
             const forced = db.decideWalletTransfer(walletCancelMatch[1], { approve: false, decided_by: user.id, decision_note: 'Отменено от админ' });
             return sendJson(res, 200, { transfer: forced });
@@ -1443,7 +1455,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetId = personnelMatch[1];
-      if (targetId !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (targetId !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       try {
@@ -1460,8 +1472,8 @@ async function handleApi(req, res, pathname, query) {
       const allowed = ['egn', 'address', 'city', 'manager_id', 'full_name', 'phone', 'status',
         'id_card_number', 'id_card_expiry', 'driver_license_number', 'driver_license_expiry',
         'start_date', 'end_date'];
-      // смяна на роля и имейл — само admin (по-чувствителни полета)
-      if (user.role === 'admin') allowed.push('role', 'email');
+      // смяна на роля и имейл — само admin/super_admin (по-чувствителни полета)
+      if (isAdminOrAbove(user)) allowed.push('role', 'email');
       const patch = {};
       allowed.forEach(k => { if (k in body) patch[k] = body[k]; });
       if (patch.email && db.listUsers().some(u => u.id !== personnelMatch[1] && u.email.toLowerCase() === String(patch.email).toLowerCase())) {
@@ -1571,7 +1583,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const targetId = query.profile_id;
       if (!targetId) return sendJson(res, 400, { error: 'Липсва profile_id' });
-      if (targetId !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (targetId !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       return sendJson(res, 200, { contracts: db.listEmploymentContracts(targetId) });
@@ -1603,7 +1615,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const rec = db.getEmploymentContract(employmentContractDocMatch[1]);
       if (!rec) return sendJson(res, 404, { error: 'Не е намерен' });
-      if (rec.profile_id !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (rec.profile_id !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       const result = await docRender.renderDocument('employment_contract', rec, employmentContractDocMatch[2]);
@@ -1646,14 +1658,14 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetProfileId = query.profile_id;
-      if (targetProfileId && targetProfileId !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (targetProfileId && targetProfileId !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
-      const profileId = targetProfileId || (['admin', 'manager'].includes(user.role) ? undefined : user.id);
+      const profileId = targetProfileId || (isManagerOrAbove(user) ? undefined : user.id);
       let entries = db.listPayrollEntries({ profileId, weekStart: query.week_start });
       // ако заявителят е самият шофьор и админ не му е разрешил да вижда
       // заработката, оставяме само броя поръчки — сумите се скриват изцяло
-      const viewingOwnWithoutEarnings = profileId === user.id && !['admin', 'manager'].includes(user.role) && !db.canViewEarnings(user);
+      const viewingOwnWithoutEarnings = profileId === user.id && !isManagerOrAbove(user) && !db.canViewEarnings(user);
       if (viewingOwnWithoutEarnings) {
         entries = entries.map(e => ({
           ...e, gross_earnings: null, deduction_amount: null, net_amount: null,
@@ -1827,7 +1839,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const entry = db.getPayrollEntry(payrollEsignMatch[1]);
       if (!entry) return sendJson(res, 404, { error: 'Записът не е намерен' });
-      if (entry.profile_id !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (entry.profile_id !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       return sendJson(res, 200, { events: db.listEsignEvents('payroll', entry.id) });
@@ -1839,7 +1851,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const entry = db.getPayrollEntry(payrollSignMatch[1]);
       if (!entry) return sendJson(res, 404, { error: 'Записът не е намерен' });
-      if (entry.profile_id !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (entry.profile_id !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       const body = await readJsonBody(req);
@@ -1885,7 +1897,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetId = query.profile_id || user.id;
-      if (targetId !== user.id && !['admin', 'manager'].includes(user.role)) {
+      if (targetId !== user.id && !isManagerOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       const year = Number(query.year) || new Date().getFullYear();
@@ -1913,7 +1925,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       let filter = { status: query.status || undefined };
-      if (user.role === 'admin') {
+      if (isAdminOrAbove(user)) {
         filter.profileId = query.profile_id || undefined;
       } else if (user.role === 'manager') {
         if (query.scope === 'team') filter.managerId = user.id;
@@ -1928,7 +1940,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const body = await readJsonBody(req);
-      const profileId = (body.profile_id && ['admin', 'manager'].includes(user.role)) ? body.profile_id : user.id;
+      const profileId = (body.profile_id && isManagerOrAbove(user)) ? body.profile_id : user.id;
       if (!body.start_date || !body.end_date || body.days == null) {
         return sendJson(res, 400, { error: 'Липсват задължителни полета (начална/крайна дата, брой дни)' });
       }
@@ -1972,7 +1984,7 @@ async function handleApi(req, res, pathname, query) {
         const rec = db.cancelLeaveRequest(leaveCancelMatch[1], user.id);
         return sendJson(res, 200, { request: rec });
       } catch (err) {
-        if (user.role === 'admin') {
+        if (isAdminOrAbove(user)) {
           try {
             const forced = db.decideLeaveRequest(leaveCancelMatch[1], { approve: false, decided_by: user.id, decision_note: 'Отменено от админ' });
             return sendJson(res, 200, { request: forced });
@@ -2008,7 +2020,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetId = partnerMatch[1];
-      if (targetId !== user.id && user.role !== 'admin') {
+      if (targetId !== user.id && !isAdminOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       const profile = db.findUserById(targetId);
@@ -2039,7 +2051,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetId = partnerStatsMatch[1];
-      if (targetId !== user.id && user.role !== 'admin') {
+      if (targetId !== user.id && !isAdminOrAbove(user)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       const stats = db.getPartnerStats(targetId, { from: query.from, to: query.to });
@@ -2369,9 +2381,9 @@ async function handleApi(req, res, pathname, query) {
       if (!canAccessApplication(user, existingApp)) return sendJson(res, 403, { error: 'Нямате права за тази кандидатура' });
       const body = await readJsonBody(req);
       try {
-        // назначаването на мениджър от този диалог е позволено само на админ —
+        // назначаването на мениджър от този диалог е позволено само на админ/super_admin —
         // мениджър не може да преназначава кандидатури през send-link
-        if (user.role === 'admin' && 'manager_id' in body) {
+        if (isAdminOrAbove(user) && 'manager_id' in body) {
           db.assignApplicationManager(applicationSendLinkMatch[1], body.manager_id || null);
         }
         const app = db.generateApplicationLink(applicationSendLinkMatch[1]);
