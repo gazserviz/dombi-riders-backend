@@ -44,9 +44,13 @@ function docFieldRow(label, value, expiry, photoFrontUrl, photoBackUrl) {
     expiryHtml = `${fmtDate(expiry)} ${soon ? `<span class="badge ${daysLeft < 0 ? 'badge-danger' : 'badge-warn'}" style="margin-left:6px;">${daysLeftLabel(daysLeft)}</span>` : ''}`;
   }
   const photoCell = [
-    photoFrontUrl ? `<a href="${photoFrontUrl}" target="_blank">Лице</a>` : '<span class="hint">няма лице</span>',
-    photoBackUrl ? `<a href="${photoBackUrl}" target="_blank">Гръб</a>` : '<span class="hint">няма гръб</span>',
-  ].join(' · ');
+    photoFrontUrl
+      ? `<a href="${photoFrontUrl}" target="_blank">Лице</a> ${docActionButtons(photoFrontUrl, `${label}-лице${(photoFrontUrl.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `${label} — лице`)}`
+      : '<span class="hint">няма лице</span>',
+    photoBackUrl
+      ? `<a href="${photoBackUrl}" target="_blank">Гръб</a> ${docActionButtons(photoBackUrl, `${label}-гръб${(photoBackUrl.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `${label} — гръб`)}`
+      : '<span class="hint">няма гръб</span>',
+  ].join('<br>');
   return `
     <tr>
       <td><strong>${label}</strong></td>
@@ -274,7 +278,7 @@ async function loadFile() {
               <td>${fmtMoney(c.weekly_deduction_amount)}</td>
               <td>${esignStatusBadge(c.signature_status)}</td>
               <td>
-                ${c.scan_url ? `<a href="${c.scan_url}" target="_blank">Преглед</a>` : '<span class="hint">няма</span>'}
+                ${c.scan_url ? `<a href="${c.scan_url}" target="_blank">Преглед</a><br>${docActionButtons(c.scan_url, `договор-${c.contract_number}${(c.scan_url.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `Договор ${c.contract_number}`)}` : '<span class="hint">няма</span>'}
                 ${CAN_EDIT ? `<br><button type="button" class="btn btn-ghost btn-sm ec-scan-btn" data-id="${c.id}" style="padding:2px 8px;font-size:.68rem;margin-top:4px;">${c.scan_url ? 'Смени' : 'Прикачи'}</button>
                 <input type="file" class="ec-scan-file" data-id="${c.id}" accept="image/*,application/pdf" style="display:none;">` : ''}
               </td>
