@@ -1,0 +1,2151 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Застрахователна агенция — система за отчет</title>
+<style>
+:root{
+  --bg:#f4f6fa; --panel:#ffffff; --panel-2:#fafbfd; --line:#e3e8f0; --line-strong:#cfd7e6;
+  --ink:#101828; --ink-2:#475467; --ink-3:#7a8699;
+  --brand:#1e5eff; --brand-ink:#ffffff; --brand-soft:#e8efff;
+  --ok:#0f9d58; --ok-soft:#e4f6ec;
+  --warn:#b7791f; --warn-soft:#fdf3e2;
+  --bad:#d92d20; --bad-soft:#fdeceb;
+  --info:#6941c6; --info-soft:#f2ecfd;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06);
+  --radius:12px;
+}
+html[data-theme="dark"]{
+  --bg:#0d1117; --panel:#151b24; --panel-2:#1b222c; --line:#252d3a; --line-strong:#333e4e;
+  --ink:#e9eef6; --ink-2:#a7b2c4; --ink-3:#7b8798;
+  --brand:#5b8cff; --brand-ink:#08121f; --brand-soft:#1a2540;
+  --ok:#3ec07a; --ok-soft:#122a1e;
+  --warn:#e0a63c; --warn-soft:#2b2213;
+  --bad:#ff6a5e; --bad-soft:#2e1715;
+  --info:#a888ff; --info-soft:#241b3a;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 "Segoe UI",Roboto,-apple-system,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  -webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--brand);text-decoration:none}
+h1,h2,h3,h4{margin:0;font-weight:650;letter-spacing:-.01em}
+.hidden{display:none !important}
+
+/* ---------- LOGIN ---------- */
+#login{min-height:100vh;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(1000px 600px at 20% -10%,var(--brand-soft),transparent 60%),var(--bg)}
+.login-card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:32px;box-shadow:var(--shadow)}
+.login-card .logo{width:44px;height:44px;border-radius:12px;background:var(--brand);color:var(--brand-ink);
+  display:grid;place-items:center;font-weight:800;font-size:18px;margin-bottom:18px}
+.login-card h1{font-size:20px;margin-bottom:4px}
+.login-card p.sub{color:var(--ink-2);margin:0 0 22px}
+
+/* ---------- SHELL ---------- */
+#app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;overflow-y:auto}
+aside .brand{display:flex;gap:10px;align-items:center;padding:18px 16px;border-bottom:1px solid var(--line)}
+aside .brand .logo{width:34px;height:34px;border-radius:9px;background:var(--brand);color:var(--brand-ink);
+  display:grid;place-items:center;font-weight:800;flex:none}
+aside .brand b{font-size:14px;display:block;line-height:1.25}
+aside .brand span{font-size:11px;color:var(--ink-3)}
+nav{padding:10px 8px;flex:1}
+nav .grp{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);
+  padding:14px 10px 6px;font-weight:700}
+nav button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;margin:1px 0;
+  background:none;border:0;border-radius:9px;cursor:pointer;color:var(--ink-2);text-align:left;font-size:13.5px}
+nav button:hover{background:var(--panel-2);color:var(--ink)}
+nav button.active{background:var(--brand-soft);color:var(--brand);font-weight:600}
+nav button .ic{width:18px;text-align:center;flex:none;opacity:.9}
+nav button .cnt{margin-left:auto;background:var(--bad);color:#fff;border-radius:999px;
+  font-size:10.5px;padding:1px 6px;font-weight:700}
+.side-foot{border-top:1px solid var(--line);padding:12px}
+.userbox{display:flex;gap:9px;align-items:center}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--info-soft);color:var(--info);
+  display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+.userbox b{font-size:12.5px;display:block}
+.userbox span{font-size:11px;color:var(--ink-3)}
+
+main{min-width:0;display:flex;flex-direction:column}
+header.top{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);
+  background:var(--panel);position:sticky;top:0;z-index:20}
+header.top h2{font-size:17px}
+header.top .spacer{flex:1}
+.content{padding:22px;flex:1}
+
+/* ---------- COMPONENTS ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:9px;
+  border:1px solid var(--line-strong);background:var(--panel);cursor:pointer;font-size:13.5px;font-weight:500}
+.btn:hover{background:var(--panel-2)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--panel-2)}
+.btn.danger{color:var(--bad);border-color:var(--line-strong)}
+.btn.sm{padding:5px 9px;font-size:12.5px;border-radius:7px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.card-h h3{font-size:14.5px}
+.card-h .spacer{flex:1}
+.card-b{padding:16px}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
+.kpi .lbl{font-size:11.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.kpi .val{font-size:23px;font-weight:700;margin-top:6px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi .sub{font-size:12px;color:var(--ink-2);margin-top:3px}
+.kpi.ok .val{color:var(--ok)} .kpi.bad .val{color:var(--bad)} .kpi.warn .val{color:var(--warn)}
+.kpi.brand .val{color:var(--brand)}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:1100px){.grid2,.grid3{grid-template-columns:1fr}}
+
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:9px 12px;background:var(--panel-2);color:var(--ink-2);font-weight:600;
+  font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line);
+  white-space:nowrap;position:sticky;top:0}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:hover{background:var(--panel-2)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.clickable{cursor:pointer}
+.empty{padding:44px 20px;text-align:center;color:var(--ink-3)}
+.empty .big{font-size:34px;opacity:.5;margin-bottom:8px}
+
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;
+  font-size:11.5px;font-weight:600;white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.bad{background:var(--bad-soft);color:var(--bad)}
+.tag.info{background:var(--info-soft);color:var(--info)}
+.tag.mut{background:var(--panel-2);color:var(--ink-3);border:1px solid var(--line)}
+.tag.brand{background:var(--brand-soft);color:var(--brand)}
+
+.filters{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:14px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--ink-3);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line-strong);border-radius:9px;
+  background:var(--panel);min-width:0;width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--brand-soft);border-color:var(--brand)}
+.search{min-width:230px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.form-grid .full{grid-column:1/-1}
+@media(max-width:760px){.form-grid{grid-template-columns:1fr}}
+.fld{display:flex;flex-direction:column;gap:5px}
+.fld > span{font-size:12px;color:var(--ink-2);font-weight:600}
+.hint{font-size:11.5px;color:var(--ink-3)}
+
+.modal-bg{position:fixed;inset:0;background:rgba(16,24,40,.55);display:grid;place-items:center;
+  padding:20px;z-index:100;backdrop-filter:blur(2px)}
+.modal{background:var(--panel);border-radius:16px;width:100%;max-width:820px;max-height:92vh;
+  display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.modal-h{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.modal-h h3{font-size:16px} .modal-h .spacer{flex:1}
+.modal-b{padding:20px;overflow-y:auto}
+.modal-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:9px;justify-content:flex-end}
+.modal.wide{max-width:1080px} .modal.narrow{max-width:480px}
+
+.calc{background:var(--panel-2);border:1px dashed var(--line-strong);border-radius:11px;padding:14px}
+.calc-row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13px}
+.calc-row.total{border-top:1px solid var(--line-strong);margin-top:7px;padding-top:9px;
+  font-weight:700;font-size:15.5px}
+.calc-row b{font-variant-numeric:tabular-nums}
+.pos{color:var(--ok)} .neg{color:var(--bad)}
+
+.toast{position:fixed;right:18px;bottom:18px;z-index:200;display:flex;flex-direction:column;gap:8px}
+.toast div{background:var(--ink);color:var(--bg);padding:11px 15px;border-radius:10px;
+  box-shadow:var(--shadow);font-size:13px;max-width:380px}
+.toast div.err{background:var(--bad);color:#fff}
+.toast div.ok{background:var(--ok);color:#fff}
+
+.bar-chart{display:flex;align-items:flex-end;gap:6px;height:180px;padding-top:10px}
+.bar-chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;height:100%}
+.bar-chart .bar{width:100%;background:var(--brand);border-radius:5px 5px 0 0;min-height:2px;transition:.2s}
+.bar-chart .col:hover .bar{filter:brightness(1.15)}
+.bar-chart .cap{font-size:10.5px;color:var(--ink-3);white-space:nowrap}
+.hbar{display:flex;align-items:center;gap:10px;padding:6px 0}
+.hbar .nm{width:120px;font-size:12.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar .track{flex:1;height:10px;background:var(--panel-2);border-radius:999px;overflow:hidden}
+.hbar .fill{height:100%;background:var(--brand);border-radius:999px}
+.hbar .vv{width:96px;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums;font-weight:600}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap}
+.tabs button{padding:9px 14px;border:0;background:none;cursor:pointer;color:var(--ink-2);
+  border-bottom:2px solid transparent;font-size:13.5px}
+.tabs button.active{color:var(--brand);border-bottom-color:var(--brand);font-weight:600}
+
+.pill-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.pill{padding:5px 11px;border-radius:999px;border:1px solid var(--line-strong);background:var(--panel);
+  cursor:pointer;font-size:12.5px}
+.pill.active{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.muted{color:var(--ink-3)}
+.right{text-align:right}
+.nowrap{white-space:nowrap}
+.stack{display:flex;flex-direction:column;gap:2px}
+.stack small{color:var(--ink-3);font-size:11.5px}
+@media(max-width:900px){
+  #app{grid-template-columns:1fr}
+  aside{position:fixed;left:0;top:0;width:236px;z-index:60;transform:translateX(-100%);transition:.2s}
+  aside.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.3)}
+  .content{padding:14px}
+}
+#menuBtn{display:none}
+@media(max-width:900px){#menuBtn{display:inline-flex}}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<!-- ============ ВХОД ============ -->
+<div id="login">
+  <form class="login-card" id="loginForm">
+    <div class="logo">З</div>
+    <h1 id="loginTitle">Вход в системата</h1>
+    <p class="sub">Отчет и следене на застраховки</p>
+    <div class="fld" style="margin-bottom:12px"><span>Имейл</span>
+      <input type="email" id="liEmail" autocomplete="username" required></div>
+    <div class="fld" style="margin-bottom:18px"><span>Парола</span>
+      <input type="password" id="liPass" autocomplete="current-password" required></div>
+    <button class="btn primary" style="width:100%;justify-content:center" id="liBtn">Влез</button>
+    <div id="liErr" class="tag bad hidden" style="margin-top:12px;display:block;padding:8px 11px"></div>
+  </form>
+</div>
+
+<!-- ============ ПРИЛОЖЕНИЕ ============ -->
+<div id="app" class="hidden">
+  <aside id="side">
+    <div class="brand">
+      <div class="logo">З</div>
+      <div><b id="agencyName">Застрахователна агенция</b><span>Система за отчет</span></div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="side-foot">
+      <div class="userbox">
+        <div class="avatar" id="uAvatar">—</div>
+        <div style="min-width:0;flex:1">
+          <b id="uName">—</b><span id="uRole">—</span>
+        </div>
+        <button class="btn ghost sm" id="themeBtn" title="Тъмна / светла тема">◐</button>
+        <button class="btn ghost sm" id="logoutBtn" title="Изход">⏻</button>
+      </div>
+    </div>
+  </aside>
+  <main>
+    <header class="top">
+      <button class="btn ghost sm" id="menuBtn">☰</button>
+      <h2 id="pageTitle">Табло</h2>
+      <div class="spacer"></div>
+      <div id="pageActions" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </header>
+    <div class="content" id="view"></div>
+  </main>
+</div>
+<div id="modals"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* ==========================================================================
+   КОНФИГУРАЦИЯ
+   ========================================================================== */
+const SUPABASE_URL = "https://mqgoxyaxglxqstqqxvbx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_V3De70G77NupD1TwSsuHRA_HKou9TNx";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ==========================================================================
+   ПОМОЩНИ ФУНКЦИИ
+   ========================================================================== */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const el = (h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild;};
+const esc = (s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = (v)=>{const n=parseFloat(String(v??'').replace(',','.'));return isNaN(n)?0:n;};
+const r2 = (n)=>Math.round((num(n)+Number.EPSILON)*100)/100;
+const fmt = (n,d=2)=>num(n).toLocaleString('bg-BG',{minimumFractionDigits:d,maximumFractionDigits:d});
+const money = (n)=>fmt(n)+' '+(STATE.settings?.currency||'лв.');
+const money0 = (n)=>fmt(n,0)+' '+(STATE.settings?.currency||'лв.');
+const pct = (n)=>fmt(n,2).replace(/[.,]00$/,'')+'%';
+const today = ()=>new Date().toISOString().slice(0,10);
+const dfmt = (d)=>d?new Date(d+'T00:00:00').toLocaleDateString('bg-BG'):'—';
+const addDays=(d,n)=>{const x=new Date(d+'T00:00:00');x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+const addMonths=(d,n)=>{const x=new Date(d+'T00:00:00');const day=x.getDate();x.setMonth(x.getMonth()+n);
+  if(x.getDate()<day)x.setDate(0);return x.toISOString().slice(0,10);};
+const monthKey=(d)=>String(d||'').slice(0,7);
+const MONTHS=['яну','фев','мар','апр','май','юни','юли','авг','сеп','окт','ное','дек'];
+const initials=(s)=>String(s||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+function toast(msg,kind=''){
+  const d=el(`<div class="${kind}">${esc(msg)}</div>`);
+  $('#toast').appendChild(d);
+  setTimeout(()=>{d.style.opacity='0';d.style.transition='.3s';setTimeout(()=>d.remove(),300)},3600);
+}
+function errToast(e){ console.error(e); toast(e?.message||String(e),'err'); }
+
+const ROLE_NAMES={admin:'Собственик / Администратор',manager:'Офис мениджър',agent:'Агент',cashier:'Касиер'};
+const ROLE_SHORT={admin:'Администратор',manager:'Мениджър',agent:'Агент',cashier:'Касиер'};
+const PAY_METHODS={cash:'В брой',bank:'Банков превод',card:'Карта',online:'Онлайн'};
+const BSO_KINDS={policy_form:'Бланка полица',sticker:'Стикер ГО',green_card:'Зелена карта',certificate:'Сертификат',other:'Друго'};
+const BSO_STATUS={in_stock:'В склад',assigned:'Раздадена',used:'Използвана',void:'Анулирана',returned:'Върната'};
+const POLICY_STATUS={active:'Активна',expired:'Изтекла',cancelled:'Прекратена',renewed:'Подновена',draft:'Чернова'};
+const OBJ_KINDS={mpv:'МПС',property:'Имот',person:'Лице',cargo:'Товар',other:'Друго'};
+const SETTLE_KINDS={transfer_to_insurer:'Превод към застраховател',commission_received:'Получена комисиона',adjustment:'Корекция'};
+
+/* ==========================================================================
+   СЪСТОЯНИЕ
+   ========================================================================== */
+const STATE={me:null,settings:null,insurers:[],products:[],users:[],offices:[],rates:[],
+  policies:[],installments:[],clients:[],objects:[],settlements:[],bso:[],balances:[],
+  page:'dash', filters:{}};
+
+const can = {
+  get role(){return STATE.me?.role},
+  admin(){return STATE.me?.role==='admin'},
+  staff(){return ['admin','manager'].includes(STATE.me?.role)},
+  seeAll(){return ['admin','manager','cashier'].includes(STATE.me?.role)},
+  editPolicy(){return ['admin','manager','agent'].includes(STATE.me?.role)},
+  takePayment(){return ['admin','manager','cashier','agent'].includes(STATE.me?.role)},
+  settle(){return ['admin','manager'].includes(STATE.me?.role)},
+  bso(){return ['admin','manager'].includes(STATE.me?.role)},
+  users(){return STATE.me?.role==='admin'},
+  rates(){return STATE.me?.role==='admin'},
+};
+
+/* ==========================================================================
+   ИЗЧИСЛЕНИЯ (същите както в базата)
+   ========================================================================== */
+function calcPolicy(p){
+  const gross=num(p.gross_premium), disc=num(p.discount_amount), tax=num(p.tax_amount);
+  const premium = p.premium!=null ? num(p.premium) : r2(gross-disc);
+  const base = Math.max(r2((p.discount_borne_by==='agency'?gross:premium)-tax),0);
+  const commission = r2(base*num(p.commission_pct)/100);
+  const discCost = p.discount_borne_by==='agency'?disc:0;
+  const agentPayout = r2(commission*num(p.agent_commission_pct)/100);
+  const net = r2(commission-discCost-agentPayout);
+  return {gross,disc,tax,premium,base,commission,discCost,agentPayout,net};
+}
+
+/* ==========================================================================
+   ВХОД / ИЗХОД
+   ========================================================================== */
+$('#loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const btn=$('#liBtn'); btn.disabled=true; btn.textContent='Влизане…';
+  $('#liErr').classList.add('hidden');
+  const {error}=await sb.auth.signInWithPassword({email:$('#liEmail').value.trim(),password:$('#liPass').value});
+  btn.disabled=false; btn.textContent='Влез';
+  if(error){ $('#liErr').textContent = error.message.includes('Invalid')?'Грешен имейл или парола.':error.message;
+    $('#liErr').classList.remove('hidden'); return; }
+  await boot();
+});
+$('#logoutBtn').addEventListener('click', async ()=>{ await sb.auth.signOut(); location.reload(); });
+$('#themeBtn').addEventListener('click', ()=>{
+  const cur=document.documentElement.getAttribute('data-theme')||
+    (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  const next=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  try{localStorage.setItem('theme',next)}catch(e){}
+});
+$('#menuBtn').addEventListener('click',()=>$('#side').classList.toggle('open'));
+try{const t=localStorage.getItem('theme'); if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+
+/* ==========================================================================
+   ЗАРЕЖДАНЕ НА ДАННИ
+   ========================================================================== */
+async function q(table, sel='*', mod){
+  let query = sb.from(table).select(sel);
+  if(mod) query = mod(query);
+  const {data,error} = await query;
+  if(error){ console.warn(table,error.message); return []; }
+  return data||[];
+}
+
+async function loadAll(){
+  const [settings,insurers,products,users,offices,policies,installments,clients,objects,settlements,bso,balances]=
+  await Promise.all([
+    sb.from('agency_settings').select('*').maybeSingle().then(r=>r.data),
+    q('insurers','*',x=>x.order('sort_order')),
+    q('product_types','*',x=>x.order('sort_order')),
+    q('app_users','*',x=>x.order('full_name')),
+    q('offices','*',x=>x.order('name')),
+    q('v_policies','*',x=>x.order('issue_date',{ascending:false}).limit(5000)),
+    q('v_installments','*',x=>x.order('due_date').limit(20000)),
+    q('clients','*',x=>x.order('full_name').limit(5000)),
+    q('insured_objects','*',x=>x.limit(5000)),
+    q('settlements','*',x=>x.order('doc_date',{ascending:false}).limit(2000)),
+    q('bso_items','*',x=>x.order('number').limit(20000)),
+    q('v_insurer_balance','*'),
+  ]);
+  Object.assign(STATE,{settings:settings||{currency:'лв.',renewal_alert_days:30,default_tax_pct:2},
+    insurers,products,users,offices,policies,installments,clients,objects,settlements,bso,balances});
+  if(can.rates()) STATE.rates = await q('commission_rates','*');
+}
+
+const insurerById=(id)=>STATE.insurers.find(i=>i.id===id);
+const productById=(id)=>STATE.products.find(p=>p.id===id);
+const userById=(id)=>STATE.users.find(u=>u.id===id);
+const clientById=(id)=>STATE.clients.find(c=>c.id===id);
+const insName=(id)=>insurerById(id)?.short_name||insurerById(id)?.name||'—';
+
+async function rateFor(insurer_id, product_type_id){
+  if(!insurer_id||!product_type_id) return null;
+  const {data,error}=await sb.rpc('rate_for',{p_insurer:insurer_id,p_product:product_type_id});
+  if(error||!data||!data.length) return null;
+  return data[0];
+}
+
+/* ==========================================================================
+   НАВИГАЦИЯ
+   ========================================================================== */
+const PAGES=[
+  {grp:'Работа'},
+  {id:'dash',   ic:'▤', name:'Табло'},
+  {id:'policies',ic:'▦', name:'Полици'},
+  {id:'due',    ic:'⏱', name:'Вноски и падежи', badge:'due'},
+  {id:'renew',  ic:'↻', name:'За подновяване', badge:'renew'},
+  {id:'clients',ic:'☺', name:'Клиенти'},
+  {grp:'Финанси'},
+  {id:'profit', ic:'◈', name:'Комисиони и печалба'},
+  {id:'balance',ic:'⇄', name:'Разчети', roles:['admin','manager','cashier']},
+  {grp:'Склад'},
+  {id:'bso',    ic:'▤', name:'Бланки и стикери'},
+  {grp:'Система'},
+  {id:'reports',ic:'⎙', name:'Справки и експорт'},
+  {id:'settings',ic:'⚙', name:'Настройки', roles:['admin']},
+];
+
+function buildNav(){
+  const nav=$('#nav'); nav.innerHTML='';
+  for(const p of PAGES){
+    if(p.grp){ nav.appendChild(el(`<div class="grp">${esc(p.grp)}</div>`)); continue; }
+    if(p.roles && !p.roles.includes(STATE.me.role)) continue;
+    const b=el(`<button data-page="${p.id}"><span class="ic">${p.ic}</span><span>${esc(p.name)}</span></button>`);
+    b.onclick=()=>{go(p.id); $('#side').classList.remove('open');};
+    nav.appendChild(b);
+  }
+  updateBadges();
+}
+function updateBadges(){
+  const overdue=visibleInstallments().filter(i=>i.pay_status==='overdue'||i.pay_status==='partial_overdue').length;
+  const days=STATE.settings?.renewal_alert_days||30;
+  const renew=visiblePolicies().filter(p=>p.status==='active'&&p.days_to_expiry>=0&&p.days_to_expiry<=days).length;
+  const set=(id,n)=>{
+    const b=$(`#nav button[data-page="${id}"]`); if(!b)return;
+    b.querySelector('.cnt')?.remove();
+    if(n>0) b.appendChild(el(`<span class="cnt">${n}</span>`));
+  };
+  set('due',overdue); set('renew',renew);
+}
+function go(page){
+  STATE.page=page; STATE.filters={};
+  $$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
+  const def=PAGES.find(p=>p.id===page);
+  $('#pageTitle').textContent=def?.name||'';
+  $('#pageActions').innerHTML='';
+  render();
+}
+let FOCUS_SEL=null;
+function render(){
+  $('#pageActions').innerHTML='';
+  const f=VIEWS[STATE.page]; $('#view').innerHTML=''; if(f) f($('#view'));
+  if(FOCUS_SEL){ const e=$(FOCUS_SEL);
+    if(e){ e.focus(); try{e.setSelectionRange(e.value.length,e.value.length)}catch(_){} }
+    FOCUS_SEL=null; }
+}
+
+const visiblePolicies=()=>STATE.policies;
+const visibleInstallments=()=>STATE.installments;
+
+/* ==========================================================================
+   СТАРТ
+   ========================================================================== */
+async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){ $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); return; }
+  const {data:me}=await sb.from('app_users').select('*').eq('id',session.user.id).maybeSingle();
+  if(!me){ await sb.auth.signOut(); $('#liErr').textContent='Профилът ви не е активиран. Свържете се с администратора.';
+    $('#liErr').classList.remove('hidden'); $('#login').classList.remove('hidden'); return; }
+  if(!me.active){ await sb.auth.signOut(); $('#liErr').textContent='Профилът ви е деактивиран.';
+    $('#liErr').classList.remove('hidden'); $('#login').classList.remove('hidden'); return; }
+  STATE.me=me;
+  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  $('#uName').textContent=me.full_name; $('#uRole').textContent=ROLE_SHORT[me.role]||me.role;
+  $('#uAvatar').textContent=initials(me.full_name);
+  await loadAll();
+  $('#agencyName').textContent=STATE.settings?.agency_name||'Застрахователна агенция';
+  document.title=(STATE.settings?.agency_name||'Застрахователна агенция')+' — система за отчет';
+  buildNav(); go('dash');
+}
+async function reload(){ await loadAll(); updateBadges(); render(); }
+
+/* ==========================================================================
+   ОБЩИ КОМПОНЕНТИ
+   ========================================================================== */
+function makeTable(cols, rows, opts={}){
+  const wrap=el(`<div class="tbl-wrap"></div>`);
+  if(!rows.length){
+    wrap.appendChild(el(`<div class="empty"><div class="big">◌</div>${esc(opts.empty||'Няма данни')}</div>`));
+    return wrap;
+  }
+  const t=el('<table></table>');
+  const thead=el('<thead><tr></tr></thead>');
+  cols.forEach(c=>thead.firstElementChild.appendChild(
+    el(`<th class="${c.num?'num':''}">${esc(c.h)}</th>`)));
+  t.appendChild(thead);
+  const tb=el('<tbody></tbody>');
+  rows.forEach(r=>{
+    const tr=el(`<tr class="${opts.onRow?'clickable':''}"></tr>`);
+    cols.forEach(c=>{
+      const td=el(`<td class="${c.num?'num':''}"></td>`);
+      const v=c.f(r);
+      if(v instanceof Node) td.appendChild(v); else td.innerHTML=v??'';
+      tr.appendChild(td);
+    });
+    if(opts.onRow) tr.onclick=(e)=>{ if(e.target.closest('button'))return; opts.onRow(r); };
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  if(opts.foot){
+    const tf=el('<tfoot><tr></tr></tfoot>');
+    cols.forEach(c=>tf.firstElementChild.appendChild(
+      el(`<td class="${c.num?'num':''}" style="font-weight:700;background:var(--panel-2)">${opts.foot(c)??''}</td>`)));
+    t.appendChild(tf);
+  }
+  wrap.appendChild(t);
+  return wrap;
+}
+
+function exportCSV(filename, cols, rows){
+  const head=cols.map(c=>c.h).join(';');
+  const body=rows.map(r=>cols.map(c=>{
+    let v=c.raw?c.raw(r):'';
+    if(typeof v==='number') v=String(v).replace('.',',');
+    return '"'+String(v??'').replace(/"/g,'""')+'"';
+  }).join(';')).join('\n');
+  const blob=new Blob(['﻿'+head+'\n'+body],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename+'.csv'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+
+function actionBtn(label,cls,fn){ const b=el(`<button class="btn ${cls||''} sm">${esc(label)}</button>`); b.onclick=fn; return b; }
+function headerAction(label,cls,fn){ const b=actionBtn(label,cls,fn); b.classList.remove('sm'); $('#pageActions').appendChild(b); return b; }
+
+function openModal(title, bodyNode, footNodes, cls=''){
+  const bg=el(`<div class="modal-bg"></div>`);
+  const m=el(`<div class="modal ${cls}"><div class="modal-h"><h3>${esc(title)}</h3><div class="spacer"></div>
+    <button class="btn ghost sm" data-x>✕</button></div><div class="modal-b"></div></div>`);
+  m.querySelector('.modal-b').appendChild(bodyNode);
+  if(footNodes&&footNodes.length){
+    const f=el('<div class="modal-f"></div>'); footNodes.forEach(n=>f.appendChild(n)); m.appendChild(f);
+  }
+  bg.appendChild(m); $('#modals').appendChild(bg);
+  const close=()=>bg.remove();
+  m.querySelector('[data-x]').onclick=close;
+  bg.onclick=(e)=>{ if(e.target===bg) close(); };
+  document.addEventListener('keydown',function esc2(e){ if(e.key==='Escape'){close();document.removeEventListener('keydown',esc2);} });
+  return {bg,close};
+}
+function confirmBox(text, onYes){
+  const body=el(`<div>${esc(text)}</div>`);
+  const yes=actionBtn('Да, продължи','danger',async()=>{ m.close(); await onYes(); });
+  const no=actionBtn('Отказ','',()=>m.close());
+  const m=openModal('Потвърждение',body,[no,yes],'narrow');
+}
+
+function periodPicker(onChange){
+  const box=el(`<div class="pill-row"></div>`);
+  const opts=[['m','Този месец'],['pm','Миналия месец'],['q','Това тримесечие'],['y','Тази година'],['all','Всичко']];
+  opts.forEach(([k,l])=>{
+    const b=el(`<button class="pill ${STATE.filters.period===k||(!STATE.filters.period&&k==='m')?'active':''}">${l}</button>`);
+    b.onclick=()=>{STATE.filters.period=k;onChange();};
+    box.appendChild(b);
+  });
+  return box;
+}
+function periodRange(){
+  const k=STATE.filters.period||'m'; const n=new Date(); const y=n.getFullYear(), m=n.getMonth();
+  const iso=(d)=>d.toISOString().slice(0,10);
+  if(k==='m')  return [iso(new Date(y,m,1)), iso(new Date(y,m+1,0))];
+  if(k==='pm') return [iso(new Date(y,m-1,1)), iso(new Date(y,m,0))];
+  if(k==='q'){ const q0=Math.floor(m/3)*3; return [iso(new Date(y,q0,1)), iso(new Date(y,q0+3,0))]; }
+  if(k==='y')  return [iso(new Date(y,0,1)), iso(new Date(y,11,31))];
+  return ['1900-01-01','2999-12-31'];
+}
+function inRange(d,[a,b]){ return d && d>=a && d<=b; }
+
+/* ==========================================================================
+   ТАБЛО
+   ========================================================================== */
+const VIEWS={};
+
+VIEWS.dash=(root)=>{
+  const range=periodRange();
+  root.appendChild(periodPicker(()=>render()));
+
+  const inP=STATE.policies.filter(p=>inRange(p.issue_date,range)&&p.status!=='draft'&&p.status!=='cancelled');
+  const paid=STATE.installments.filter(i=>i.paid_amount>0&&inRange(i.paid_on,range));
+  const sum=(a,f)=>a.reduce((s,x)=>s+num(f(x)),0);
+
+  const premium=sum(inP,p=>p.premium);
+  const commission=sum(inP,p=>p.commission_amount);
+  const netProfit=sum(inP,p=>p.net_profit);
+  const collected=sum(paid,i=>i.paid_amount);
+  const discounts=sum(inP,p=>p.agency_discount_cost);
+  const overdueList=STATE.installments.filter(i=>['overdue','partial_overdue'].includes(i.pay_status));
+  const overdue=sum(overdueList,i=>i.remaining);
+  const owed=sum(STATE.balances,b=>b.balance_to_insurer);
+  const receivable=sum(STATE.balances,b=>b.commission_receivable);
+
+  const kpis=el('<div class="kpis"></div>');
+  const K=(lbl,val,sub,cls='')=>kpis.appendChild(el(
+    `<div class="kpi ${cls}"><div class="lbl">${esc(lbl)}</div><div class="val">${val}</div>
+     <div class="sub">${sub||''}</div></div>`));
+  K('Нови полици', inP.length, 'за избрания период');
+  K('Премия', money0(premium), 'договорена с клиентите','brand');
+  K('Събрани пари', money0(collected), paid.length+' плащания');
+  K('Комисиона', money0(commission), 'от застрахователите');
+  K('Нетна печалба', money0(netProfit), 'след отстъпки и дялове','ok');
+  K('Дадени отстъпки', money0(discounts), 'за наша сметка', discounts>0?'warn':'');
+  if(can.seeAll()){
+    K('Дължимо към застрахователи', money0(owed), 'непреведени суми', owed>0.5?'bad':'ok');
+    K('Комисиона за получаване', money0(receivable), 'начислена, неполучена');
+  }
+  K('Просрочени вноски', money0(overdue), overdueList.length+' броя', overdue>0.5?'bad':'ok');
+  root.appendChild(kpis);
+
+  /* --- графики --- */
+  const g=el('<div class="grid2"></div>');
+
+  // печалба по месеци
+  const months=[]; const now=new Date();
+  for(let i=11;i>=0;i--){ const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    months.push({k:d.toISOString().slice(0,7),lbl:MONTHS[d.getMonth()]+(d.getMonth()===0||i===11?"'"+String(d.getFullYear()).slice(2):'')}); }
+  const byM={}; STATE.policies.forEach(p=>{ if(p.status==='cancelled'||p.status==='draft')return;
+    const k=monthKey(p.issue_date); byM[k]=(byM[k]||0)+num(p.net_profit); });
+  const maxM=Math.max(1,...months.map(m=>byM[m.k]||0));
+  const chart=el('<div class="bar-chart"></div>');
+  months.forEach(m=>{
+    const v=byM[m.k]||0;
+    chart.appendChild(el(`<div class="col" title="${esc(m.k)}: ${money(v)}">
+      <div class="bar" style="height:${Math.max(2,(v/maxM)*100)}%"></div>
+      <div class="cap">${esc(m.lbl)}</div></div>`));
+  });
+  const c1=el(`<div class="card"><div class="card-h"><h3>Нетна печалба по месеци</h3></div><div class="card-b"></div></div>`);
+  c1.querySelector('.card-b').appendChild(chart);
+  g.appendChild(c1);
+
+  // по застраховател
+  const byI={}; inP.forEach(p=>{ byI[p.insurer_id]=(byI[p.insurer_id]||0)+num(p.net_profit); });
+  const rows=Object.entries(byI).map(([id,v])=>({id,v,n:insName(id)})).sort((a,b)=>b.v-a.v).slice(0,8);
+  const maxI=Math.max(1,...rows.map(r=>r.v));
+  const c2=el(`<div class="card"><div class="card-h"><h3>Печалба по застраховател</h3></div><div class="card-b"></div></div>`);
+  const b2=c2.querySelector('.card-b');
+  if(!rows.length) b2.appendChild(el('<div class="empty">Няма полици за периода</div>'));
+  rows.forEach(r=>b2.appendChild(el(`<div class="hbar"><div class="nm" title="${esc(r.n)}">${esc(r.n)}</div>
+    <div class="track"><div class="fill" style="width:${Math.max(2,(r.v/maxI)*100)}%"></div></div>
+    <div class="vv">${money0(r.v)}</div></div>`)));
+  g.appendChild(c2);
+  root.appendChild(g);
+
+  /* --- списъци --- */
+  const g2=el('<div class="grid2" style="margin-top:16px"></div>');
+
+  const soon=STATE.installments.filter(i=>i.pay_status!=='paid'&&i.due_date<=addDays(today(),14))
+    .sort((a,b)=>a.due_date.localeCompare(b.due_date)).slice(0,8);
+  const c3=el(`<div class="card"><div class="card-h"><h3>Предстоящи и просрочени вноски</h3><div class="spacer"></div></div></div>`);
+  c3.querySelector('.card-h').appendChild(actionBtn('Всички','',()=>go('due')));
+  c3.appendChild(makeTable([
+    {h:'Клиент',f:r=>`<div class="stack"><b>${esc(r.client_name)}</b><small>${esc(r.insurer_short||'')} · ${esc(r.product_name)}</small></div>`},
+    {h:'Падеж',f:r=>dfmt(r.due_date)},
+    {h:'Сума',num:1,f:r=>money(r.remaining)},
+    {h:'',f:r=>statusTag(r.pay_status)},
+  ],soon,{empty:'Няма предстоящи вноски',onRow:r=>openPolicy(r.policy_id)}));
+  g2.appendChild(c3);
+
+  const days=STATE.settings?.renewal_alert_days||30;
+  const ren=STATE.policies.filter(p=>p.status==='active'&&p.days_to_expiry>=0&&p.days_to_expiry<=days)
+    .sort((a,b)=>a.days_to_expiry-b.days_to_expiry).slice(0,8);
+  const c4=el(`<div class="card"><div class="card-h"><h3>Полици за подновяване</h3><div class="spacer"></div></div></div>`);
+  c4.querySelector('.card-h').appendChild(actionBtn('Всички','',()=>go('renew')));
+  c4.appendChild(makeTable([
+    {h:'Клиент',f:r=>`<div class="stack"><b>${esc(r.client_name)}</b><small>${esc(r.insurer_short||'')} · ${esc(r.product_name)}</small></div>`},
+    {h:'Изтича',f:r=>dfmt(r.end_date)},
+    {h:'Остават',num:1,f:r=>`<span class="tag ${r.days_to_expiry<=7?'bad':'warn'}">${r.days_to_expiry} дни</span>`},
+    {h:'Премия',num:1,f:r=>money(r.premium)},
+  ],ren,{empty:'Няма изтичащи полици',onRow:r=>openPolicy(r.id)}));
+  g2.appendChild(c4);
+  root.appendChild(g2);
+};
+
+function statusTag(s){
+  const M={paid:['ok','Платена'],pending:['mut','Предстои'],partial:['info','Частично'],
+    overdue:['bad','Просрочена'],partial_overdue:['bad','Частично / просрочена']};
+  const [c,l]=M[s]||['mut',s]; return `<span class="tag ${c}">${l}</span>`;
+}
+function policyStatusTag(s){
+  const M={active:['ok','Активна'],expired:['mut','Изтекла'],cancelled:['bad','Прекратена'],
+    renewed:['info','Подновена'],draft:['warn','Чернова']};
+  const [c,l]=M[s]||['mut',s]; return `<span class="tag ${c}">${l}</span>`;
+}
+
+/* ==========================================================================
+   ПОЛИЦИ
+   ========================================================================== */
+function policyFilterBar(onChange){
+  const f=STATE.filters;
+  const bar=el('<div class="filters"></div>');
+  const mk=(lbl,node)=>{const l=el(`<label class="f"><span>${esc(lbl)}</span></label>`);l.appendChild(node);return l;};
+  const s=el(`<input class="search" placeholder="Търси по №, клиент, ЕГН, рег. номер…" value="${esc(f.q||'')}">`);
+  s.oninput=()=>{f.q=s.value;FOCUS_SEL='.search';onChange()};
+  bar.appendChild(mk('Търсене',s));
+  const ins=el(`<select><option value="">Всички</option>${STATE.insurers.map(i=>
+    `<option value="${i.id}" ${f.ins===i.id?'selected':''}>${esc(i.short_name||i.name)}</option>`).join('')}</select>`);
+  ins.onchange=()=>{f.ins=ins.value;onChange()}; bar.appendChild(mk('Застраховател',ins));
+  const pr=el(`<select><option value="">Всички</option>${STATE.products.map(p=>
+    `<option value="${p.id}" ${f.prod===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>`);
+  pr.onchange=()=>{f.prod=pr.value;onChange()}; bar.appendChild(mk('Вид застраховка',pr));
+  const st=el(`<select><option value="">Всички</option>${Object.entries(POLICY_STATUS).map(([k,v])=>
+    `<option value="${k}" ${f.st===k?'selected':''}>${esc(v)}</option>`).join('')}</select>`);
+  st.onchange=()=>{f.st=st.value;onChange()}; bar.appendChild(mk('Статус',st));
+  if(can.seeAll()){
+    const ag=el(`<select><option value="">Всички</option>${STATE.users.map(u=>
+      `<option value="${u.id}" ${f.agent===u.id?'selected':''}>${esc(u.full_name)}</option>`).join('')}</select>`);
+    ag.onchange=()=>{f.agent=ag.value;onChange()}; bar.appendChild(mk('Агент',ag));
+  }
+  const d1=el(`<input type="date" value="${esc(f.from||'')}">`); d1.onchange=()=>{f.from=d1.value;onChange()};
+  const d2=el(`<input type="date" value="${esc(f.to||'')}">`); d2.onchange=()=>{f.to=d2.value;onChange()};
+  bar.appendChild(mk('Издадена от',d1)); bar.appendChild(mk('до',d2));
+  const clr=el('<button class="btn sm" style="align-self:flex-end">Изчисти</button>');
+  clr.onclick=()=>{STATE.filters={};onChange()}; bar.appendChild(clr);
+  return bar;
+}
+function filterPolicies(){
+  const f=STATE.filters; const qs=(f.q||'').toLowerCase().trim();
+  return STATE.policies.filter(p=>{
+    if(f.ins&&p.insurer_id!==f.ins)return false;
+    if(f.prod&&p.product_type_id!==f.prod)return false;
+    if(f.st&&p.status!==f.st)return false;
+    if(f.agent&&p.agent_id!==f.agent)return false;
+    if(f.from&&p.issue_date<f.from)return false;
+    if(f.to&&p.issue_date>f.to)return false;
+    if(qs){
+      const hay=[p.policy_number,p.client_name,p.client_ident,p.object_reg_number,p.object_make_model,
+        p.insurer_name,p.product_name,p.client_phone,p.sticker_no,p.green_card_no].join(' ').toLowerCase();
+      if(!hay.includes(qs))return false;
+    }
+    return true;
+  });
+}
+const POLICY_COLS=()=>[
+  {h:'№ полица',f:r=>`<div class="stack"><b class="mono">${esc(r.policy_number)}</b>
+      <small>${esc(r.insurer_short||r.insurer_name)}</small></div>`,raw:r=>r.policy_number},
+  {h:'Клиент',f:r=>`<div class="stack"><b>${esc(r.client_name)}</b>
+      <small>${esc(r.product_name)}${r.object_reg_number?' · '+esc(r.object_reg_number):''}</small></div>`,raw:r=>r.client_name},
+  {h:'Период',f:r=>`<div class="stack">${dfmt(r.start_date)}<small>до ${dfmt(r.end_date)}</small></div>`,raw:r=>r.start_date+' - '+r.end_date},
+  {h:'Премия',num:1,f:r=>money(r.premium),raw:r=>num(r.premium)},
+  {h:'Ком. %',num:1,f:r=>pct(r.commission_pct),raw:r=>num(r.commission_pct)},
+  {h:'Комисиона',num:1,f:r=>money(r.commission_amount),raw:r=>num(r.commission_amount)},
+  {h:'Отстъпка',num:1,f:r=>num(r.agency_discount_cost)?`<span class="neg">−${money(r.agency_discount_cost)}</span>`:'—',raw:r=>num(r.agency_discount_cost)},
+  {h:'Печалба',num:1,f:r=>`<b class="${num(r.net_profit)>=0?'pos':'neg'}">${money(r.net_profit)}</b>`,raw:r=>num(r.net_profit)},
+  {h:'Събрано',num:1,f:r=>{
+      const c=num(r.collected),p=num(r.premium);
+      const cls=c>=p-0.009?'ok':(c>0?'warn':'mut');
+      return `<span class="tag ${cls}">${fmt(c)} / ${fmt(p)}</span>`;},raw:r=>num(r.collected)},
+  {h:'Статус',f:r=>policyStatusTag(r.status),raw:r=>POLICY_STATUS[r.status]},
+];
+
+VIEWS.policies=(root)=>{
+  if(can.editPolicy()) headerAction('+ Нова полица','primary',()=>policyForm());
+  const rows=filterPolicies();
+  headerAction('Експорт CSV','',()=>exportCSV('polici_'+today(),POLICY_COLS(),rows));
+  root.appendChild(policyFilterBar(()=>render()));
+  const sum=(f)=>rows.reduce((s,r)=>s+num(f(r)),0);
+  const info=el(`<div class="muted" style="margin-bottom:10px">Намерени <b>${rows.length}</b> полици ·
+    Премия <b>${money(sum(r=>r.premium))}</b> · Комисиона <b>${money(sum(r=>r.commission_amount))}</b> ·
+    Нетна печалба <b class="pos">${money(sum(r=>r.net_profit))}</b></div>`);
+  root.appendChild(info);
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(POLICY_COLS(),rows.slice(0,500),
+    {empty:'Няма полици по тези критерии',onRow:r=>openPolicy(r.id)}));
+  if(rows.length>500) card.appendChild(el(`<div class="card-b muted">Показани първите 500 от ${rows.length}. Стеснете филтъра или използвайте експорта.</div>`));
+  root.appendChild(card);
+};
+
+/* ---------- ФОРМА ЗА ПОЛИЦА ---------- */
+function policyForm(existing){
+  const p = existing ? {...existing} : {
+    issue_date:today(), start_date:today(), end_date:addDays(addMonths(today(),12),-1),
+    discount_borne_by:'agency', installments_count:1, status:'active',
+    agent_id:STATE.me.role==='agent'?STATE.me.id:null,
+    agent_commission_pct:0, commission_pct:0, tax_amount:0, gross_premium:0, discount_amount:0
+  };
+  const body=el('<div></div>');
+  const opt=(arr,val,lbl,cur)=>arr.map(a=>`<option value="${a.id}" ${cur===a.id?'selected':''}>${esc(lbl(a))}</option>`).join('');
+
+  body.appendChild(el(`<div class="form-grid">
+    <label class="fld full"><span>Клиент *</span>
+      <div style="display:flex;gap:8px">
+        <select id="pfClient" style="flex:1"><option value="">— избери клиент —</option>
+          ${opt(STATE.clients,null,c=>c.full_name+(c.ident?' ('+c.ident+')':''),p.client_id)}</select>
+        <button type="button" class="btn" id="pfNewClient">+ Нов</button>
+      </div></label>
+    <label class="fld"><span>Застраховател *</span>
+      <select id="pfIns"><option value="">—</option>${opt(STATE.insurers.filter(i=>i.active),null,i=>i.short_name||i.name,p.insurer_id)}</select></label>
+    <label class="fld"><span>Вид застраховка *</span>
+      <select id="pfProd"><option value="">—</option>${opt(STATE.products.filter(x=>x.active),null,x=>x.name,p.product_type_id)}</select></label>
+    <label class="fld"><span>№ на полица *</span><input id="pfNum" value="${esc(p.policy_number||'')}"></label>
+    <label class="fld"><span>Обект (МПС / имот)</span>
+      <div style="display:flex;gap:8px">
+        <select id="pfObj" style="flex:1"><option value="">— без обект —</option></select>
+        <button type="button" class="btn" id="pfNewObj">+</button>
+      </div></label>
+    <label class="fld"><span>Дата на издаване</span><input type="date" id="pfIssue" value="${esc(p.issue_date)}"></label>
+    <label class="fld"><span>Агент</span>
+      <select id="pfAgent"><option value="">—</option>${opt(STATE.users.filter(u=>u.active),null,u=>u.full_name,p.agent_id)}</select></label>
+    <label class="fld"><span>Начало на покритие *</span><input type="date" id="pfStart" value="${esc(p.start_date)}"></label>
+    <label class="fld"><span>Край на покритие *</span><input type="date" id="pfEnd" value="${esc(p.end_date)}"></label>
+    <label class="fld"><span>Застрахователна сума</span><input id="pfSum" value="${p.sum_insured??''}"></label>
+    <label class="fld"><span>Статус</span>
+      <select id="pfStatus">${Object.entries(POLICY_STATUS).map(([k,v])=>
+        `<option value="${k}" ${p.status===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+  </div>`));
+
+  body.appendChild(el(`<h4 style="margin:22px 0 10px">Финанси и комисиона</h4>`));
+  body.appendChild(el(`<div class="form-grid">
+    <label class="fld"><span>Тарифна премия (преди отстъпка) *</span><input id="pfGross" value="${p.gross_premium??0}"></label>
+    <label class="fld"><span>Отстъпка на клиента</span>
+      <div style="display:flex;gap:8px">
+        <input id="pfDisc" value="${p.discount_amount??0}" placeholder="сума">
+        <input id="pfDiscPct" placeholder="%" style="max-width:90px">
+      </div></label>
+    <label class="fld"><span>Отстъпката е за сметка на</span>
+      <select id="pfBearer">
+        <option value="agency" ${p.discount_borne_by==='agency'?'selected':''}>Нас (от нашата комисиона)</option>
+        <option value="insurer" ${p.discount_borne_by==='insurer'?'selected':''}>Застрахователя (тарифна отстъпка)</option>
+      </select></label>
+    <label class="fld"><span>Данък 2% в премията (без комисиона)</span>
+      <div style="display:flex;gap:8px">
+        <input id="pfTax" value="${p.tax_amount??0}">
+        <button type="button" class="btn" id="pfTaxAuto" title="Изчисли 2% данък">авто</button>
+      </div></label>
+    <label class="fld"><span>Наша комисиона от застрахователя (%)</span><input id="pfComm" value="${p.commission_pct??0}"></label>
+    <label class="fld"><span>Дял на агента от комисионата (%)</span><input id="pfAgComm" value="${p.agent_commission_pct??0}"></label>
+    <label class="fld"><span>Брой вноски</span>
+      <select id="pfInst">${[1,2,3,4,6,12].map(n=>`<option value="${n}" ${num(p.installments_count)===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label class="fld"><span>Първа вноска на дата</span><input type="date" id="pfFirstDue" value="${esc(p.start_date)}"></label>
+  </div>`));
+
+  const calc=el(`<div class="calc" id="pfCalc" style="margin-top:16px"></div>`);
+  body.appendChild(calc);
+
+  body.appendChild(el(`<h4 style="margin:22px 0 10px">Бланки под строга отчетност</h4>`));
+  body.appendChild(el(`<div class="form-grid">
+    <label class="fld"><span>№ бланка / полица</span><input id="pfForm" value="${esc(p.policy_form_no||'')}"></label>
+    <label class="fld"><span>№ стикер ГО</span><input id="pfSticker" value="${esc(p.sticker_no||'')}"></label>
+    <label class="fld"><span>№ зелена карта</span><input id="pfGreen" value="${esc(p.green_card_no||'')}"></label>
+    <label class="fld full"><span>Бележки</span><textarea id="pfNotes" rows="2">${esc(p.notes||'')}</textarea></label>
+  </div>`));
+
+  /* --- логика --- */
+  const g=(id)=>$('#'+id,body);
+  function fillObjects(){
+    const cid=g('pfClient').value;
+    const objs=STATE.objects.filter(o=>o.client_id===cid);
+    g('pfObj').innerHTML='<option value="">— без обект —</option>'+objs.map(o=>
+      `<option value="${o.id}" ${p.object_id===o.id?'selected':''}>${esc([OBJ_KINDS[o.kind],o.reg_number,o.make_model,o.name,o.address].filter(Boolean).join(' · '))}</option>`).join('');
+  }
+  function recalc(){
+    const d={gross_premium:num(g('pfGross').value),discount_amount:num(g('pfDisc').value),
+      tax_amount:num(g('pfTax').value),commission_pct:num(g('pfComm').value),
+      agent_commission_pct:num(g('pfAgComm').value),discount_borne_by:g('pfBearer').value};
+    d.premium=r2(d.gross_premium-d.discount_amount);
+    const c=calcPolicy(d);
+    if(document.activeElement!==g('pfDiscPct'))
+      g('pfDiscPct').value = d.gross_premium>0 ? fmt(d.discount_amount/d.gross_premium*100,2) : '';
+    calc.innerHTML=`
+      <div class="calc-row"><span>Тарифна премия</span><b>${money(c.gross)}</b></div>
+      <div class="calc-row"><span>− Отстъпка на клиента</span><b class="neg">−${money(c.disc)}</b></div>
+      <div class="calc-row" style="border-top:1px solid var(--line);padding-top:7px">
+        <span><b>= Дължи клиентът</b></span><b>${money(c.premium)}</b></div>
+      <div class="calc-row"><span class="muted">База за комисиона${c.tax?' (без данък '+money(c.tax)+')':''}</span>
+        <b class="muted">${money(c.base)}</b></div>
+      <div class="calc-row"><span>+ Комисиона ${pct(d.commission_pct)}</span><b class="pos">${money(c.commission)}</b></div>
+      ${c.discCost?`<div class="calc-row"><span>− Отстъпка за наша сметка</span><b class="neg">−${money(c.discCost)}</b></div>`:''}
+      ${c.agentPayout?`<div class="calc-row"><span>− Дял на агента ${pct(d.agent_commission_pct)}</span><b class="neg">−${money(c.agentPayout)}</b></div>`:''}
+      <div class="calc-row total"><span>Нетна печалба за агенцията</span>
+        <b class="${c.net>=0?'pos':'neg'}">${money(c.net)}</b></div>
+      <div class="calc-row"><span class="muted">Рентабилност спрямо премията</span>
+        <b class="muted">${c.premium>0?pct(c.net/c.premium*100):'—'}</b></div>`;
+  }
+  ['pfGross','pfDisc','pfTax','pfComm','pfAgComm'].forEach(id=>g(id).addEventListener('input',recalc));
+  g('pfBearer').addEventListener('change',recalc);
+  g('pfDiscPct').addEventListener('input',()=>{
+    const gr=num(g('pfGross').value); g('pfDisc').value=fmt(gr*num(g('pfDiscPct').value)/100,2); recalc();
+  });
+  g('pfTaxAuto').onclick=()=>{
+    const prem=r2(num(g('pfGross').value)-num(g('pfDisc').value));
+    const t=num(STATE.settings?.default_tax_pct||2);
+    g('pfTax').value=fmt(prem-prem/(1+t/100),2); recalc();
+  };
+  g('pfStart').addEventListener('change',()=>{
+    if(!existing){ g('pfEnd').value=addDays(addMonths(g('pfStart').value,12),-1); g('pfFirstDue').value=g('pfStart').value; }
+  });
+  g('pfClient').addEventListener('change',fillObjects);
+  g('pfNewClient').onclick=()=>clientForm(null,async(c)=>{
+    await reloadLists(); g('pfClient').innerHTML='<option value="">— избери клиент —</option>'+
+      opt(STATE.clients,null,x=>x.full_name+(x.ident?' ('+x.ident+')':''),c.id);
+    g('pfClient').value=c.id; fillObjects();
+  });
+  g('pfNewObj').onclick=()=>{
+    if(!g('pfClient').value) return toast('Първо изберете клиент','err');
+    objectForm(g('pfClient').value,async(o)=>{ await reloadLists(); p.object_id=o.id; fillObjects(); g('pfObj').value=o.id; });
+  };
+  async function applyRate(){
+    const r=await rateFor(g('pfIns').value,g('pfProd').value);
+    if(r){ g('pfComm').value=r.rate_pct;
+      if(!num(g('pfAgComm').value)) g('pfAgComm').value=r.agent_rate_pct||
+        (userById(g('pfAgent').value)?.default_agent_commission_pct||0);
+      recalc(); toast('Комисионата е попълнена автоматично: '+pct(r.rate_pct));
+    }
+  }
+  g('pfIns').addEventListener('change',applyRate);
+  g('pfProd').addEventListener('change',applyRate);
+  g('pfAgent').addEventListener('change',()=>{
+    const u=userById(g('pfAgent').value);
+    if(u&&!num(g('pfAgComm').value)){ g('pfAgComm').value=u.default_agent_commission_pct||0; recalc(); }
+  });
+  fillObjects(); recalc();
+
+  const save=actionBtn(existing?'Запази промените':'Създай полица','primary',async()=>{
+    const rec={
+      policy_number:g('pfNum').value.trim(), insurer_id:g('pfIns').value||null,
+      product_type_id:g('pfProd').value||null, client_id:g('pfClient').value||null,
+      object_id:g('pfObj').value||null, agent_id:g('pfAgent').value||null,
+      issue_date:g('pfIssue').value, start_date:g('pfStart').value, end_date:g('pfEnd').value,
+      sum_insured:num(g('pfSum').value)||null, status:g('pfStatus').value,
+      gross_premium:r2(g('pfGross').value), discount_amount:r2(g('pfDisc').value),
+      discount_borne_by:g('pfBearer').value, tax_amount:r2(g('pfTax').value),
+      commission_pct:num(g('pfComm').value), agent_commission_pct:num(g('pfAgComm').value),
+      installments_count:parseInt(g('pfInst').value),
+      policy_form_no:g('pfForm').value.trim()||null, sticker_no:g('pfSticker').value.trim()||null,
+      green_card_no:g('pfGreen').value.trim()||null, notes:g('pfNotes').value.trim()||null,
+    };
+    rec.premium=r2(rec.gross_premium-rec.discount_amount);
+    if(!rec.policy_number||!rec.insurer_id||!rec.product_type_id||!rec.client_id)
+      return toast('Попълнете клиент, застраховател, вид и номер на полица','err');
+    if(rec.end_date<=rec.start_date) return toast('Краят на покритието трябва да е след началото','err');
+    save.disabled=true;
+    let id=existing?.id;
+    if(existing){
+      const {error}=await sb.from('policies').update(rec).eq('id',existing.id);
+      if(error){save.disabled=false;return errToast(error);}
+    }else{
+      const {data,error}=await sb.from('policies').insert(rec).select('id').single();
+      if(error){save.disabled=false;return errToast(error);}
+      id=data.id;
+    }
+    const {error:e2}=await sb.rpc('generate_installments',
+      {p_policy:id,p_count:rec.installments_count,p_first_due:g('pfFirstDue').value||rec.start_date});
+    if(e2) console.warn(e2);
+    m.close(); toast(existing?'Полицата е обновена':'Полицата е записана','ok'); await reload();
+  });
+  const m=openModal(existing?'Редакция на полица № '+existing.policy_number:'Нова полица',body,
+    [actionBtn('Отказ','',()=>m.close()),save],'wide');
+}
+
+async function reloadLists(){
+  STATE.clients=await q('clients','*',x=>x.order('full_name').limit(5000));
+  STATE.objects=await q('insured_objects','*',x=>x.limit(5000));
+}
+
+/* ---------- ДЕТАЙЛ НА ПОЛИЦА ---------- */
+function openPolicy(id){
+  const p=STATE.policies.find(x=>x.id===id);
+  if(!p) return toast('Полицата не е намерена','err');
+  const ins=STATE.installments.filter(i=>i.policy_id===id).sort((a,b)=>a.seq-b.seq);
+  const c=calcPolicy(p);
+  const body=el('<div></div>');
+
+  body.appendChild(el(`<div class="grid2">
+    <div>
+      <div class="calc-row"><span class="muted">Застраховател</span><b>${esc(p.insurer_name)}</b></div>
+      <div class="calc-row"><span class="muted">Вид</span><b>${esc(p.product_name)}</b></div>
+      <div class="calc-row"><span class="muted">Клиент</span><b>${esc(p.client_name)}</b></div>
+      <div class="calc-row"><span class="muted">ЕГН / ЕИК</span><b class="mono">${esc(p.client_ident||'—')}</b></div>
+      <div class="calc-row"><span class="muted">Телефон</span><b>${esc(p.client_phone||'—')}</b></div>
+      <div class="calc-row"><span class="muted">Обект</span><b>${esc([p.object_reg_number,p.object_make_model].filter(Boolean).join(' · ')||'—')}</b></div>
+    </div>
+    <div>
+      <div class="calc-row"><span class="muted">Издадена</span><b>${dfmt(p.issue_date)}</b></div>
+      <div class="calc-row"><span class="muted">Покритие</span><b>${dfmt(p.start_date)} — ${dfmt(p.end_date)}</b></div>
+      <div class="calc-row"><span class="muted">Статус</span><b>${policyStatusTag(p.status)}</b></div>
+      <div class="calc-row"><span class="muted">Агент</span><b>${esc(p.agent_name||'—')}</b></div>
+      <div class="calc-row"><span class="muted">Застрах. сума</span><b>${p.sum_insured?money(p.sum_insured):'—'}</b></div>
+      <div class="calc-row"><span class="muted">Бланка / стикер / ЗК</span><b class="mono">${esc([p.policy_form_no,p.sticker_no,p.green_card_no].filter(Boolean).join(' / ')||'—')}</b></div>
+    </div></div>`));
+
+  body.appendChild(el(`<div class="calc" style="margin-top:16px">
+    <div class="calc-row"><span>Тарифна премия</span><b>${money(c.gross)}</b></div>
+    <div class="calc-row"><span>− Отстъпка (${p.discount_borne_by==='agency'?'за наша сметка':'от застрахователя'})</span><b class="neg">−${money(c.disc)}</b></div>
+    <div class="calc-row" style="border-top:1px solid var(--line);padding-top:7px"><span><b>= Дължи клиентът</b></span><b>${money(c.premium)}</b></div>
+    <div class="calc-row"><span class="muted">База за комисиона</span><b class="muted">${money(c.base)}</b></div>
+    <div class="calc-row"><span>+ Комисиона ${pct(p.commission_pct)}</span><b class="pos">${money(c.commission)}</b></div>
+    ${c.discCost?`<div class="calc-row"><span>− Отстъпка за наша сметка</span><b class="neg">−${money(c.discCost)}</b></div>`:''}
+    ${c.agentPayout?`<div class="calc-row"><span>− Дял на агента ${pct(p.agent_commission_pct)}</span><b class="neg">−${money(c.agentPayout)}</b></div>`:''}
+    <div class="calc-row total"><span>Нетна печалба</span><b class="${c.net>=0?'pos':'neg'}">${money(c.net)}</b></div>
+    <div class="calc-row"><span class="muted">Събрано от клиента</span><b>${money(p.collected)} от ${money(p.premium)}</b></div>
+    ${num(p.outstanding)>0.009?`<div class="calc-row"><span class="muted">Остава да събере</span><b class="neg">${money(p.outstanding)}</b></div>`:''}
+  </div>`));
+
+  body.appendChild(el(`<h4 style="margin:20px 0 8px">Вноски</h4>`));
+  const instTable=makeTable([
+    {h:'№',f:r=>r.seq},
+    {h:'Падеж',f:r=>dfmt(r.due_date)},
+    {h:'Дължима',num:1,f:r=>money(r.amount)},
+    {h:'Платена',num:1,f:r=>money(r.paid_amount)},
+    {h:'Дата на плащане',f:r=>r.paid_on?dfmt(r.paid_on):'—'},
+    {h:'Начин',f:r=>r.payment_method?PAY_METHODS[r.payment_method]||r.payment_method:'—'},
+    {h:'Статус',f:r=>statusTag(r.pay_status)},
+    {h:'',f:r=>{
+      if(!can.takePayment()||r.pay_status==='paid') return '';
+      return actionBtn('Плащане','primary',()=>{m.close();paymentForm(r);});
+    }},
+  ],ins,{empty:'Няма генерирани вноски'});
+  body.appendChild(instTable);
+  if(p.notes) body.appendChild(el(`<div style="margin-top:16px"><span class="muted">Бележки:</span> ${esc(p.notes)}</div>`));
+
+  const foot=[];
+  if(can.editPolicy()&&(can.staff()||p.agent_id===STATE.me.id)){
+    foot.push(actionBtn('Поднови','',()=>{m.close();renewPolicy(p);}));
+    foot.push(actionBtn('Редакция','',async()=>{
+      const {data}=await sb.from('policies').select('*').eq('id',id).single();
+      m.close(); policyForm(data);
+    }));
+  }
+  if(can.admin()) foot.push(actionBtn('Изтрий','danger',()=>confirmBox(
+    'Полицата и всичките ѝ вноски ще бъдат изтрити безвъзвратно. Сигурни ли сте?',async()=>{
+      const {error}=await sb.from('policies').delete().eq('id',id);
+      if(error)return errToast(error); m.close(); toast('Изтрито','ok'); await reload();
+    })));
+  foot.push(actionBtn('Затвори','',()=>m.close()));
+  const m=openModal('Полица № '+p.policy_number,body,foot,'wide');
+}
+
+function renewPolicy(p){
+  const start=addDays(p.end_date,1);
+  const src={...p, id:undefined, policy_number:'', issue_date:today(),
+    start_date:start, end_date:addDays(addMonths(start,12),-1), status:'active', renewed_from:p.id};
+  policyForm(null);
+  setTimeout(()=>{
+    const b=$('.modal-b');
+    if(!b)return;
+    $('#pfClient',b).value=p.client_id; $('#pfClient',b).dispatchEvent(new Event('change'));
+    $('#pfIns',b).value=p.insurer_id; $('#pfProd',b).value=p.product_type_id;
+    if(p.object_id) $('#pfObj',b).value=p.object_id;
+    if(p.agent_id) $('#pfAgent',b).value=p.agent_id;
+    $('#pfStart',b).value=start; $('#pfEnd',b).value=src.end_date; $('#pfFirstDue',b).value=start;
+    $('#pfGross',b).value=p.gross_premium; $('#pfDisc',b).value=p.discount_amount;
+    $('#pfBearer',b).value=p.discount_borne_by; $('#pfComm',b).value=p.commission_pct;
+    $('#pfAgComm',b).value=p.agent_commission_pct; $('#pfSum',b).value=p.sum_insured??'';
+    $('#pfGross',b).dispatchEvent(new Event('input'));
+    toast('Данните са пренесени от старата полица. Въведете новия номер.');
+  },60);
+}
+
+/* ---------- ПЛАЩАНЕ ---------- */
+function paymentForm(inst){
+  const rem=num(inst.amount)-num(inst.paid_amount);
+  const body=el(`<div class="form-grid">
+    <div class="full calc">
+      <div class="calc-row"><span>Клиент</span><b>${esc(inst.client_name)}</b></div>
+      <div class="calc-row"><span>Полица</span><b class="mono">${esc(inst.policy_number)} · ${esc(inst.insurer_short||'')}</b></div>
+      <div class="calc-row"><span>Вноска № ${inst.seq}, падеж ${dfmt(inst.due_date)}</span><b>${money(inst.amount)}</b></div>
+      <div class="calc-row total"><span>Остава за плащане</span><b>${money(rem)}</b></div>
+    </div>
+    <label class="fld"><span>Платена сума *</span><input id="pyAmt" value="${fmt(rem)}"></label>
+    <label class="fld"><span>Дата на плащане</span><input type="date" id="pyDate" value="${today()}"></label>
+    <label class="fld"><span>Начин на плащане</span>
+      <select id="pyMethod">${Object.entries(PAY_METHODS).map(([k,v])=>
+        `<option value="${k}" ${inst.payment_method===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>№ квитанция / документ</span><input id="pyRec" value="${esc(inst.receipt_no||'')}"></label>
+    <label class="fld full"><span>Бележка</span><input id="pyNote" value="${esc(inst.notes||'')}"></label>
+  </div>`);
+  const save=actionBtn('Запиши плащането','primary',async()=>{
+    const amt=r2(num($('#pyAmt',body).value)+num(inst.paid_amount));
+    const {error}=await sb.from('installments').update({
+      paid_amount:amt, paid_on:$('#pyDate',body).value, payment_method:$('#pyMethod',body).value,
+      receipt_no:$('#pyRec',body).value.trim()||null, notes:$('#pyNote',body).value.trim()||null,
+      collected_by:STATE.me.id
+    }).eq('id',inst.id);
+    if(error)return errToast(error);
+    m.close(); toast('Плащането е записано','ok'); await reload();
+  });
+  const clr=actionBtn('Изчисти плащането','danger',async()=>{
+    const {error}=await sb.from('installments').update({paid_amount:0,paid_on:null,receipt_no:null}).eq('id',inst.id);
+    if(error)return errToast(error); m.close(); toast('Плащането е нулирано','ok'); await reload();
+  });
+  const foot=[actionBtn('Отказ','',()=>m.close())];
+  if(num(inst.paid_amount)>0) foot.push(clr);
+  foot.push(save);
+  const m=openModal('Отбелязване на плащане',body,foot,'narrow');
+}
+
+/* ---------- КЛИЕНТ ---------- */
+function clientForm(existing,onSaved){
+  const c=existing||{type:'person'};
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Тип *</span><select id="clType">
+      <option value="person" ${c.type==='person'?'selected':''}>Физическо лице</option>
+      <option value="company" ${c.type==='company'?'selected':''}>Юридическо лице</option></select></label>
+    <label class="fld"><span>Име / Фирма *</span><input id="clName" value="${esc(c.full_name||'')}"></label>
+    <label class="fld"><span>ЕГН / ЕИК</span><input id="clIdent" value="${esc(c.ident||'')}"></label>
+    <label class="fld"><span>Телефон</span><input id="clPhone" value="${esc(c.phone||'')}"></label>
+    <label class="fld"><span>Имейл</span><input id="clEmail" value="${esc(c.email||'')}"></label>
+    <label class="fld"><span>Град</span><input id="clCity" value="${esc(c.city||'')}"></label>
+    <label class="fld full"><span>Адрес</span><input id="clAddr" value="${esc(c.address||'')}"></label>
+    <label class="fld full"><span>Бележки</span><textarea id="clNotes" rows="2">${esc(c.notes||'')}</textarea></label>
+  </div>`);
+  const save=actionBtn(existing?'Запази':'Създай клиент','primary',async()=>{
+    const rec={type:$('#clType',body).value,full_name:$('#clName',body).value.trim(),
+      ident:$('#clIdent',body).value.trim()||null,phone:$('#clPhone',body).value.trim()||null,
+      email:$('#clEmail',body).value.trim()||null,city:$('#clCity',body).value.trim()||null,
+      address:$('#clAddr',body).value.trim()||null,notes:$('#clNotes',body).value.trim()||null};
+    if(!rec.full_name) return toast('Въведете име','err');
+    if(!existing) rec.agent_id=STATE.me.id;
+    const res=existing
+      ? await sb.from('clients').update(rec).eq('id',existing.id).select('*').single()
+      : await sb.from('clients').insert(rec).select('*').single();
+    if(res.error)return errToast(res.error);
+    m.close(); toast('Записано','ok');
+    if(onSaved) await onSaved(res.data); else await reload();
+  });
+  const m=openModal(existing?'Редакция на клиент':'Нов клиент',body,[actionBtn('Отказ','',()=>m.close()),save]);
+}
+
+/* ---------- ОБЕКТ ---------- */
+function objectForm(clientId,onSaved,existing){
+  const o=existing||{kind:'mpv',client_id:clientId};
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Вид обект</span><select id="obKind">${Object.entries(OBJ_KINDS).map(([k,v])=>
+      `<option value="${k}" ${o.kind===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Рег. номер (МПС)</span><input id="obReg" value="${esc(o.reg_number||'')}"></label>
+    <label class="fld"><span>Марка и модел</span><input id="obMake" value="${esc(o.make_model||'')}"></label>
+    <label class="fld"><span>Рама (VIN)</span><input id="obVin" value="${esc(o.vin||'')}"></label>
+    <label class="fld"><span>Година</span><input id="obYear" value="${o.year||''}"></label>
+    <label class="fld"><span>Мощност (kW)</span><input id="obKw" value="${o.engine_kw||''}"></label>
+    <label class="fld"><span>Кубатура (см³)</span><input id="obCc" value="${o.cubic_cm||''}"></label>
+    <label class="fld"><span>Места</span><input id="obSeats" value="${o.seats||''}"></label>
+    <label class="fld full"><span>Адрес (за имот)</span><input id="obAddr" value="${esc(o.address||'')}"></label>
+    <label class="fld"><span>Описание</span><input id="obName" value="${esc(o.name||'')}"></label>
+    <label class="fld"><span>Застрахователна сума</span><input id="obSum" value="${o.sum_insured||''}"></label>
+  </div>`);
+  const save=actionBtn('Запази','primary',async()=>{
+    const rec={client_id:o.client_id,kind:$('#obKind',body).value,
+      reg_number:$('#obReg',body).value.trim().toUpperCase()||null,
+      make_model:$('#obMake',body).value.trim()||null,vin:$('#obVin',body).value.trim()||null,
+      year:parseInt($('#obYear',body).value)||null,engine_kw:parseInt($('#obKw',body).value)||null,
+      cubic_cm:parseInt($('#obCc',body).value)||null,seats:parseInt($('#obSeats',body).value)||null,
+      address:$('#obAddr',body).value.trim()||null,name:$('#obName',body).value.trim()||null,
+      sum_insured:num($('#obSum',body).value)||null};
+    const res=existing
+      ? await sb.from('insured_objects').update(rec).eq('id',existing.id).select('*').single()
+      : await sb.from('insured_objects').insert(rec).select('*').single();
+    if(res.error)return errToast(res.error);
+    m.close(); toast('Записано','ok');
+    if(onSaved) await onSaved(res.data); else await reload();
+  });
+  const m=openModal(existing?'Редакция на обект':'Нов застрахован обект',body,[actionBtn('Отказ','',()=>m.close()),save]);
+}
+
+/* ==========================================================================
+   ВНОСКИ И ПАДЕЖИ
+   ========================================================================== */
+VIEWS.due=(root)=>{
+  const f=STATE.filters; if(!f.tab)f.tab='overdue';
+  const tabs=el('<div class="tabs"></div>');
+  const T=[['overdue','Просрочени'],['7','Следващите 7 дни'],['30','Следващите 30 дни'],
+    ['unpaid','Всички неплатени'],['paid','Платени']];
+  T.forEach(([k,l])=>{const b=el(`<button class="${f.tab===k?'active':''}">${l}</button>`);
+    b.onclick=()=>{f.tab=k;render()};tabs.appendChild(b)});
+  root.appendChild(tabs);
+
+  const s=el(`<div class="filters"><label class="f"><span>Търсене</span></label></div>`);
+  const si=el(`<input class="search" placeholder="Клиент, полица, застраховател…" value="${esc(f.q||'')}">`);
+  si.oninput=()=>{f.q=si.value;FOCUS_SEL='.search';render()}; s.firstElementChild.appendChild(si);
+  const ins=el(`<select><option value="">Всички застрахователи</option>${STATE.insurers.map(i=>
+    `<option value="${i.id}" ${f.ins===i.id?'selected':''}>${esc(i.short_name||i.name)}</option>`).join('')}</select>`);
+  ins.onchange=()=>{f.ins=ins.value;render()};
+  const l2=el('<label class="f"><span>Застраховател</span></label>'); l2.appendChild(ins); s.appendChild(l2);
+  root.appendChild(s);
+
+  let rows=STATE.installments.slice();
+  if(f.tab==='overdue') rows=rows.filter(i=>['overdue','partial_overdue'].includes(i.pay_status));
+  else if(f.tab==='7') rows=rows.filter(i=>i.pay_status!=='paid'&&i.due_date<=addDays(today(),7)&&i.due_date>=today());
+  else if(f.tab==='30') rows=rows.filter(i=>i.pay_status!=='paid'&&i.due_date<=addDays(today(),30)&&i.due_date>=today());
+  else if(f.tab==='unpaid') rows=rows.filter(i=>i.pay_status!=='paid');
+  else rows=rows.filter(i=>i.pay_status==='paid').sort((a,b)=>String(b.paid_on).localeCompare(String(a.paid_on)));
+  if(f.ins) rows=rows.filter(i=>i.insurer_id===f.ins);
+  if(f.q){const qs=f.q.toLowerCase();
+    rows=rows.filter(i=>[i.client_name,i.policy_number,i.insurer_name,i.product_name,i.client_phone]
+      .join(' ').toLowerCase().includes(qs));}
+
+  const cols=[
+    {h:'Клиент',f:r=>`<div class="stack"><b>${esc(r.client_name)}</b><small>${esc(r.client_phone||'')}</small></div>`,raw:r=>r.client_name},
+    {h:'Полица',f:r=>`<div class="stack"><span class="mono">${esc(r.policy_number)}</span>
+      <small>${esc(r.insurer_short||'')} · ${esc(r.product_name)}</small></div>`,raw:r=>r.policy_number},
+    {h:'Вноска',f:r=>r.seq,raw:r=>r.seq},
+    {h:'Падеж',f:r=>dfmt(r.due_date),raw:r=>r.due_date},
+    {h:'Дължима',num:1,f:r=>money(r.amount),raw:r=>num(r.amount)},
+    {h:'Платена',num:1,f:r=>money(r.paid_amount),raw:r=>num(r.paid_amount)},
+    {h:'Остава',num:1,f:r=>num(r.remaining)>0.009?`<b class="neg">${money(r.remaining)}</b>`:'—',raw:r=>num(r.remaining)},
+    {h:'Платена на',f:r=>r.paid_on?dfmt(r.paid_on):'—',raw:r=>r.paid_on},
+    {h:'Статус',f:r=>statusTag(r.pay_status),raw:r=>r.pay_status},
+    {h:'',f:r=>{
+      const box=el('<div style="display:flex;gap:6px;justify-content:flex-end"></div>');
+      if(can.takePayment()&&r.pay_status!=='paid') box.appendChild(actionBtn('Плащане','primary',()=>paymentForm(r)));
+      box.appendChild(actionBtn('Полица','',()=>openPolicy(r.policy_id)));
+      return box;}},
+  ];
+  headerAction('Експорт CSV','',()=>exportCSV('vnoski_'+today(),cols.slice(0,-1),rows));
+  const tot=rows.reduce((s,r)=>s+num(r.remaining),0);
+  const totPaid=rows.reduce((s,r)=>s+num(r.paid_amount),0);
+  root.appendChild(el(`<div class="muted" style="margin-bottom:10px"><b>${rows.length}</b> вноски ·
+    Платени <b>${money(totPaid)}</b> · Остават <b class="neg">${money(tot)}</b></div>`));
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(cols,rows.slice(0,600),{empty:'Няма вноски в тази категория'}));
+  root.appendChild(card);
+};
+
+/* ==========================================================================
+   ПОДНОВЯВАНИЯ
+   ========================================================================== */
+VIEWS.renew=(root)=>{
+  const f=STATE.filters; if(!f.win)f.win=String(STATE.settings?.renewal_alert_days||30);
+  const bar=el('<div class="pill-row"></div>');
+  [['7','7 дни'],['30','30 дни'],['60','60 дни'],['90','90 дни'],['exp','Вече изтекли']].forEach(([k,l])=>{
+    const b=el(`<button class="pill ${f.win===k?'active':''}">${l}</button>`);
+    b.onclick=()=>{f.win=k;render()}; bar.appendChild(b);
+  });
+  root.appendChild(bar);
+  let rows;
+  if(f.win==='exp') rows=STATE.policies.filter(p=>p.days_to_expiry<0&&['active','expired'].includes(p.status))
+    .sort((a,b)=>b.end_date.localeCompare(a.end_date)).slice(0,400);
+  else rows=STATE.policies.filter(p=>p.status==='active'&&p.days_to_expiry>=0&&p.days_to_expiry<=parseInt(f.win))
+    .sort((a,b)=>a.days_to_expiry-b.days_to_expiry);
+  const cols=[
+    {h:'Клиент',f:r=>`<div class="stack"><b>${esc(r.client_name)}</b><small>${esc(r.client_phone||'')}</small></div>`,raw:r=>r.client_name},
+    {h:'Полица',f:r=>`<div class="stack"><span class="mono">${esc(r.policy_number)}</span>
+      <small>${esc(r.insurer_short||'')} · ${esc(r.product_name)}</small></div>`,raw:r=>r.policy_number},
+    {h:'Обект',f:r=>esc([r.object_reg_number,r.object_make_model].filter(Boolean).join(' ')||'—'),raw:r=>r.object_reg_number},
+    {h:'Изтича',f:r=>dfmt(r.end_date),raw:r=>r.end_date},
+    {h:'Остават',num:1,f:r=>r.days_to_expiry<0?`<span class="tag bad">изтекла преди ${-r.days_to_expiry} дни</span>`
+      :`<span class="tag ${r.days_to_expiry<=7?'bad':(r.days_to_expiry<=30?'warn':'mut')}">${r.days_to_expiry} дни</span>`,raw:r=>r.days_to_expiry},
+    {h:'Премия',num:1,f:r=>money(r.premium),raw:r=>num(r.premium)},
+    {h:'Печалба',num:1,f:r=>money(r.net_profit),raw:r=>num(r.net_profit)},
+    {h:'Агент',f:r=>esc(r.agent_name||'—'),raw:r=>r.agent_name},
+    {h:'',f:r=>{const box=el('<div style="display:flex;gap:6px;justify-content:flex-end"></div>');
+      if(can.editPolicy())box.appendChild(actionBtn('Поднови','primary',()=>renewPolicy(r)));
+      box.appendChild(actionBtn('Детайли','',()=>openPolicy(r.id))); return box;}},
+  ];
+  headerAction('Експорт за обаждания','',()=>exportCSV('podnovqvane_'+today(),cols.slice(0,-1),rows));
+  root.appendChild(el(`<div class="muted" style="margin-bottom:10px"><b>${rows.length}</b> полици ·
+    очаквана премия <b>${money(rows.reduce((s,r)=>s+num(r.premium),0))}</b> ·
+    очаквана печалба <b class="pos">${money(rows.reduce((s,r)=>s+num(r.net_profit),0))}</b></div>`));
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(cols,rows,{empty:'Няма полици в този период'}));
+  root.appendChild(card);
+};
+
+/* ==========================================================================
+   КЛИЕНТИ
+   ========================================================================== */
+VIEWS.clients=(root)=>{
+  if(can.editPolicy()) headerAction('+ Нов клиент','primary',()=>clientForm());
+  const f=STATE.filters;
+  const bar=el('<div class="filters"><label class="f"><span>Търсене</span></label></div>');
+  const si=el(`<input class="search" placeholder="Име, ЕГН/ЕИК, телефон, рег. номер…" value="${esc(f.q||'')}">`);
+  si.oninput=()=>{f.q=si.value;FOCUS_SEL='.search';render()}; bar.firstElementChild.appendChild(si);
+  root.appendChild(bar);
+  const qs=(f.q||'').toLowerCase().trim();
+  let rows=STATE.clients;
+  if(qs) rows=rows.filter(c=>{
+    const objs=STATE.objects.filter(o=>o.client_id===c.id).map(o=>o.reg_number+' '+o.make_model).join(' ');
+    return [c.full_name,c.ident,c.phone,c.email,c.city,objs].join(' ').toLowerCase().includes(qs);
+  });
+  const stat=(c)=>{const ps=STATE.policies.filter(p=>p.client_id===c.id);
+    return {n:ps.length,active:ps.filter(p=>p.status==='active').length,
+      prem:ps.reduce((s,p)=>s+num(p.premium),0),prof:ps.reduce((s,p)=>s+num(p.net_profit),0)};};
+  const cols=[
+    {h:'Клиент',f:r=>`<div class="stack"><b>${esc(r.full_name)}</b>
+      <small>${r.type==='company'?'Юридическо лице':'Физическо лице'}${r.ident?' · '+esc(r.ident):''}</small></div>`,raw:r=>r.full_name},
+    {h:'Контакт',f:r=>`<div class="stack">${esc(r.phone||'—')}<small>${esc(r.email||'')}</small></div>`,raw:r=>r.phone},
+    {h:'Град',f:r=>esc(r.city||'—'),raw:r=>r.city},
+    {h:'Обекти',num:1,f:r=>STATE.objects.filter(o=>o.client_id===r.id).length||'—',raw:r=>STATE.objects.filter(o=>o.client_id===r.id).length},
+    {h:'Полици',num:1,f:r=>{const s=stat(r);return `${s.n} <span class="muted">(${s.active} акт.)</span>`},raw:r=>stat(r).n},
+    {h:'Премия',num:1,f:r=>money(stat(r).prem),raw:r=>stat(r).prem},
+    {h:'Печалба',num:1,f:r=>`<b class="pos">${money(stat(r).prof)}</b>`,raw:r=>stat(r).prof},
+  ];
+  headerAction('Експорт CSV','',()=>exportCSV('klienti_'+today(),cols,rows));
+  root.appendChild(el(`<div class="muted" style="margin-bottom:10px"><b>${rows.length}</b> клиенти</div>`));
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(cols,rows.slice(0,500),{empty:'Няма клиенти',onRow:r=>openClient(r.id)}));
+  root.appendChild(card);
+};
+
+function openClient(id){
+  const c=STATE.clients.find(x=>x.id===id); if(!c)return;
+  const objs=STATE.objects.filter(o=>o.client_id===id);
+  const pol=STATE.policies.filter(p=>p.client_id===id).sort((a,b)=>b.issue_date.localeCompare(a.issue_date));
+  const body=el('<div></div>');
+  body.appendChild(el(`<div class="grid2">
+    <div><div class="calc-row"><span class="muted">Тип</span><b>${c.type==='company'?'Юридическо лице':'Физическо лице'}</b></div>
+      <div class="calc-row"><span class="muted">ЕГН / ЕИК</span><b class="mono">${esc(c.ident||'—')}</b></div>
+      <div class="calc-row"><span class="muted">Телефон</span><b>${esc(c.phone||'—')}</b></div></div>
+    <div><div class="calc-row"><span class="muted">Имейл</span><b>${esc(c.email||'—')}</b></div>
+      <div class="calc-row"><span class="muted">Град</span><b>${esc(c.city||'—')}</b></div>
+      <div class="calc-row"><span class="muted">Адрес</span><b>${esc(c.address||'—')}</b></div></div></div>`));
+
+  const oh=el('<div style="display:flex;align-items:center;margin:20px 0 8px"><h4>Застраховани обекти</h4><div style="flex:1"></div></div>');
+  if(can.editPolicy()) oh.appendChild(actionBtn('+ Обект','',()=>{m.close();objectForm(id);}));
+  body.appendChild(oh);
+  body.appendChild(makeTable([
+    {h:'Вид',f:r=>OBJ_KINDS[r.kind]},
+    {h:'Рег. №',f:r=>`<span class="mono">${esc(r.reg_number||'—')}</span>`},
+    {h:'Описание',f:r=>esc([r.make_model,r.year,r.name,r.address].filter(Boolean).join(' · ')||'—')},
+    {h:'Застр. сума',num:1,f:r=>r.sum_insured?money(r.sum_insured):'—'},
+    {h:'',f:r=>can.editPolicy()?actionBtn('Редакция','',()=>{m.close();objectForm(id,null,r);}):''},
+  ],objs,{empty:'Няма въведени обекти'}));
+
+  body.appendChild(el('<h4 style="margin:20px 0 8px">Полици</h4>'));
+  body.appendChild(makeTable([
+    {h:'№',f:r=>`<span class="mono">${esc(r.policy_number)}</span>`},
+    {h:'Застраховател',f:r=>esc(r.insurer_short||r.insurer_name)},
+    {h:'Вид',f:r=>esc(r.product_name)},
+    {h:'Период',f:r=>dfmt(r.start_date)+' — '+dfmt(r.end_date)},
+    {h:'Премия',num:1,f:r=>money(r.premium)},
+    {h:'Събрано',num:1,f:r=>money(r.collected)},
+    {h:'Статус',f:r=>policyStatusTag(r.status)},
+  ],pol,{empty:'Няма полици',onRow:r=>{m.close();openPolicy(r.id);}}));
+
+  const foot=[];
+  if(can.editPolicy()) foot.push(actionBtn('Редакция','',()=>{m.close();clientForm(c);}));
+  if(can.admin()) foot.push(actionBtn('Изтрий','danger',()=>confirmBox(
+    'Клиентът, обектите и полиците му ще бъдат изтрити. Сигурни ли сте?',async()=>{
+      const {error}=await sb.from('clients').delete().eq('id',id);
+      if(error)return errToast(error); m.close(); await reload();})));
+  foot.push(actionBtn('Затвори','',()=>m.close()));
+  const m=openModal(c.full_name,body,foot,'wide');
+}
+
+/* ==========================================================================
+   КОМИСИОНИ И ПЕЧАЛБА
+   ========================================================================== */
+VIEWS.profit=(root)=>{
+  const f=STATE.filters; if(!f.group)f.group='insurer';
+  root.appendChild(periodPicker(()=>render()));
+  const range=periodRange();
+
+  const bar=el('<div class="tabs"></div>');
+  [['insurer','По застраховател'],['product','По вид застраховка'],['agent','По агент'],
+   ['month','По месец'],['client','По клиент']].forEach(([k,l])=>{
+    const b=el(`<button class="${f.group===k?'active':''}">${l}</button>`);
+    b.onclick=()=>{f.group=k;render()}; bar.appendChild(b);
+  });
+  root.appendChild(bar);
+
+  const pol=STATE.policies.filter(p=>inRange(p.issue_date,range)&&!['draft','cancelled'].includes(p.status));
+  const keyOf=(p)=>({insurer:p.insurer_id,product:p.product_type_id,agent:p.agent_id||'—',
+    month:monthKey(p.issue_date),client:p.client_id})[f.group];
+  const nameOf=(k)=>({insurer:()=>insName(k),product:()=>productById(k)?.name||'—',
+    agent:()=>userById(k)?.full_name||'Без агент',
+    month:()=>{const [y,m]=String(k).split('-');return MONTHS[+m-1]+' '+y;},
+    client:()=>clientById(k)?.full_name||'—'})[f.group]();
+
+  const groups={};
+  pol.forEach(p=>{
+    const k=keyOf(p); groups[k]=groups[k]||{k,n:0,prem:0,coll:0,comm:0,disc:0,agent:0,net:0};
+    const g=groups[k]; g.n++; g.prem+=num(p.premium); g.coll+=num(p.collected);
+    g.comm+=num(p.commission_amount); g.disc+=num(p.agency_discount_cost);
+    g.agent+=num(p.agent_payout); g.net+=num(p.net_profit);
+  });
+  const rows=Object.values(groups).map(g=>({...g,name:nameOf(g.k)}))
+    .sort((a,b)=> f.group==='month' ? String(a.k).localeCompare(String(b.k)) : b.net-a.net);
+
+  const T=rows.reduce((s,r)=>({n:s.n+r.n,prem:s.prem+r.prem,coll:s.coll+r.coll,comm:s.comm+r.comm,
+    disc:s.disc+r.disc,agent:s.agent+r.agent,net:s.net+r.net}),{n:0,prem:0,coll:0,comm:0,disc:0,agent:0,net:0});
+
+  const kp=el('<div class="kpis"></div>');
+  const K=(l,v,s,c='')=>kp.appendChild(el(`<div class="kpi ${c}"><div class="lbl">${l}</div>
+    <div class="val">${v}</div><div class="sub">${s||''}</div></div>`));
+  K('Полици',T.n,'за периода');
+  K('Премия',money0(T.prem),'договорена','brand');
+  K('Комисиона',money0(T.comm),T.prem>0?pct(T.comm/T.prem*100)+' от премията':'');
+  K('Отстъпки за наша сметка',money0(T.disc),'',T.disc>0?'warn':'');
+  K('Изплатено на агенти',money0(T.agent),'дялове от комисионата');
+  K('Нетна печалба',money0(T.net),T.prem>0?pct(T.net/T.prem*100)+' рентабилност':'','ok');
+  root.appendChild(kp);
+
+  const cols=[
+    {h:{insurer:'Застраховател',product:'Вид застраховка',agent:'Агент',month:'Месец',client:'Клиент'}[f.group],
+      f:r=>`<b>${esc(r.name)}</b>`,raw:r=>r.name},
+    {h:'Полици',num:1,f:r=>r.n,raw:r=>r.n},
+    {h:'Премия',num:1,f:r=>money(r.prem),raw:r=>r2(r.prem)},
+    {h:'Събрано',num:1,f:r=>money(r.coll),raw:r=>r2(r.coll)},
+    {h:'Комисиона',num:1,f:r=>money(r.comm),raw:r=>r2(r.comm)},
+    {h:'Ср. %',num:1,f:r=>r.prem>0?pct(r.comm/r.prem*100):'—',raw:r=>r.prem>0?r2(r.comm/r.prem*100):0},
+    {h:'Отстъпки',num:1,f:r=>r.disc?`<span class="neg">−${money(r.disc)}</span>`:'—',raw:r=>r2(r.disc)},
+    {h:'Дял агенти',num:1,f:r=>r.agent?`<span class="neg">−${money(r.agent)}</span>`:'—',raw:r=>r2(r.agent)},
+    {h:'Нетна печалба',num:1,f:r=>`<b class="${r.net>=0?'pos':'neg'}">${money(r.net)}</b>`,raw:r=>r2(r.net)},
+    {h:'Дял',num:1,f:r=>T.net>0?pct(r.net/T.net*100):'—',raw:r=>T.net>0?r2(r.net/T.net*100):0},
+  ];
+  headerAction('Експорт CSV','',()=>exportCSV('pechalba_'+f.group+'_'+today(),cols,rows));
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(cols,rows,{empty:'Няма полици за периода',
+    foot:(c)=>({0:'ОБЩО',1:T.n,2:money(T.prem),3:money(T.coll),4:money(T.comm),
+      5:T.prem>0?pct(T.comm/T.prem*100):'',6:money(T.disc),7:money(T.agent),8:money(T.net),9:'100%'})[cols.indexOf(c)]}));
+  root.appendChild(card);
+};
+
+/* ==========================================================================
+   РАЗЧЕТИ СЪС ЗАСТРАХОВАТЕЛИТЕ
+   ========================================================================== */
+VIEWS.balance=(root)=>{
+  if(can.settle()) headerAction('+ Нов документ','primary',()=>settlementForm());
+  const b=STATE.balances.filter(x=>num(x.collected)||num(x.transferred)||num(x.commission_received));
+  const T=b.reduce((s,x)=>({coll:s.coll+num(x.collected),comm:s.comm+num(x.commission_earned),
+    tr:s.tr+num(x.transferred),rec:s.rec+num(x.commission_received),
+    bal:s.bal+num(x.balance_to_insurer),recv:s.recv+num(x.commission_receivable)}),
+    {coll:0,comm:0,tr:0,rec:0,bal:0,recv:0});
+
+  const kp=el('<div class="kpis"></div>');
+  const K=(l,v,s,c='')=>kp.appendChild(el(`<div class="kpi ${c}"><div class="lbl">${l}</div>
+    <div class="val">${v}</div><div class="sub">${s||''}</div></div>`));
+  K('Събрано от клиенти',money0(T.coll),'всички плащания');
+  K('Начислена комисиона',money0(T.comm),'върху събраното');
+  K('Преведено',money0(T.tr),'към застрахователите');
+  K('Дължимо към застрахователи',money0(T.bal),'непреведено', T.bal>0.5?'bad':'ok');
+  K('Комисиона за получаване',money0(T.recv),'начислена, неполучена', T.recv>0.5?'warn':'');
+  root.appendChild(kp);
+
+  const cols=[
+    {h:'Застраховател',f:r=>`<div class="stack"><b>${esc(r.insurer_short||r.insurer_name)}</b>
+      <small>${r.commission_deducted_at_source?'удържаме комисионата при превода':'превеждаме цялата премия'}</small></div>`,
+      raw:r=>r.insurer_name},
+    {h:'Събрано',num:1,f:r=>money(r.collected),raw:r=>num(r.collected)},
+    {h:'Комисиона',num:1,f:r=>money(r.commission_earned),raw:r=>num(r.commission_earned)},
+    {h:'Преведено',num:1,f:r=>money(r.transferred),raw:r=>num(r.transferred)},
+    {h:'Салдо към застрахователя',num:1,f:r=>{const v=num(r.balance_to_insurer);
+      return `<b class="${v>0.009?'neg':(v<-0.009?'pos':'')}">${money(v)}</b>`},raw:r=>num(r.balance_to_insurer)},
+    {h:'Получена комисиона',num:1,f:r=>money(r.commission_received),raw:r=>num(r.commission_received)},
+    {h:'Комисиона за получаване',num:1,f:r=>{const v=num(r.commission_receivable);
+      return v>0.009?`<b class="tag warn">${money(v)}</b>`:'—'},raw:r=>num(r.commission_receivable)},
+    {h:'',f:r=>{const box=el('<div style="display:flex;gap:6px;justify-content:flex-end"></div>');
+      if(can.settle()) box.appendChild(actionBtn('Превод','primary',()=>settlementForm({insurer_id:r.insurer_id,
+        kind:'transfer_to_insurer',amount:r2(r.balance_to_insurer)})));
+      box.appendChild(actionBtn('Детайли','',()=>openInsurerLedger(r.insurer_id))); return box;}},
+  ];
+  headerAction('Експорт CSV','',()=>exportCSV('razcheti_'+today(),cols.slice(0,-1),b));
+  const card=el('<div class="card"><div class="card-h"><h3>Салдо по застраховател</h3></div></div>');
+  card.appendChild(makeTable(cols,b,{empty:'Още няма събрани суми'}));
+  root.appendChild(card);
+
+  const sc=el('<div class="card" style="margin-top:16px"><div class="card-h"><h3>Документи по разчетите</h3></div></div>');
+  const scols=[
+    {h:'Дата',f:r=>dfmt(r.doc_date),raw:r=>r.doc_date},
+    {h:'Застраховател',f:r=>esc(insName(r.insurer_id)),raw:r=>insName(r.insurer_id)},
+    {h:'Тип',f:r=>{const c={transfer_to_insurer:'brand',commission_received:'ok',adjustment:'mut'}[r.kind];
+      return `<span class="tag ${c}">${SETTLE_KINDS[r.kind]}</span>`},raw:r=>SETTLE_KINDS[r.kind]},
+    {h:'Документ №',f:r=>`<span class="mono">${esc(r.doc_no||'—')}</span>`,raw:r=>r.doc_no},
+    {h:'Период',f:r=>r.period_from?dfmt(r.period_from)+' — '+dfmt(r.period_to):'—',raw:r=>r.period_from},
+    {h:'Сума',num:1,f:r=>`<b>${money(r.amount)}</b>`,raw:r=>num(r.amount)},
+    {h:'Бележка',f:r=>esc(r.notes||''),raw:r=>r.notes},
+    {h:'',f:r=>can.settle()?actionBtn('✕','danger',()=>confirmBox('Да изтрия ли документа?',async()=>{
+      const {error}=await sb.from('settlements').delete().eq('id',r.id);
+      if(error)return errToast(error); await reload();})):''},
+  ];
+  sc.appendChild(makeTable(scols,STATE.settlements.slice(0,300),{empty:'Няма въведени документи'}));
+  root.appendChild(sc);
+};
+
+function settlementForm(pre={}){
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Застраховател *</span><select id="stIns">
+      <option value="">—</option>${STATE.insurers.map(i=>
+        `<option value="${i.id}" ${pre.insurer_id===i.id?'selected':''}>${esc(i.short_name||i.name)}</option>`).join('')}
+      </select></label>
+    <label class="fld"><span>Тип документ *</span><select id="stKind">${Object.entries(SETTLE_KINDS).map(([k,v])=>
+      `<option value="${k}" ${pre.kind===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Сума *</span><input id="stAmt" value="${pre.amount??''}"></label>
+    <label class="fld"><span>Дата на документа</span><input type="date" id="stDate" value="${today()}"></label>
+    <label class="fld"><span>Документ № / платежно</span><input id="stNo"></label>
+    <label class="fld"><span>Период от</span><input type="date" id="stFrom"></label>
+    <label class="fld"><span>Период до</span><input type="date" id="stTo"></label>
+    <label class="fld full"><span>Бележка</span><input id="stNote"></label>
+    <div class="full hint">Съвет: „Превод към застраховател“ намалява дължимото ни салдо.
+      „Получена комисиона“ се използва, когато застрахователят ни плаща комисионата отделно.
+      „Корекция“ служи за уравняване на разлики (сторно, бонус, глоба).</div>
+  </div>`);
+  const save=actionBtn('Запиши','primary',async()=>{
+    const rec={insurer_id:$('#stIns',body).value||null,kind:$('#stKind',body).value,
+      amount:r2($('#stAmt',body).value),doc_date:$('#stDate',body).value,
+      doc_no:$('#stNo',body).value.trim()||null,period_from:$('#stFrom',body).value||null,
+      period_to:$('#stTo',body).value||null,notes:$('#stNote',body).value.trim()||null,created_by:STATE.me.id};
+    if(!rec.insurer_id||!rec.amount) return toast('Изберете застраховател и въведете сума','err');
+    const {error}=await sb.from('settlements').insert(rec);
+    if(error)return errToast(error);
+    m.close(); toast('Документът е записан','ok'); await reload();
+  });
+  const m=openModal('Документ по разчетите',body,[actionBtn('Отказ','',()=>m.close()),save]);
+}
+
+function openInsurerLedger(insurerId){
+  const b=STATE.balances.find(x=>x.insurer_id===insurerId);
+  const pol=STATE.policies.filter(p=>p.insurer_id===insurerId);
+  const pays=STATE.installments.filter(i=>i.insurer_id===insurerId&&num(i.paid_amount)>0)
+    .sort((a,b)=>String(b.paid_on).localeCompare(String(a.paid_on)));
+  const docs=STATE.settlements.filter(s=>s.insurer_id===insurerId);
+  const body=el('<div></div>');
+  body.appendChild(el(`<div class="calc">
+    <div class="calc-row"><span>Събрано от клиенти</span><b>${money(b?.collected)}</b></div>
+    <div class="calc-row"><span>− Начислена наша комисиона</span><b class="pos">−${money(b?.commission_earned)}</b></div>
+    <div class="calc-row"><span>− Преведено към застрахователя</span><b>−${money(b?.transferred)}</b></div>
+    <div class="calc-row total"><span>Салдо (дължим)</span>
+      <b class="${num(b?.balance_to_insurer)>0.009?'neg':'pos'}">${money(b?.balance_to_insurer)}</b></div>
+  </div>`));
+  body.appendChild(el(`<div style="margin-top:16px" class="grid3">
+    <div class="kpi"><div class="lbl">Полици</div><div class="val">${pol.length}</div></div>
+    <div class="kpi"><div class="lbl">Премия</div><div class="val" style="font-size:19px">${money0(pol.reduce((s,p)=>s+num(p.premium),0))}</div></div>
+    <div class="kpi ok"><div class="lbl">Нетна печалба</div><div class="val" style="font-size:19px">${money0(pol.reduce((s,p)=>s+num(p.net_profit),0))}</div></div>
+  </div>`));
+  body.appendChild(el('<h4 style="margin:20px 0 8px">Последни плащания от клиенти</h4>'));
+  body.appendChild(makeTable([
+    {h:'Дата',f:r=>dfmt(r.paid_on)},{h:'Клиент',f:r=>esc(r.client_name)},
+    {h:'Полица',f:r=>`<span class="mono">${esc(r.policy_number)}</span>`},
+    {h:'Вноска',f:r=>r.seq},{h:'Сума',num:1,f:r=>money(r.paid_amount)},
+    {h:'Начин',f:r=>PAY_METHODS[r.payment_method]||'—'},
+  ],pays.slice(0,60),{empty:'Няма плащания'}));
+  body.appendChild(el('<h4 style="margin:20px 0 8px">Документи</h4>'));
+  body.appendChild(makeTable([
+    {h:'Дата',f:r=>dfmt(r.doc_date)},{h:'Тип',f:r=>SETTLE_KINDS[r.kind]},
+    {h:'№',f:r=>esc(r.doc_no||'—')},{h:'Сума',num:1,f:r=>money(r.amount)},
+  ],docs,{empty:'Няма документи'}));
+  const m=openModal(insurerById(insurerId)?.name||'Застраховател',body,[actionBtn('Затвори','',()=>m.close())],'wide');
+}
+
+/* ==========================================================================
+   БЛАНКИ ПОД СТРОГА ОТЧЕТНОСТ
+   ========================================================================== */
+VIEWS.bso=(root)=>{
+  if(can.bso()){
+    headerAction('+ Заведи диапазон','primary',()=>bsoRangeForm());
+    headerAction('+ Единична бланка','',()=>bsoSingleForm());
+  }
+  const f=STATE.filters;
+  const sum={};
+  STATE.bso.forEach(b=>{const k=b.insurer_id+'|'+b.kind;
+    sum[k]=sum[k]||{insurer_id:b.insurer_id,kind:b.kind,in_stock:0,assigned:0,used:0,void:0,returned:0,total:0};
+    sum[k][b.status]++; sum[k].total++;});
+  const srows=Object.values(sum).sort((a,b)=>insName(a.insurer_id).localeCompare(insName(b.insurer_id)));
+
+  const kp=el('<div class="kpis"></div>');
+  const tot=(s)=>STATE.bso.filter(b=>b.status===s).length;
+  const K=(l,v,c='')=>kp.appendChild(el(`<div class="kpi ${c}"><div class="lbl">${l}</div><div class="val">${v}</div></div>`));
+  K('В склад',tot('in_stock'),'ok'); K('Раздадени',tot('assigned'),'warn');
+  K('Използвани',tot('used')); K('Анулирани',tot('void'),tot('void')?'bad':'');
+  K('Общо заведени',STATE.bso.length,'brand');
+  root.appendChild(kp);
+
+  const c1=el('<div class="card"><div class="card-h"><h3>Наличности по застраховател и вид</h3></div></div>');
+  c1.appendChild(makeTable([
+    {h:'Застраховател',f:r=>`<b>${esc(insName(r.insurer_id))}</b>`,raw:r=>insName(r.insurer_id)},
+    {h:'Вид',f:r=>BSO_KINDS[r.kind],raw:r=>BSO_KINDS[r.kind]},
+    {h:'В склад',num:1,f:r=>`<span class="tag ${r.in_stock?'ok':'mut'}">${r.in_stock}</span>`,raw:r=>r.in_stock},
+    {h:'Раздадени',num:1,f:r=>r.assigned||'—',raw:r=>r.assigned},
+    {h:'Използвани',num:1,f:r=>r.used||'—',raw:r=>r.used},
+    {h:'Анулирани',num:1,f:r=>r.void||'—',raw:r=>r.void},
+    {h:'Общо',num:1,f:r=>r.total,raw:r=>r.total},
+  ],srows,{empty:'Няма заведени бланки'}));
+  root.appendChild(c1);
+
+  const bar=el('<div class="filters" style="margin-top:16px"></div>');
+  const mk=(l,n)=>{const x=el(`<label class="f"><span>${l}</span></label>`);x.appendChild(n);bar.appendChild(x);};
+  const si=el(`<input class="search" placeholder="Номер, серия…" value="${esc(f.q||'')}">`);
+  si.oninput=()=>{f.q=si.value;FOCUS_SEL='.search';render()}; mk('Търсене',si);
+  const i1=el(`<select><option value="">Всички</option>${STATE.insurers.map(i=>
+    `<option value="${i.id}" ${f.ins===i.id?'selected':''}>${esc(i.short_name||i.name)}</option>`).join('')}</select>`);
+  i1.onchange=()=>{f.ins=i1.value;render()}; mk('Застраховател',i1);
+  const k1=el(`<select><option value="">Всички</option>${Object.entries(BSO_KINDS).map(([k,v])=>
+    `<option value="${k}" ${f.kind===k?'selected':''}>${esc(v)}</option>`).join('')}</select>`);
+  k1.onchange=()=>{f.kind=k1.value;render()}; mk('Вид',k1);
+  const s1=el(`<select><option value="">Всички</option>${Object.entries(BSO_STATUS).map(([k,v])=>
+    `<option value="${k}" ${f.st===k?'selected':''}>${esc(v)}</option>`).join('')}</select>`);
+  s1.onchange=()=>{f.st=s1.value;render()}; mk('Статус',s1);
+  const a1=el(`<select><option value="">Всички</option><option value="none">Неразпределени</option>${STATE.users.map(u=>
+    `<option value="${u.id}" ${f.ag===u.id?'selected':''}>${esc(u.full_name)}</option>`).join('')}</select>`);
+  a1.onchange=()=>{f.ag=a1.value;render()}; mk('Държи',a1);
+  root.appendChild(bar);
+
+  let rows=STATE.bso;
+  if(f.ins)rows=rows.filter(b=>b.insurer_id===f.ins);
+  if(f.kind)rows=rows.filter(b=>b.kind===f.kind);
+  if(f.st)rows=rows.filter(b=>b.status===f.st);
+  if(f.ag)rows=rows.filter(b=>f.ag==='none'?!b.assigned_to:b.assigned_to===f.ag);
+  if(f.q){const qs=f.q.toLowerCase();rows=rows.filter(b=>((b.series||'')+' '+b.number).toLowerCase().includes(qs));}
+
+  const cols=[
+    {h:'Застраховател',f:r=>esc(insName(r.insurer_id)),raw:r=>insName(r.insurer_id)},
+    {h:'Вид',f:r=>BSO_KINDS[r.kind],raw:r=>BSO_KINDS[r.kind]},
+    {h:'Серия / номер',f:r=>`<span class="mono">${esc([r.series,r.number].filter(Boolean).join(' '))}</span>`,raw:r=>(r.series||'')+r.number},
+    {h:'Държи',f:r=>esc(userById(r.assigned_to)?.full_name||'склад'),raw:r=>userById(r.assigned_to)?.full_name||''},
+    {h:'Статус',f:r=>{const c={in_stock:'ok',assigned:'warn',used:'mut',void:'bad',returned:'info'}[r.status];
+      return `<span class="tag ${c}">${BSO_STATUS[r.status]}</span>`},raw:r=>BSO_STATUS[r.status]},
+    {h:'Използвана на',f:r=>r.used_at?dfmt(r.used_at):'—',raw:r=>r.used_at},
+    {h:'',f:r=>can.bso()?actionBtn('Промени','',()=>bsoEdit(r)):''},
+  ];
+  headerAction('Експорт CSV','',()=>exportCSV('blanki_'+today(),cols.slice(0,-1),rows));
+  const c2=el(`<div class="card"><div class="card-h"><h3>Регистър на бланките</h3><div class="spacer"></div>
+    <span class="muted">${rows.length} записа</span></div></div>`);
+  c2.appendChild(makeTable(cols,rows.slice(0,500),{empty:'Няма бланки по тези критерии'}));
+  root.appendChild(c2);
+};
+
+function bsoRangeForm(){
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Застраховател *</span><select id="brIns"><option value="">—</option>
+      ${STATE.insurers.map(i=>`<option value="${i.id}">${esc(i.short_name||i.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Вид *</span><select id="brKind">${Object.entries(BSO_KINDS).map(([k,v])=>
+      `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Серия</span><input id="brSeries" placeholder="напр. BG"></label>
+    <label class="fld"><span>Водещи нули (брой цифри)</span><input id="brDigits" value="0"></label>
+    <label class="fld"><span>Номер от *</span><input id="brFrom" placeholder="1000001"></label>
+    <label class="fld"><span>Номер до *</span><input id="brTo" placeholder="1000050"></label>
+    <div class="full hint">Ще бъдат заведени всички номера в диапазона със статус „В склад“. Максимум 20 000 наведнъж.</div>
+  </div>`);
+  const save=actionBtn('Заведи','primary',async()=>{
+    const p={p_insurer:$('#brIns',body).value,p_kind:$('#brKind',body).value,
+      p_series:$('#brSeries',body).value.trim(),p_from:parseInt($('#brFrom',body).value),
+      p_to:parseInt($('#brTo',body).value),p_digits:parseInt($('#brDigits',body).value)||0};
+    if(!p.p_insurer||isNaN(p.p_from)||isNaN(p.p_to)||p.p_to<p.p_from) return toast('Проверете диапазона','err');
+    const {data,error}=await sb.rpc('add_bso_range',p);
+    if(error)return errToast(error);
+    m.close(); toast('Заведени са '+data+' бланки','ok'); await reload();
+  });
+  const m=openModal('Завеждане на диапазон бланки',body,[actionBtn('Отказ','',()=>m.close()),save]);
+}
+function bsoSingleForm(){
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Застраховател *</span><select id="bsIns"><option value="">—</option>
+      ${STATE.insurers.map(i=>`<option value="${i.id}">${esc(i.short_name||i.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Вид *</span><select id="bsKind">${Object.entries(BSO_KINDS).map(([k,v])=>
+      `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Серия</span><input id="bsSeries"></label>
+    <label class="fld"><span>Номер *</span><input id="bsNum"></label>
+    <label class="fld full"><span>Бележка</span><input id="bsNote"></label>
+  </div>`);
+  const save=actionBtn('Заведи','primary',async()=>{
+    const rec={insurer_id:$('#bsIns',body).value||null,kind:$('#bsKind',body).value,
+      series:$('#bsSeries',body).value.trim()||null,number:$('#bsNum',body).value.trim(),
+      notes:$('#bsNote',body).value.trim()||null};
+    if(!rec.insurer_id||!rec.number)return toast('Попълнете застраховател и номер','err');
+    const {error}=await sb.from('bso_items').insert(rec);
+    if(error)return errToast(error); m.close(); toast('Записано','ok'); await reload();
+  });
+  const m=openModal('Нова бланка',body,[actionBtn('Отказ','',()=>m.close()),save],'narrow');
+}
+function bsoEdit(b){
+  const body=el(`<div class="form-grid">
+    <div class="full calc"><div class="calc-row"><span>${esc(insName(b.insurer_id))} · ${BSO_KINDS[b.kind]}</span>
+      <b class="mono">${esc([b.series,b.number].filter(Boolean).join(' '))}</b></div></div>
+    <label class="fld"><span>Статус</span><select id="beSt">${Object.entries(BSO_STATUS).map(([k,v])=>
+      `<option value="${k}" ${b.status===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Раздадена на</span><select id="beAg"><option value="">— склад —</option>
+      ${STATE.users.map(u=>`<option value="${u.id}" ${b.assigned_to===u.id?'selected':''}>${esc(u.full_name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Използвана на дата</span><input type="date" id="beDate" value="${esc(b.used_at||'')}"></label>
+    <label class="fld"><span>Бележка</span><input id="beNote" value="${esc(b.notes||'')}"></label>
+  </div>`);
+  const save=actionBtn('Запази','primary',async()=>{
+    const st=$('#beSt',body).value, ag=$('#beAg',body).value||null;
+    const rec={status:st,assigned_to:ag,assigned_at:ag?today():null,
+      used_at:$('#beDate',body).value||null,notes:$('#beNote',body).value.trim()||null};
+    const {error}=await sb.from('bso_items').update(rec).eq('id',b.id);
+    if(error)return errToast(error); m.close(); await reload();
+  });
+  const del=actionBtn('Изтрий','danger',()=>confirmBox('Да изтрия ли бланката?',async()=>{
+    const {error}=await sb.from('bso_items').delete().eq('id',b.id);
+    if(error)return errToast(error); m.close(); await reload();}));
+  const m=openModal('Бланка',body,[del,actionBtn('Отказ','',()=>m.close()),save],'narrow');
+}
+
+/* ==========================================================================
+   СПРАВКИ И ЕКСПОРТ
+   ========================================================================== */
+VIEWS.reports=(root)=>{
+  const f=STATE.filters;
+  if(!f.rep)f.rep='insurer_report';
+  if(!f.from)f.from=periodRange()[0];
+  if(!f.to)f.to=periodRange()[1];
+
+  const bar=el('<div class="filters"></div>');
+  const mk=(l,n)=>{const x=el(`<label class="f"><span>${l}</span></label>`);x.appendChild(n);bar.appendChild(x);};
+  const rs=el(`<select style="min-width:280px">
+    <option value="insurer_report">Отчет към застраховател (бордеро)</option>
+    <option value="journal">Дневник на издадените полици</option>
+    <option value="cash">Касова книга — събрани пари</option>
+    <option value="agents">Резултат по агенти</option>
+    <option value="clients_top">Топ клиенти по печалба</option>
+    <option value="products">Обем по видове застраховки</option>
+  </select>`);
+  rs.value=f.rep; rs.onchange=()=>{f.rep=rs.value;render()}; mk('Справка',rs);
+  const d1=el(`<input type="date" value="${esc(f.from)}">`); d1.onchange=()=>{f.from=d1.value;render()};
+  const d2=el(`<input type="date" value="${esc(f.to)}">`); d2.onchange=()=>{f.to=d2.value;render()};
+  mk('От дата',d1); mk('До дата',d2);
+  const ins=el(`<select><option value="">Всички</option>${STATE.insurers.map(i=>
+    `<option value="${i.id}" ${f.ins===i.id?'selected':''}>${esc(i.short_name||i.name)}</option>`).join('')}</select>`);
+  ins.onchange=()=>{f.ins=ins.value;render()}; mk('Застраховател',ins);
+  root.appendChild(bar);
+
+  const R=[f.from,f.to];
+  let cols=[],rows=[],title='',subtitle='';
+
+  if(f.rep==='insurer_report'){
+    rows=STATE.policies.filter(p=>inRange(p.issue_date,R)&&!['draft'].includes(p.status)&&(!f.ins||p.insurer_id===f.ins));
+    title='Отчет към застраховател'; subtitle=(f.ins?insurerById(f.ins)?.name:'Всички застрахователи');
+    cols=[
+      {h:'Дата',f:r=>dfmt(r.issue_date),raw:r=>r.issue_date},
+      {h:'№ полица',f:r=>`<span class="mono">${esc(r.policy_number)}</span>`,raw:r=>r.policy_number},
+      {h:'Застраховател',f:r=>esc(r.insurer_short||''),raw:r=>r.insurer_name},
+      {h:'Вид',f:r=>esc(r.product_name),raw:r=>r.product_name},
+      {h:'Клиент',f:r=>esc(r.client_name),raw:r=>r.client_name},
+      {h:'Обект',f:r=>esc(r.object_reg_number||''),raw:r=>r.object_reg_number},
+      {h:'Премия',num:1,f:r=>money(r.premium),raw:r=>num(r.premium)},
+      {h:'Събрано',num:1,f:r=>money(r.collected),raw:r=>num(r.collected)},
+      {h:'Ком. %',num:1,f:r=>pct(r.commission_pct),raw:r=>num(r.commission_pct)},
+      {h:'Комисиона',num:1,f:r=>money(r.commission_amount),raw:r=>num(r.commission_amount)},
+      {h:'Дължимо',num:1,f:r=>money(r2(num(r.collected)-num(r.commission_amount)*(num(r.premium)?num(r.collected)/num(r.premium):0))),
+        raw:r=>r2(num(r.collected)-num(r.commission_amount)*(num(r.premium)?num(r.collected)/num(r.premium):0))},
+    ];
+  }
+  else if(f.rep==='journal'){
+    rows=STATE.policies.filter(p=>inRange(p.issue_date,R)&&(!f.ins||p.insurer_id===f.ins))
+      .sort((a,b)=>a.issue_date.localeCompare(b.issue_date));
+    title='Дневник на издадените полици'; subtitle=dfmt(f.from)+' — '+dfmt(f.to);
+    cols=[
+      {h:'№',f:(r)=>rows.indexOf(r)+1,raw:r=>rows.indexOf(r)+1},
+      {h:'Дата',f:r=>dfmt(r.issue_date),raw:r=>r.issue_date},
+      {h:'№ полица',f:r=>`<span class="mono">${esc(r.policy_number)}</span>`,raw:r=>r.policy_number},
+      {h:'Застраховател',f:r=>esc(r.insurer_short||''),raw:r=>r.insurer_name},
+      {h:'Вид',f:r=>esc(r.product_name),raw:r=>r.product_name},
+      {h:'Клиент',f:r=>esc(r.client_name),raw:r=>r.client_name},
+      {h:'ЕГН/ЕИК',f:r=>esc(r.client_ident||''),raw:r=>r.client_ident},
+      {h:'Покритие',f:r=>dfmt(r.start_date)+'—'+dfmt(r.end_date),raw:r=>r.start_date+' - '+r.end_date},
+      {h:'Премия',num:1,f:r=>money(r.premium),raw:r=>num(r.premium)},
+      {h:'Печалба',num:1,f:r=>money(r.net_profit),raw:r=>num(r.net_profit)},
+      {h:'Агент',f:r=>esc(r.agent_name||''),raw:r=>r.agent_name},
+    ];
+  }
+  else if(f.rep==='cash'){
+    rows=STATE.installments.filter(i=>num(i.paid_amount)>0&&inRange(i.paid_on,R)&&(!f.ins||i.insurer_id===f.ins))
+      .sort((a,b)=>String(a.paid_on).localeCompare(String(b.paid_on)));
+    title='Касова книга — събрани суми'; subtitle=dfmt(f.from)+' — '+dfmt(f.to);
+    cols=[
+      {h:'Дата',f:r=>dfmt(r.paid_on),raw:r=>r.paid_on},
+      {h:'Квитанция',f:r=>`<span class="mono">${esc(r.receipt_no||'—')}</span>`,raw:r=>r.receipt_no},
+      {h:'Клиент',f:r=>esc(r.client_name),raw:r=>r.client_name},
+      {h:'Полица',f:r=>`<span class="mono">${esc(r.policy_number)}</span>`,raw:r=>r.policy_number},
+      {h:'Застраховател',f:r=>esc(r.insurer_short||''),raw:r=>r.insurer_name},
+      {h:'Вноска',f:r=>r.seq,raw:r=>r.seq},
+      {h:'Начин',f:r=>PAY_METHODS[r.payment_method]||'—',raw:r=>PAY_METHODS[r.payment_method]},
+      {h:'Сума',num:1,f:r=>`<b>${money(r.paid_amount)}</b>`,raw:r=>num(r.paid_amount)},
+    ];
+  }
+  else if(f.rep==='agents'){
+    const pol=STATE.policies.filter(p=>inRange(p.issue_date,R)&&!['draft','cancelled'].includes(p.status));
+    const g={}; pol.forEach(p=>{const k=p.agent_id||'—';
+      g[k]=g[k]||{k,n:0,prem:0,comm:0,pay:0,net:0,coll:0};
+      g[k].n++; g[k].prem+=num(p.premium); g[k].comm+=num(p.commission_amount);
+      g[k].pay+=num(p.agent_payout); g[k].net+=num(p.net_profit); g[k].coll+=num(p.collected);});
+    rows=Object.values(g).sort((a,b)=>b.net-a.net);
+    title='Резултат по агенти'; subtitle=dfmt(f.from)+' — '+dfmt(f.to);
+    cols=[
+      {h:'Агент',f:r=>`<b>${esc(userById(r.k)?.full_name||'Без агент')}</b>`,raw:r=>userById(r.k)?.full_name||'Без агент'},
+      {h:'Полици',num:1,f:r=>r.n,raw:r=>r.n},
+      {h:'Премия',num:1,f:r=>money(r.prem),raw:r=>r2(r.prem)},
+      {h:'Събрано',num:1,f:r=>money(r.coll),raw:r=>r2(r.coll)},
+      {h:'Комисиона',num:1,f:r=>money(r.comm),raw:r=>r2(r.comm)},
+      {h:'Дял на агента',num:1,f:r=>money(r.pay),raw:r=>r2(r.pay)},
+      {h:'Остава за агенцията',num:1,f:r=>`<b class="pos">${money(r.net)}</b>`,raw:r=>r2(r.net)},
+      {h:'Ср. премия/полица',num:1,f:r=>money(r.n?r.prem/r.n:0),raw:r=>r2(r.n?r.prem/r.n:0)},
+    ];
+  }
+  else if(f.rep==='clients_top'){
+    const pol=STATE.policies.filter(p=>inRange(p.issue_date,R)&&!['draft','cancelled'].includes(p.status));
+    const g={}; pol.forEach(p=>{g[p.client_id]=g[p.client_id]||{k:p.client_id,n:0,prem:0,net:0};
+      g[p.client_id].n++; g[p.client_id].prem+=num(p.premium); g[p.client_id].net+=num(p.net_profit);});
+    rows=Object.values(g).sort((a,b)=>b.net-a.net).slice(0,200);
+    title='Топ клиенти по печалба'; subtitle=dfmt(f.from)+' — '+dfmt(f.to);
+    cols=[
+      {h:'Клиент',f:r=>`<b>${esc(clientById(r.k)?.full_name||'—')}</b>`,raw:r=>clientById(r.k)?.full_name},
+      {h:'Телефон',f:r=>esc(clientById(r.k)?.phone||''),raw:r=>clientById(r.k)?.phone},
+      {h:'Полици',num:1,f:r=>r.n,raw:r=>r.n},
+      {h:'Премия',num:1,f:r=>money(r.prem),raw:r=>r2(r.prem)},
+      {h:'Печалба',num:1,f:r=>`<b class="pos">${money(r.net)}</b>`,raw:r=>r2(r.net)},
+    ];
+  }
+  else {
+    const pol=STATE.policies.filter(p=>inRange(p.issue_date,R)&&!['draft','cancelled'].includes(p.status)&&(!f.ins||p.insurer_id===f.ins));
+    const g={}; pol.forEach(p=>{g[p.product_type_id]=g[p.product_type_id]||{k:p.product_type_id,n:0,prem:0,comm:0,net:0};
+      const x=g[p.product_type_id]; x.n++; x.prem+=num(p.premium); x.comm+=num(p.commission_amount); x.net+=num(p.net_profit);});
+    rows=Object.values(g).sort((a,b)=>b.prem-a.prem);
+    title='Обем по видове застраховки'; subtitle=dfmt(f.from)+' — '+dfmt(f.to);
+    cols=[
+      {h:'Вид застраховка',f:r=>`<b>${esc(productById(r.k)?.name||'—')}</b>`,raw:r=>productById(r.k)?.name},
+      {h:'Категория',f:r=>esc(productById(r.k)?.category||''),raw:r=>productById(r.k)?.category},
+      {h:'Полици',num:1,f:r=>r.n,raw:r=>r.n},
+      {h:'Премия',num:1,f:r=>money(r.prem),raw:r=>r2(r.prem)},
+      {h:'Комисиона',num:1,f:r=>money(r.comm),raw:r=>r2(r.comm)},
+      {h:'Ср. %',num:1,f:r=>r.prem?pct(r.comm/r.prem*100):'—',raw:r=>r.prem?r2(r.comm/r.prem*100):0},
+      {h:'Печалба',num:1,f:r=>`<b class="pos">${money(r.net)}</b>`,raw:r=>r2(r.net)},
+    ];
+  }
+
+  headerAction('Експорт CSV','primary',()=>exportCSV(f.rep+'_'+f.from+'_'+f.to,cols,rows));
+  headerAction('Печат','',()=>printReport(title,subtitle,cols,rows));
+
+  const totals={};
+  cols.forEach((c,idx)=>{ if(c.num&&rows.length&&typeof c.raw(rows[0])==='number')
+    totals[idx]=rows.reduce((s,r)=>s+num(c.raw(r)),0); });
+  const card=el(`<div class="card"><div class="card-h"><h3>${esc(title)}</h3><div class="spacer"></div>
+    <span class="muted">${esc(subtitle)} · ${rows.length} записа</span></div></div>`);
+  card.appendChild(makeTable(cols,rows.slice(0,800),{empty:'Няма данни за периода',
+    foot:(c)=>{const i=cols.indexOf(c); if(i===0)return 'ОБЩО';
+      return totals[i]!==undefined?(cols[i].h.includes('%')?'':money(totals[i])):'';}}));
+  root.appendChild(card);
+};
+
+function printReport(title,subtitle,cols,rows){
+  const w=window.open('','_blank');
+  const th=cols.map(c=>`<th style="text-align:${c.num?'right':'left'}">${esc(c.h)}</th>`).join('');
+  const tr=rows.map(r=>'<tr>'+cols.map(c=>{
+    let v=c.raw?c.raw(r):''; if(typeof v==='number')v=fmt(v);
+    return `<td style="text-align:${c.num?'right':'left'}">${esc(v??'')}</td>`;}).join('')+'</tr>').join('');
+  w.document.write(`<!doctype html><html lang="bg"><head><meta charset="utf-8"><title>${esc(title)}</title>
+    <style>body{font:12px "Segoe UI",Arial,sans-serif;padding:24px;color:#111}
+    h1{font-size:17px;margin:0 0 3px}p{margin:0 0 14px;color:#555;font-size:12px}
+    table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 7px}
+    th{background:#f0f2f6;font-size:10.5px;text-transform:uppercase}
+    @media print{body{padding:0}}</style></head><body>
+    <h1>${esc(title)}</h1><p>${esc(subtitle)} · ${esc(STATE.settings?.agency_name||'')} · Разпечатано на ${dfmt(today())}</p>
+    <table><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table></body></html>`);
+  w.document.close(); setTimeout(()=>w.print(),400);
+}
+
+/* ==========================================================================
+   НАСТРОЙКИ
+   ========================================================================== */
+VIEWS.settings=(root)=>{
+  const f=STATE.filters; if(!f.tab)f.tab='rates';
+  const tabs=el('<div class="tabs"></div>');
+  [['rates','Комисионни проценти'],['insurers','Застрахователи'],['products','Видове застраховки'],
+   ['users','Потребители и достъп'],['offices','Офиси'],['agency','Данни на агенцията']].forEach(([k,l])=>{
+    const b=el(`<button class="${f.tab===k?'active':''}">${l}</button>`);
+    b.onclick=()=>{f.tab=k;render()}; tabs.appendChild(b);
+  });
+  root.appendChild(tabs);
+  ({rates:setRates,insurers:setInsurers,products:setProducts,users:setUsers,
+    offices:setOffices,agency:setAgency})[f.tab](root);
+};
+
+/* ---------- КОМИСИОННИ ПРОЦЕНТИ ---------- */
+function setRates(root){
+  headerAction('+ Нов процент','primary',()=>rateForm());
+  root.appendChild(el(`<div class="muted" style="margin-bottom:12px">
+    Тук се задава колко процента комисиона получавате от всеки застраховател за всеки вид застраховка.
+    При издаване на полица процентът се попълва автоматично. Само администратор има достъп до този екран.</div>`));
+  const rows=STATE.rates.slice().sort((a,b)=>
+    insName(a.insurer_id).localeCompare(insName(b.insurer_id))||
+    (productById(a.product_type_id)?.sort_order||0)-(productById(b.product_type_id)?.sort_order||0));
+  const cols=[
+    {h:'Застраховател',f:r=>`<b>${esc(insName(r.insurer_id))}</b>`,raw:r=>insName(r.insurer_id)},
+    {h:'Вид застраховка',f:r=>esc(productById(r.product_type_id)?.name||'—'),raw:r=>productById(r.product_type_id)?.name},
+    {h:'Наша комисиона',num:1,f:r=>`<span class="tag brand">${pct(r.rate_pct)}</span>`,raw:r=>num(r.rate_pct)},
+    {h:'Дял на агента',num:1,f:r=>num(r.agent_rate_pct)?pct(r.agent_rate_pct):'—',raw:r=>num(r.agent_rate_pct)},
+    {h:'Макс. отстъпка за клиент',num:1,f:r=>num(r.max_client_discount_pct)?pct(r.max_client_discount_pct):'—',raw:r=>num(r.max_client_discount_pct)},
+    {h:'В сила от',f:r=>dfmt(r.valid_from),raw:r=>r.valid_from},
+    {h:'До',f:r=>r.valid_to?dfmt(r.valid_to):'безсрочно',raw:r=>r.valid_to},
+    {h:'',f:r=>{const b=el('<div style="display:flex;gap:6px;justify-content:flex-end"></div>');
+      b.appendChild(actionBtn('Промени','',()=>rateForm(r)));
+      b.appendChild(actionBtn('✕','danger',()=>confirmBox('Да изтрия ли реда?',async()=>{
+        const {error}=await sb.from('commission_rates').delete().eq('id',r.id);
+        if(error)return errToast(error); await reload();})));
+      return b;}},
+  ];
+  headerAction('Експорт CSV','',()=>exportCSV('komisioni_'+today(),cols.slice(0,-1),rows));
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(cols,rows,{empty:'Още няма зададени комисионни проценти. Започнете с бутона „+ Нов процент“.'}));
+  root.appendChild(card);
+}
+function rateForm(r){
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Застраховател *</span><select id="raIns"><option value="">—</option>
+      ${STATE.insurers.map(i=>`<option value="${i.id}" ${r?.insurer_id===i.id?'selected':''}>${esc(i.short_name||i.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Вид застраховка *</span><select id="raProd"><option value="">—</option>
+      ${STATE.products.map(p=>`<option value="${p.id}" ${r?.product_type_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Наша комисиона (%) *</span><input id="raPct" value="${r?.rate_pct??''}"></label>
+    <label class="fld"><span>Дял на агента от комисионата (%)</span><input id="raAg" value="${r?.agent_rate_pct??0}"></label>
+    <label class="fld"><span>Макс. отстъпка за клиент (%)</span><input id="raMax" value="${r?.max_client_discount_pct??0}"></label>
+    <label class="fld"><span>В сила от *</span><input type="date" id="raFrom" value="${esc(r?.valid_from||today())}"></label>
+    <label class="fld"><span>В сила до (незадължително)</span><input type="date" id="raTo" value="${esc(r?.valid_to||'')}"></label>
+    <label class="fld"><span>Бележка</span><input id="raNote" value="${esc(r?.notes||'')}"></label>
+    <div class="full hint">Ако договорът ви се промени, добавете нов ред с нова дата „В сила от“ —
+      старите полици запазват процента, с който са издадени.</div>
+  </div>`);
+  const save=actionBtn('Запази','primary',async()=>{
+    const rec={insurer_id:$('#raIns',body).value||null,product_type_id:$('#raProd',body).value||null,
+      rate_pct:num($('#raPct',body).value),agent_rate_pct:num($('#raAg',body).value),
+      max_client_discount_pct:num($('#raMax',body).value),valid_from:$('#raFrom',body).value,
+      valid_to:$('#raTo',body).value||null,notes:$('#raNote',body).value.trim()||null};
+    if(!rec.insurer_id||!rec.product_type_id)return toast('Изберете застраховател и вид','err');
+    const res=r?await sb.from('commission_rates').update(rec).eq('id',r.id)
+             :await sb.from('commission_rates').insert(rec);
+    if(res.error)return errToast(res.error); m.close(); toast('Записано','ok'); await reload();
+  });
+  const m=openModal(r?'Редакция на комисионен процент':'Нов комисионен процент',body,
+    [actionBtn('Отказ','',()=>m.close()),save]);
+}
+
+/* ---------- ЗАСТРАХОВАТЕЛИ ---------- */
+function setInsurers(root){
+  headerAction('+ Застраховател','primary',()=>insurerForm());
+  const cols=[
+    {h:'Наименование',f:r=>`<div class="stack"><b>${esc(r.short_name||r.name)}</b><small>${esc(r.name)}</small></div>`,raw:r=>r.name},
+    {h:'Разчет',f:r=>r.commission_deducted_at_source
+      ?'<span class="tag ok">удържаме комисионата</span>':'<span class="tag warn">превеждаме всичко</span>',raw:r=>r.commission_deducted_at_source},
+    {h:'Контакт',f:r=>`<div class="stack">${esc(r.contact_person||'—')}<small>${esc(r.phone||'')}</small></div>`,raw:r=>r.contact_person},
+    {h:'Полици',num:1,f:r=>STATE.policies.filter(p=>p.insurer_id===r.id).length,raw:r=>STATE.policies.filter(p=>p.insurer_id===r.id).length},
+    {h:'Статус',f:r=>r.active?'<span class="tag ok">активен</span>':'<span class="tag mut">скрит</span>',raw:r=>r.active},
+    {h:'',f:r=>actionBtn('Промени','',()=>insurerForm(r))},
+  ];
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(cols,STATE.insurers,{empty:'Няма застрахователи'}));
+  root.appendChild(card);
+}
+function insurerForm(i){
+  const body=el(`<div class="form-grid">
+    <label class="fld full"><span>Пълно наименование *</span><input id="inName" value="${esc(i?.name||'')}"></label>
+    <label class="fld"><span>Кратко име</span><input id="inShort" value="${esc(i?.short_name||'')}"></label>
+    <label class="fld"><span>ЕИК</span><input id="inEik" value="${esc(i?.eik||'')}"></label>
+    <label class="fld full"><span>Начин на разчет</span><select id="inDed">
+      <option value="1" ${i?.commission_deducted_at_source!==false?'selected':''}>Удържаме комисионата и превеждаме разликата</option>
+      <option value="0" ${i?.commission_deducted_at_source===false?'selected':''}>Превеждаме цялата премия, комисионата се получава отделно</option>
+    </select></label>
+    <label class="fld"><span>Лице за контакт</span><input id="inCp" value="${esc(i?.contact_person||'')}"></label>
+    <label class="fld"><span>Телефон</span><input id="inPh" value="${esc(i?.phone||'')}"></label>
+    <label class="fld"><span>Имейл</span><input id="inEm" value="${esc(i?.email||'')}"></label>
+    <label class="fld"><span>Активен</span><select id="inAct">
+      <option value="1" ${i?.active!==false?'selected':''}>Да</option>
+      <option value="0" ${i?.active===false?'selected':''}>Не (скрит от списъците)</option></select></label>
+    <label class="fld full"><span>Бележки</span><textarea id="inNotes" rows="2">${esc(i?.notes||'')}</textarea></label>
+  </div>`);
+  const save=actionBtn('Запази','primary',async()=>{
+    const rec={name:$('#inName',body).value.trim(),short_name:$('#inShort',body).value.trim()||null,
+      eik:$('#inEik',body).value.trim()||null,commission_deducted_at_source:$('#inDed',body).value==='1',
+      contact_person:$('#inCp',body).value.trim()||null,phone:$('#inPh',body).value.trim()||null,
+      email:$('#inEm',body).value.trim()||null,active:$('#inAct',body).value==='1',
+      notes:$('#inNotes',body).value.trim()||null};
+    if(!rec.name)return toast('Въведете наименование','err');
+    const res=i?await sb.from('insurers').update(rec).eq('id',i.id):await sb.from('insurers').insert(rec);
+    if(res.error)return errToast(res.error); m.close(); await reload();
+  });
+  const m=openModal(i?'Редакция на застраховател':'Нов застраховател',body,[actionBtn('Отказ','',()=>m.close()),save]);
+}
+
+/* ---------- ВИДОВЕ ---------- */
+function setProducts(root){
+  headerAction('+ Вид застраховка','primary',()=>productForm());
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable([
+    {h:'Код',f:r=>`<span class="mono">${esc(r.code)}</span>`},
+    {h:'Наименование',f:r=>`<b>${esc(r.name)}</b>`},
+    {h:'Категория',f:r=>esc(r.category||'—')},
+    {h:'Обект по подразбиране',f:r=>OBJ_KINDS[r.default_object_kind]},
+    {h:'Полици',num:1,f:r=>STATE.policies.filter(p=>p.product_type_id===r.id).length},
+    {h:'Статус',f:r=>r.active?'<span class="tag ok">активен</span>':'<span class="tag mut">скрит</span>'},
+    {h:'',f:r=>actionBtn('Промени','',()=>productForm(r))},
+  ],STATE.products,{empty:'Няма видове'}));
+  root.appendChild(card);
+}
+function productForm(p){
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Код *</span><input id="prCode" value="${esc(p?.code||'')}"></label>
+    <label class="fld"><span>Наименование *</span><input id="prName" value="${esc(p?.name||'')}"></label>
+    <label class="fld"><span>Категория</span><input id="prCat" value="${esc(p?.category||'')}"></label>
+    <label class="fld"><span>Вид обект</span><select id="prObj">${Object.entries(OBJ_KINDS).map(([k,v])=>
+      `<option value="${k}" ${p?.default_object_kind===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Активен</span><select id="prAct">
+      <option value="1" ${p?.active!==false?'selected':''}>Да</option>
+      <option value="0" ${p?.active===false?'selected':''}>Не</option></select></label>
+    <label class="fld"><span>Подредба</span><input id="prSort" value="${p?.sort_order??100}"></label>
+  </div>`);
+  const save=actionBtn('Запази','primary',async()=>{
+    const rec={code:$('#prCode',body).value.trim().toUpperCase(),name:$('#prName',body).value.trim(),
+      category:$('#prCat',body).value.trim()||null,default_object_kind:$('#prObj',body).value,
+      active:$('#prAct',body).value==='1',sort_order:parseInt($('#prSort',body).value)||100};
+    if(!rec.code||!rec.name)return toast('Попълнете код и наименование','err');
+    const res=p?await sb.from('product_types').update(rec).eq('id',p.id):await sb.from('product_types').insert(rec);
+    if(res.error)return errToast(res.error); m.close(); await reload();
+  });
+  const m=openModal(p?'Редакция на вид':'Нов вид застраховка',body,[actionBtn('Отказ','',()=>m.close()),save],'narrow');
+}
+
+/* ---------- ПОТРЕБИТЕЛИ ---------- */
+async function callAdmin(payload){
+  const {data:{session}}=await sb.auth.getSession();
+  const res=await fetch(SUPABASE_URL+'/functions/v1/admin-users',{
+    method:'POST',headers:{'Content-Type':'application/json','apikey':SUPABASE_KEY,
+      'Authorization':'Bearer '+session.access_token},body:JSON.stringify(payload)});
+  const j=await res.json();
+  if(!res.ok||j.error) throw new Error(j.error||'Грешка');
+  return j;
+}
+function setUsers(root){
+  headerAction('+ Нов потребител','primary',()=>userForm());
+  root.appendChild(el(`<div class="card" style="margin-bottom:16px"><div class="card-b">
+    <b>Нива на достъп</b>
+    <div style="margin-top:10px;display:grid;gap:8px">
+      <div><span class="tag brand">Собственик / Администратор</span> — вижда и променя всичко: полици, комисиони, печалба,
+        разчети, бланки, комисионни проценти и потребители.</div>
+      <div><span class="tag info">Офис мениджър</span> — вижда всички полици, вноски, разчети и справки, издава и редактира полици,
+        води бланките. Няма достъп до екрана с комисионните проценти и до потребителите.</div>
+      <div><span class="tag ok">Агент</span> — вижда и въвежда само своите клиенти и полици и своята комисиона.
+        Не вижда резултатите на другите агенти.</div>
+      <div><span class="tag warn">Касиер</span> — отбелязва плащания и вижда разчетите; не създава и не редактира полици.</div>
+    </div></div></div>`));
+  const cols=[
+    {h:'Име',f:r=>`<div class="stack"><b>${esc(r.full_name)}</b><small>${esc(r.email)}</small></div>`,raw:r=>r.full_name},
+    {h:'Ниво на достъп',f:r=>{const c={admin:'brand',manager:'info',agent:'ok',cashier:'warn'}[r.role];
+      return `<span class="tag ${c}">${ROLE_NAMES[r.role]}</span>`},raw:r=>ROLE_NAMES[r.role]},
+    {h:'Офис',f:r=>esc(STATE.offices.find(o=>o.id===r.office_id)?.name||'—'),raw:r=>r.office_id},
+    {h:'Телефон',f:r=>esc(r.phone||'—'),raw:r=>r.phone},
+    {h:'Дял от комисионата',num:1,f:r=>num(r.default_agent_commission_pct)?pct(r.default_agent_commission_pct):'—',raw:r=>num(r.default_agent_commission_pct)},
+    {h:'Полици',num:1,f:r=>STATE.policies.filter(p=>p.agent_id===r.id).length,raw:r=>STATE.policies.filter(p=>p.agent_id===r.id).length},
+    {h:'Статус',f:r=>r.active?'<span class="tag ok">активен</span>':'<span class="tag bad">спрян</span>',raw:r=>r.active},
+    {h:'',f:r=>actionBtn('Промени','',()=>userForm(r))},
+  ];
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable(cols,STATE.users,{empty:'Няма потребители'}));
+  root.appendChild(card);
+}
+function userForm(u){
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Име и фамилия *</span><input id="usName" value="${esc(u?.full_name||'')}"></label>
+    <label class="fld"><span>Имейл (за вход) *</span><input id="usEmail" value="${esc(u?.email||'')}" ${u?'disabled':''}></label>
+    <label class="fld"><span>${u?'Нова парола (оставете празно, за да не се променя)':'Парола *'}</span>
+      <input id="usPass" type="text" placeholder="${u?'не се променя':'минимум 6 знака'}"></label>
+    <label class="fld"><span>Ниво на достъп *</span><select id="usRole">${Object.entries(ROLE_NAMES).map(([k,v])=>
+      `<option value="${k}" ${u?.role===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Офис</span><select id="usOffice"><option value="">—</option>${STATE.offices.map(o=>
+      `<option value="${o.id}" ${u?.office_id===o.id?'selected':''}>${esc(o.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Телефон</span><input id="usPhone" value="${esc(u?.phone||'')}"></label>
+    <label class="fld"><span>Дял от комисионата по подразбиране (%)</span>
+      <input id="usPct" value="${u?.default_agent_commission_pct??0}"></label>
+    <label class="fld"><span>Достъп</span><select id="usAct">
+      <option value="1" ${u?.active!==false?'selected':''}>Активен</option>
+      <option value="0" ${u?.active===false?'selected':''}>Спрян</option></select></label>
+  </div>`);
+  const save=actionBtn('Запази','primary',async()=>{
+    save.disabled=true;
+    try{
+      const common={full_name:$('#usName',body).value.trim(),role:$('#usRole',body).value,
+        office_id:$('#usOffice',body).value||null,phone:$('#usPhone',body).value.trim()||null,
+        default_agent_commission_pct:num($('#usPct',body).value)};
+      const pass=$('#usPass',body).value;
+      if(u) await callAdmin({action:'update',id:u.id,...common,active:$('#usAct',body).value==='1',
+        ...(pass?{password:pass}:{})});
+      else{
+        if(!$('#usEmail',body).value.trim()||pass.length<6){save.disabled=false;return toast('Въведете имейл и парола (мин. 6 знака)','err');}
+        await callAdmin({action:'create',email:$('#usEmail',body).value.trim(),password:pass,...common});
+      }
+      m.close(); toast('Записано','ok'); await reload();
+    }catch(e){ save.disabled=false; errToast(e); }
+  });
+  const foot=[actionBtn('Отказ','',()=>m.close())];
+  if(u&&u.id!==STATE.me.id) foot.push(actionBtn('Изтрий','danger',()=>confirmBox(
+    'Потребителят ще бъде изтрит. Полиците му остават в системата. Продължавате ли?',async()=>{
+      try{ await callAdmin({action:'delete',id:u.id}); m.close(); await reload(); }catch(e){errToast(e)}
+    })));
+  foot.push(save);
+  const m=openModal(u?'Редакция на потребител':'Нов потребител',body,foot);
+}
+
+/* ---------- ОФИСИ ---------- */
+function setOffices(root){
+  headerAction('+ Офис','primary',()=>officeForm());
+  const card=el('<div class="card"></div>');
+  card.appendChild(makeTable([
+    {h:'Име',f:r=>`<b>${esc(r.name)}</b>`},{h:'Град',f:r=>esc(r.city||'—')},
+    {h:'Адрес',f:r=>esc(r.address||'—')},
+    {h:'Служители',num:1,f:r=>STATE.users.filter(u=>u.office_id===r.id).length},
+    {h:'',f:r=>actionBtn('Промени','',()=>officeForm(r))},
+  ],STATE.offices,{empty:'Няма офиси'}));
+  root.appendChild(card);
+}
+function officeForm(o){
+  const body=el(`<div class="form-grid">
+    <label class="fld"><span>Име *</span><input id="ofName" value="${esc(o?.name||'')}"></label>
+    <label class="fld"><span>Град</span><input id="ofCity" value="${esc(o?.city||'')}"></label>
+    <label class="fld full"><span>Адрес</span><input id="ofAddr" value="${esc(o?.address||'')}"></label>
+  </div>`);
+  const save=actionBtn('Запази','primary',async()=>{
+    const rec={name:$('#ofName',body).value.trim(),city:$('#ofCity',body).value.trim()||null,
+      address:$('#ofAddr',body).value.trim()||null};
+    if(!rec.name)return toast('Въведете име','err');
+    const res=o?await sb.from('offices').update(rec).eq('id',o.id):await sb.from('offices').insert(rec);
+    if(res.error)return errToast(res.error); m.close(); await reload();
+  });
+  const m=openModal(o?'Редакция на офис':'Нов офис',body,[actionBtn('Отказ','',()=>m.close()),save],'narrow');
+}
+
+/* ---------- АГЕНЦИЯ ---------- */
+function setAgency(root){
+  const s=STATE.settings||{};
+  const body=el(`<div class="card"><div class="card-b"><div class="form-grid">
+    <label class="fld"><span>Наименование на агенцията</span><input id="agName" value="${esc(s.agency_name||'')}"></label>
+    <label class="fld"><span>ЕИК</span><input id="agEik" value="${esc(s.eik||'')}"></label>
+    <label class="fld"><span>Град</span><input id="agCity" value="${esc(s.city||'')}"></label>
+    <label class="fld"><span>Адрес</span><input id="agAddr" value="${esc(s.address||'')}"></label>
+    <label class="fld"><span>Телефон</span><input id="agPhone" value="${esc(s.phone||'')}"></label>
+    <label class="fld"><span>Имейл</span><input id="agEmail" value="${esc(s.email||'')}"></label>
+    <label class="fld"><span>Данък върху премията по подразбиране (%)</span><input id="agTax" value="${s.default_tax_pct??2}"></label>
+    <label class="fld"><span>Валута</span><input id="agCur" value="${esc(s.currency||'лв.')}"></label>
+    <label class="fld"><span>Предупреждение за подновяване (дни преди изтичане)</span>
+      <input id="agDays" value="${s.renewal_alert_days??30}"></label>
+  </div></div></div>`);
+  root.appendChild(body);
+  const b=actionBtn('Запази настройките','primary',async()=>{
+    const rec={agency_name:$('#agName',body).value.trim()||'Застрахователна агенция',
+      eik:$('#agEik',body).value.trim()||null,city:$('#agCity',body).value.trim()||null,
+      address:$('#agAddr',body).value.trim()||null,phone:$('#agPhone',body).value.trim()||null,
+      email:$('#agEmail',body).value.trim()||null,default_tax_pct:num($('#agTax',body).value),
+      currency:$('#agCur',body).value.trim()||'лв.',renewal_alert_days:parseInt($('#agDays',body).value)||30,
+      updated_at:new Date().toISOString()};
+    const {error}=await sb.from('agency_settings').update(rec).eq('id',true);
+    if(error)return errToast(error); toast('Настройките са запазени','ok'); await reload();
+  });
+  b.style.marginTop='14px'; root.appendChild(b);
+}
+
+/* ==========================================================================
+   СТАРТ
+   ========================================================================== */
+sb.auth.onAuthStateChange((e)=>{ if(e==='SIGNED_OUT') location.reload(); });
+boot().catch(e=>{ console.error(e); $('#login').classList.remove('hidden'); });
+</script>
+</body>
+</html>
