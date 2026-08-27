@@ -81,7 +81,11 @@ async function loadTemplate(docType) {
         Качете .docx файл, изготвен напр. в Microsoft Word, с токени във вид <code>{{token}}</code> — те ще се заменят автоматично с данните за конкретния документ. Налични токени за този тип документ:
       </p>
       <div style="margin-bottom:10px;">${tokens.map(tk => `<span class="token-chip" title="Кликни, за да копираш">{{${tk}}}</span>`).join('')}</div>
-      ${t.source === 'docx' && t.file_name ? `<p class="hint">Текущо качен файл: <strong>${t.file_name}</strong></p>` : ''}
+      ${t.source === 'docx' && t.file_name ? `
+      <p class="hint">Текущо качен файл: <strong>${t.file_name}</strong>
+        <a href="${t.file_url}" target="_blank">Отвори</a> ${docActionButtons(t.file_url, t.file_name, DOC_TYPE_LABELS[docType] || docType)}
+        ${isAdmin ? `<button type="button" class="btn btn-ghost btn-sm" id="deleteTemplateBtn" style="color:var(--danger);margin-left:6px;">🗑 Изтрий качения шаблон</button>` : ''}
+      </p>` : ''}
       ${isAdmin ? `
       <div class="photo-upload-btn" id="uploadDocxBtn">📄 Качи .docx шаблон / кликни за избор</div>
       <input type="file" id="docxFile" accept=".docx" style="display:none;">
@@ -106,6 +110,15 @@ async function loadTemplate(docType) {
       await loadTemplate(docType);
       document.getElementById('builtinMsg').textContent = 'Запазено — вградената бланка е активна.';
     } catch (err) { msg.textContent = err.message; }
+  });
+
+  const deleteTemplateBtn = document.getElementById('deleteTemplateBtn');
+  if (deleteTemplateBtn) deleteTemplateBtn.addEventListener('click', async () => {
+    if (!confirm('Да се изтрие ли качения .docx шаблон? Изтеглянията ще ползват вградената бланка.')) return;
+    try {
+      await Api.del(`/api/templates/${docType}`);
+      await loadTemplate(docType);
+    } catch (err) { alert(err.message); }
   });
 
   const uploadBtn = document.getElementById('uploadDocxBtn');

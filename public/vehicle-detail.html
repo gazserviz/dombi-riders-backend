@@ -334,23 +334,33 @@ function equipmentTab(items) {
   return `
     <div class="tab-panel" id="tab-equipment">
       <div class="panel">
-        <div class="panel-head"><h2>Оборудване</h2>${canWrite ? `<button class="btn btn-primary btn-sm" id="addEquipmentBtn">+ Добави</button>` : ''}</div>
+        <div class="panel-head"><h2>Оборудване</h2>${canWrite ? `<button type="button" class="btn btn-primary btn-sm" id="addEquipmentBtn">+ Добави</button>` : ''}</div>
         ${canWrite ? `
         <form id="equipmentForm" style="display:none;margin-bottom:18px;padding:16px;background:var(--panel-2);border-radius:10px;">
+          <input type="hidden" name="id">
           <div class="field-row">
             <div class="field"><label>Наименование *</label><input name="name" required placeholder="напр. GPS тракер"></div>
             <div class="field"><label>Сериен номер</label><input name="serial_number"></div>
           </div>
           <div class="field"><label>Бележки</label><input name="notes"></div>
-          <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+          <div style="display:flex;gap:8px;">
+            <button type="submit" class="btn btn-primary btn-sm" id="equipmentFormSubmitBtn">Запази</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="equipmentFormCancelBtn" style="display:none;">Отказ</button>
+          </div>
         </form>` : ''}
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Наименование</th><th>Сериен №</th><th>Добавено на</th><th>Бележки</th></tr></thead>
+            <thead><tr><th>Наименование</th><th>Сериен №</th><th>Добавено на</th><th>Бележки</th>${canWrite ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${items.length ? items.map(i => `
-                <tr><td>${i.name}</td><td>${i.serial_number||'—'}</td><td>${fmtDate(i.added_at)}</td><td>${i.notes||'—'}</td></tr>`).join('')
-              : `<tr><td colspan="4" class="empty-state">Няма добавено оборудване.</td></tr>`}
+                <tr>
+                  <td>${i.name}</td><td>${i.serial_number||'—'}</td><td>${fmtDate(i.added_at)}</td><td>${i.notes||'—'}</td>
+                  ${canWrite ? `<td style="white-space:nowrap;">
+                    <button type="button" class="btn btn-ghost btn-sm eq-edit-btn" data-id="${i.id}" data-name="${escapeHtml(i.name||'')}" data-serial="${escapeHtml(i.serial_number||'')}" data-notes="${escapeHtml(i.notes||'')}">✎</button>
+                    <button type="button" class="btn btn-ghost btn-sm eq-delete-btn" data-id="${i.id}" style="color:var(--danger);">🗑</button>
+                  </td>` : ''}
+                </tr>`).join('')
+              : `<tr><td colspan="${canWrite ? 5 : 4}" class="empty-state">Няма добавено оборудване.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -795,6 +805,10 @@ function bindForms() {
   const addEquipmentBtn = document.getElementById('addEquipmentBtn');
   if (addEquipmentBtn) addEquipmentBtn.addEventListener('click', () => {
     const f = document.getElementById('equipmentForm');
+    f.reset();
+    f.querySelector('[name="id"]').value = '';
+    document.getElementById('equipmentFormSubmitBtn').textContent = 'Запази';
+    document.getElementById('equipmentFormCancelBtn').style.display = 'none';
     f.style.display = f.style.display === 'none' ? 'block' : 'none';
   });
   const equipmentForm = document.getElementById('equipmentForm');
@@ -802,11 +816,50 @@ function bindForms() {
     e.preventDefault();
     setBusy(true);
     const data = Object.fromEntries(new FormData(e.target).entries());
+    const editId = data.id;
+    delete data.id;
     try {
-      await Api.post(`/api/vehicles/${vehicleId}/equipment`, data);
+      if (editId) {
+        await Api.put(`/api/vehicles/${vehicleId}/equipment/${editId}`, data);
+      } else {
+        await Api.post(`/api/vehicles/${vehicleId}/equipment`, data);
+      }
       await init();
+      activateTab('equipment');
     } catch (err) { alert(err.message); }
     finally { setBusy(false); }
+  });
+  const equipmentFormCancelBtn = document.getElementById('equipmentFormCancelBtn');
+  if (equipmentFormCancelBtn) equipmentFormCancelBtn.addEventListener('click', () => {
+    const f = document.getElementById('equipmentForm');
+    f.reset();
+    f.querySelector('[name="id"]').value = '';
+    f.style.display = 'none';
+  });
+  document.querySelectorAll('.eq-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = document.getElementById('equipmentForm');
+      f.querySelector('[name="id"]').value = btn.dataset.id;
+      f.querySelector('[name="name"]').value = btn.dataset.name;
+      f.querySelector('[name="serial_number"]').value = btn.dataset.serial;
+      f.querySelector('[name="notes"]').value = btn.dataset.notes;
+      document.getElementById('equipmentFormSubmitBtn').textContent = 'Запази промените';
+      document.getElementById('equipmentFormCancelBtn').style.display = 'inline-block';
+      f.style.display = 'block';
+      f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+  document.querySelectorAll('.eq-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Да се изтрие ли това оборудване?')) return;
+      setBusy(true);
+      try {
+        await Api.del(`/api/vehicles/${vehicleId}/equipment/${btn.dataset.id}`);
+        await init();
+        activateTab('equipment');
+      } catch (err) { alert(err.message); }
+      finally { setBusy(false); }
+    });
   });
 
   const talonConfirmForm = document.getElementById('talonConfirmForm');
