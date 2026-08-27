@@ -73,6 +73,7 @@ const NAV = [
   ]},
   { group: 'Финанси', items: [
     { href: '/finance.html', icon: '💰', label: 'Счетоводство', roles: ['admin','manager'] },
+    { href: '/cashier.html', icon: '🏦', label: 'Обща каса', roles: ['admin','manager'] },
   ]},
   { group: 'Поща', items: [
     { href: '/mail.html', icon: '📧', label: 'Пощенска кутия', roles: ['admin'] },
