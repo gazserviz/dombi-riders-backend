@@ -1234,6 +1234,62 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 201, { transaction: rec, balance: db.getWalletBalance(body.user_id) });
     }
 
+    // ---- ОБЩА КАСА ---------------------------------------------------------
+    // Един избран профил (обикновено мениджър), чийто портфейл служи за общата
+    // фирмена каса — наемите от коли постъпват тук автоматично при въвеждане
+    // на седмица в "Заплати" (виж db.syncCarRentKasaEntry). Кой е касиерът се
+    // избира САМО от супер администратора; ръчните движения по касата също са
+    // заключени само за super_admin — нарочно НЕ минават през configurable
+    // permissions matrix, за да няма как да бъдат отворени за друга роля.
+    if (pathname === '/api/cashier' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'cashier', 'view');
+      if (!user) return;
+      const cashierId = db.getCashierProfileId();
+      if (!cashierId) return sendJson(res, 200, { cashier: null, balance: 0, transactions: [] });
+      const cashier = db.findUserById(cashierId);
+      return sendJson(res, 200, {
+        cashier: cashier ? { id: cashier.id, full_name: cashier.full_name, role: cashier.role } : null,
+        balance: db.getWalletBalance(cashierId),
+        transactions: db.listWalletTransactions(cashierId),
+      });
+    }
+    // връща и списък мениджъри/админи, измежду които супер администраторът
+    // може да избере касиер — само super_admin вижда/пипа тази настройка
+    if (pathname === '/api/cashier/settings' && req.method === 'GET') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const candidates = db.listUsers()
+        .filter(u => ['admin', 'manager'].includes(u.role) && u.status === 'active')
+        .map(u => ({ id: u.id, full_name: u.full_name, role: u.role }));
+      return sendJson(res, 200, { cashier_profile_id: db.getCashierProfileId(), candidates });
+    }
+    if (pathname === '/api/cashier/settings' && req.method === 'PUT') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const cashierId = db.setCashierProfileId(body.profile_id || null);
+        return sendJson(res, 200, { cashier_profile_id: cashierId });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (pathname === '/api/cashier/adjustments' && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const cashierId = db.getCashierProfileId();
+      if (!cashierId) return sendJson(res, 400, { error: 'Няма избран касиер — задайте го от настройките на касата.' });
+      const body = await readJsonBody(req);
+      if (body.amount == null || isNaN(Number(body.amount)) || Number(body.amount) === 0) {
+        return sendJson(res, 400, { error: 'Невалидна сума' });
+      }
+      const rec = db.addWalletAdjustment({
+        user_id: cashierId, amount: Number(body.amount),
+        type: 'cashier_manual', note: body.note || null, created_by: user.id,
+      });
+      return sendJson(res, 201, { transaction: rec, balance: db.getWalletBalance(cashierId) });
+    }
+
     // ---- СЧЕТОВОДСТВО (общ финансов отчет + ръчна счетоводна книга) -------
     if (pathname === '/api/finance/report' && req.method === 'GET') {
       const user = requirePermission(req, res, 'finance', 'view');
@@ -1684,7 +1740,9 @@ async function handleApi(req, res, pathname, query) {
         profile_id: body.profile_id, week_start: body.week_start, week_end: body.week_end,
         order_count: Number(body.order_count) || 0, gross_earnings: Number(body.gross_earnings) || 0,
         deduction_amount: body.deduction_amount != null ? Number(body.deduction_amount) : undefined,
+        car_rent_amount: body.car_rent_amount != null ? Number(body.car_rent_amount) : undefined,
         source: body.source || 'manual',
+        created_by: user.id,
       });
       return sendJson(res, 200, { entry: rec });
     }
@@ -1816,11 +1874,13 @@ async function handleApi(req, res, pathname, query) {
             order_count: r.order_count_unknown && existing ? existing.order_count : combinedOrders,
             gross_earnings: combinedGross,
             deduction_amount: existing ? existing.deduction_amount : undefined,
+            car_rent_amount: existing ? existing.car_rent_amount : undefined,
             source: sources.length > 1 ? 'bolt+glovo' : r.platform,
             platform_breakdown: otherPlatform,
             needs_review: !!r.needs_review || (existing ? !!existing.needs_review : false),
             order_count_unknown: !!r.order_count_unknown,
             import_file: archivedFile ? archivedFile.url : (existing ? existing.import_file : null),
+            created_by: user.id,
           });
           writtenEntries.push(rec.id);
         }
