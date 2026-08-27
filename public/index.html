@@ -891,6 +891,11 @@ burger.addEventListener('click', () => {
   const open = navLinks.style.display === 'flex';
   navLinks.style.cssText = open ? '' : 'display:flex;flex-direction:column;position:absolute;top:82px;left:0;right:0;background:#07080af0;padding:20px 24px;gap:18px;border-bottom:1px solid #ffffff14;';
 });
+// При избор на линк от отвореното мобилно меню го затваряме веднага, за да
+// не остава разгърнато върху съдържанието на секцията, към която скролваме.
+navLinks.addEventListener('click', (e) => {
+  if (e.target.tagName === 'A') navLinks.style.cssText = '';
+});
 
 /* reveal-on-scroll */
 const io = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
