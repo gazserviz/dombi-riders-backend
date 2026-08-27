@@ -105,7 +105,7 @@ async function init() {
           </div>
           <div class="field-row">
             <div class="field"><label>Технически преглед до</label><input name="inspection_expiry" type="date"></div>
-            <div class="field"></div>
+            <div class="field"><label>№ на талона (СРМПС)</label><input name="talon_number"></div>
           </div>
 
           <h3 style="margin-top:20px;">Гражданска отговорност</h3>
@@ -163,7 +163,7 @@ async function init() {
       <button type="button" class="btn btn-ghost btn-sm" id="applyTalonBtn" style="margin-top:10px;">Приложи в полетата вляво →</button>
     `;
     document.getElementById('applyTalonBtn').addEventListener('click', () => {
-      const map = { plate_number:'plate_number', vin:'vin', make:'make', model:'model', year:'year', color:'color', fuel:'fuel', seats:'seats' };
+      const map = { plate_number:'plate_number', vin:'vin', make:'make', model:'model', year:'year', color:'color', fuel:'fuel', seats:'seats', talon_number:'talon_number' };
       const form = document.getElementById('vehicleForm');
       Object.entries(map).forEach(([src, dst]) => {
         if (extracted[src] != null && extracted[src] !== '' && form[dst]) form[dst].value = extracted[src];

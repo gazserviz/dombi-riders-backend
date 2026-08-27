@@ -102,6 +102,7 @@ function overviewTab(v) {
               <tr><td>Добавена в системата на</td><td>${fmtDate(v.created_at)}</td></tr>
               <tr><td>Винетка</td><td>${fmtDate(v.vignette_expiry)}</td></tr>
               <tr><td>Технически преглед</td><td>${fmtDate(v.inspection_expiry)}</td></tr>
+              <tr><td>№ на талона (СРМПС)</td><td>${v.talon_number||'—'}</td></tr>
             </table>
             <h3 style="margin-top:16px;">Гражданска отговорност</h3>
             <table>
@@ -121,7 +122,10 @@ function overviewTab(v) {
             <div class="field-row">
               <div class="field"><label>Винетка до</label><input name="vignette_expiry" type="date" value="${v.vignette_expiry||''}"></div>
             </div>
-            <div class="field"><label>Технически преглед до</label><input name="inspection_expiry" type="date" value="${v.inspection_expiry||''}"></div>
+            <div class="field-row">
+              <div class="field"><label>Технически преглед до</label><input name="inspection_expiry" type="date" value="${v.inspection_expiry||''}"></div>
+              <div class="field"><label>№ на талона (СРМПС)</label><input name="talon_number" value="${v.talon_number||''}"></div>
+            </div>
             <h3 style="margin-top:16px;">Гражданска отговорност</h3>
             <div class="field-row">
               <div class="field"><label>Валидна до</label><input name="insurance_expiry" type="date" value="${v.insurance_expiry||''}"></div>
@@ -494,6 +498,7 @@ const TALON_FIELD_MAP = [
   { key: 'color', label: 'Цвят', type: 'text' },
   { key: 'fuel', label: 'Гориво', type: 'text' },
   { key: 'seats', label: 'Места', type: 'number' },
+  { key: 'talon_number', label: '№ на талона (СРМПС)', type: 'text' },
 ];
 
 function talonTab(v) {
