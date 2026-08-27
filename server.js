@@ -849,6 +849,30 @@ async function handleApi(req, res, pathname, query) {
       const item = db.addEquipment(eqListMatch[1], body);
       return sendJson(res, 201, { equipment: item });
     }
+    const eqItemMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/equipment\/([\w-]+)$/);
+    if (eqItemMatch && req.method === 'PUT') {
+      const user = requirePermission(req, res, 'vehicles', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const item = db.updateEquipment(eqItemMatch[2], {
+          name: body.name, serial_number: body.serial_number || null, notes: body.notes || null,
+        });
+        return sendJson(res, 200, { equipment: item });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (eqItemMatch && req.method === 'DELETE') {
+      const user = requirePermission(req, res, 'vehicles', 'manage');
+      if (!user) return;
+      try {
+        db.deleteEquipment(eqItemMatch[2]);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
 
     // service records (сервизна книжка)
     const srListMatch = pathname.match(/^\/api\/vehicles\/([\w-]+)\/service-records$/);
@@ -2518,6 +2542,14 @@ async function handleApi(req, res, pathname, query) {
           ? null
           : 'Файлът е качен и запазен, но попълването му (docxtemplater/pizzip) не е активно на този сървър — изтеглянията ще използват вградената бланка, докато модулите не бъдат инсталирани.',
       });
+    }
+    if (templateMatch && req.method === 'DELETE') {
+      const user = requirePermission(req, res, 'templates', 'manage');
+      if (!user) return;
+      const template = db.setDocumentTemplate(templateMatch[1], {
+        source: 'builtin', file_url: null, file_name: null, updated_by: user.id,
+      });
+      return sendJson(res, 200, { template });
     }
 
     // ---- ЕЛЕКТРОННО РАЗПИСВАНЕ (протоколи / договори за наем) -------------
