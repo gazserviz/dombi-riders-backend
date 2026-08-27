@@ -540,3 +540,66 @@ function readFileAsDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
+
+// ---------------------------------------------------------------------------
+// печат/изтегляне на ЕДИН прикачен документ (снимка или PDF) — общо за
+// талони, лични карти, шофьорски книжки, сканирани договори и т.н., навсякъде
+// в системата, за да не се дублира логиката за отваряне на нов прозорец,
+// изчакване снимката да се зареди, или задаване на "download" атрибут.
+// ---------------------------------------------------------------------------
+function isPdfUrl(url) {
+  return /\.pdf(\?|#|$)/i.test(url || '');
+}
+
+function printDocumentUrl(url, title) {
+  if (!url) return;
+  if (isPdfUrl(url)) {
+    // браузърът показва PDF файлове във вградения си четец, който вече си
+    // има собствени бутони "Печат"/"Изтегли" — просто го отваряме.
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+  const w = window.open('', '_blank', 'noopener');
+  if (!w) { alert('Браузърът блокира изскачащия прозорец за печат — разрешете изскачащи прозорци за този сайт.'); return; }
+  const safeTitle = escapeHtml(title || 'Документ');
+  w.document.write(`<!DOCTYPE html><html><head><title>${safeTitle}</title>
+    <meta charset="UTF-8">
+    <style>@page{margin:10mm;} body{margin:0;background:#fff;display:flex;justify-content:center;} img{max-width:100%;height:auto;display:block;}</style>
+    </head><body><img src="${url}" onload="setTimeout(function(){window.print();},150)" onerror="document.body.textContent='Файлът не можа да се зареди.'"></body></html>`);
+  w.document.close();
+}
+
+function downloadDocumentUrl(url, filename) {
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href = url;
+  if (filename) a.download = filename;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// малък HTML фрагмент с бутони "Печат"/"Изтегли" за един прикачен документ —
+// ползва се навсякъде, където показваме снимка/PDF на талон, лична карта,
+// шофьорска книжка или сканиран договор. Кликовете се хващат централно от
+// делегирания listener по-долу, така че страницата не трябва сама да закача
+// event listener-и за тях.
+function docActionButtons(url, filename, title) {
+  if (!url) return '';
+  const safeUrl = escapeHtml(url);
+  const safeFilename = escapeHtml(filename || '');
+  const safeTitle = escapeHtml(title || '');
+  return `<span class="doc-actions" style="display:inline-flex;gap:4px;">` +
+    `<button type="button" class="btn btn-ghost btn-sm doc-print-btn" data-url="${safeUrl}" data-title="${safeTitle}" style="padding:2px 8px;font-size:.72rem;">🖨 Печат</button>` +
+    `<button type="button" class="btn btn-ghost btn-sm doc-download-btn" data-url="${safeUrl}" data-filename="${safeFilename}" style="padding:2px 8px;font-size:.72rem;">⬇ Изтегли</button>` +
+    `</span>`;
+}
+
+document.addEventListener('click', (e) => {
+  const printBtn = e.target.closest('.doc-print-btn');
+  if (printBtn) { printDocumentUrl(printBtn.dataset.url, printBtn.dataset.title); return; }
+  const downloadBtn = e.target.closest('.doc-download-btn');
+  if (downloadBtn) { downloadDocumentUrl(downloadBtn.dataset.url, downloadBtn.dataset.filename); return; }
+});
