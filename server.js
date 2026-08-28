@@ -980,10 +980,19 @@ async function handleApi(req, res, pathname, query) {
       const body = await readJsonBody(req);
       const talonData = body.talon_data ? { ...body.talon_data } : body.talon_data;
       if (talonData && talonData.owner_name) talonData.owner_name = db.normalizeOwnerName(talonData.owner_name);
+      // "Дата на следваща регистрация" (поле I от талона) е ЧИСТО информативно
+      // поле, разчетено от AI — НЕ Го прилагаме върху основния запис на колата.
+      // Основното (вградено) поле vehicle.registration_expiry вече се ползва
+      // за съвсем друго нещо (реалната дата "рег. до", въвеждана ръчно/през
+      // CSV импорт) и захранва таблото "Изтичащи документи" — ако тук го
+      // презапишем с несигурна AI стойност, се получават абсурдни аларми
+      // (напр. "Просрочено с 739856 дни" при грешно разчетена година).
+      const applyToFields = { ...(body.apply_to_fields || {}) };
+      delete applyToFields.registration_expiry;
       const vehicle = db.updateVehicle(talonConfirmMatch[1], {
         talon_data: talonData,
         talon_confirmed: true,
-        ...(body.apply_to_fields || {}),
+        ...applyToFields,
       });
       return sendJson(res, 200, { vehicle });
     }
@@ -2756,6 +2765,13 @@ const server = http.createServer((req, res) => {
     if (ownerFixedCount) console.log(`Коригирано изкривено AI-разчитане на "собственик (фирма)" в talon_data за ${ownerFixedCount} коли.`);
   } catch (e) {
     console.error('Грешка при нормализация на собственика във talon_data:', e.message);
+  }
+
+  try {
+    const strayRegExpiryFixedCount = db.cleanupStrayTalonRegistrationExpiry();
+    if (strayRegExpiryFixedCount) console.log(`Премахнато погрешно записано поле "следваща регистрация" от основния запис за ${strayRegExpiryFixedCount} коли.`);
+  } catch (e) {
+    console.error('Грешка при почистване на "следваща регистрация":', e.message);
   }
 
   try {
