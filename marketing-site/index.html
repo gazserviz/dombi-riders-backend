@@ -1186,6 +1186,7 @@ form.addEventListener('submit', function(e){
   const email = (data.get('email')||'').trim();
   const city = data.get('city');
   const vehicle = data.get('vehicle');
+  const message = (data.get('message')||'').trim();
   const terms = form.querySelector('#terms').checked;
   const captchaInput = parseInt(data.get('captcha'), 10);
 
@@ -1216,6 +1217,21 @@ form.addEventListener('submit', function(e){
   const submitBtnOrigText = submitBtn ? submitBtn.textContent : '';
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Изпращане…'; }
 
+  // Градовете от падащото меню тук са на кирилица (текст на опцията = стойност
+  // на полето), докато бекендът очаква кодове ('sofia'/'plovdiv'/...) за
+  // структурираното поле city (виж VALID_CITIES в server.js) — мапваме ги тук.
+  // Превозното средство има по-богат избор от този, който бекендът засега
+  // разпознава като структурирано поле (work_vehicle_type), затова остава като
+  // четим текст в notes, за да не се загуби информация с грешно/лossy мапене.
+  const CITY_CODES = { 'София': 'sofia', 'Пловдив': 'plovdiv', 'Варна': 'varna', 'Бургас': 'burgas' };
+  const cityCode = CITY_CODES[city] || null;
+  // Реалното съобщение на кандидата НЕ трябва да се губи — преди тази поправка
+  // изобщо не се изпращаше към бекенда (notes съдържаше само генериран текст).
+  const noteLines = [];
+  if (message) noteLines.push(message);
+  noteLines.push(`Превозно средство: ${vehicle || '-'}`);
+  if (!cityCode) noteLines.push(`Град: ${city || '-'}`); // само ако не се е мапнал към структурираното поле по-долу
+
   fetch(APPLY_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1223,7 +1239,8 @@ form.addEventListener('submit', function(e){
       full_name: name,
       phone: phone,
       email: email,
-      notes: `Град: ${city || '-'} | Собствено превозно средство: ${vehicle || '-'}`,
+      city: cityCode,
+      notes: noteLines.join(' | '),
     }),
   })
     .then(function(resp){
