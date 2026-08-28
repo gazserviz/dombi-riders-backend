@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Начална страница (Rent-a-Car) — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .se-row{display:flex;gap:12px;flex-wrap:wrap;}
+  .se-row .field{flex:1;min-width:220px;}
+  .se-card{border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px;background:#00000022;}
+  .se-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .se-card-head b{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  .se-save-bar{position:sticky;bottom:0;background:var(--bg,#0c0f0d);padding:14px 0;margin-top:8px;border-top:1px solid var(--line);display:flex;align-items:center;gap:14px;}
+  .se-save-msg{font-size:.82rem;}
+  .se-save-msg.ok{color:var(--green);}
+  .se-save-msg.bad{color:var(--danger,#ff6b6b);}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/rentacar-site-editor.html" data-title="Начална страница (Rent-a-Car)"></div>
+
+<div class="wrap" id="rcWrap" style="max-width:980px;display:none;">
+  <p class="hint" style="margin-bottom:18px;">
+    Тук се редактират текстовете на новия рент-а-кар сайт (<b>dombi-rent-a-car.onrender.com</b>) — промените излизат
+    на живо веднага след запис. Списъкът с коли под наем и цените се управляват отделно, в
+    <a href="/fleet-showcase.html">„Витрина на сайта (коли)“</a>.
+  </p>
+
+  <div class="tabs" id="rcTabs">
+    <div class="tab active" data-tab="hero">Начало</div>
+    <div class="tab" data-tab="how">Как работи</div>
+    <div class="tab" data-tab="policy">Условия</div>
+    <div class="tab" data-tab="testi">Отзиви</div>
+    <div class="tab" data-tab="faq">Въпроси</div>
+    <div class="tab" data-tab="footer">Финал и футър</div>
+  </div>
+
+  <form id="rcForm">
+    <div class="tab-panel active" data-panel="hero">
+      <div class="panel">
+        <div class="panel-head"><b>Заглавен блок (hero)</b></div>
+        <div class="field"><label>Надпис над заглавието</label><input data-path="hero.eyebrow"></div>
+        <div class="se-row">
+          <div class="field"><label>Заглавие — ред 1</label><input data-path="hero.title_line1"></div>
+          <div class="field"><label>Заглавие — ред 2 (осветен)</label><input data-path="hero.title_line2"></div>
+          <div class="field"><label>Заглавие — ред 3</label><input data-path="hero.title_line3"></div>
+        </div>
+        <div class="field"><label>Основен текст</label><textarea rows="3" data-path="hero.lead"></textarea></div>
+        <div class="se-row">
+          <div class="field"><label>Текст на основния бутон</label><input data-path="hero.cta_primary"></div>
+          <div class="field"><label>Текст на втория бутон</label><input data-path="hero.cta_secondary"></div>
+        </div>
+        <div class="se-row">
+          <div class="field"><label>Телефон (показван)</label><input data-path="hero.phone_display"></div>
+          <div class="field"><label>Телефон (за tel: линк, напр. +359887252727)</label><input data-path="hero.phone_tel"></div>
+        </div>
+        <div class="field"><label>3-те кратки предимства до заглавието</label>
+          <div class="se-row">
+            <input data-path="hero.trust_items.0" placeholder="1">
+            <input data-path="hero.trust_items.1" placeholder="2">
+            <input data-path="hero.trust_items.2" placeholder="3">
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Автопарк“ (заглавен текст — самите коли са във „Витрина на сайта“)</b></div>
+        <div class="field"><label>Надпис</label><input data-path="fleet_section.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="fleet_section.title"></div>
+        <div class="field"><label>Подзаглавие</label><textarea rows="2" data-path="fleet_section.subtitle"></textarea></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="how">
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Как работи“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="how.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="how.title"></div>
+        <div class="field"><label>4-те стъпки</label>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.0.title" placeholder="Заглавие"><input data-path="how.steps.0.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.1.title" placeholder="Заглавие"><input data-path="how.steps.1.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.2.title" placeholder="Заглавие"><input data-path="how.steps.2.desc" placeholder="Описание"></div></div>
+          <div class="se-card"><div class="se-row"><input data-path="how.steps.3.title" placeholder="Заглавие"><input data-path="how.steps.3.desc" placeholder="Описание"></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b>Лента със статистики</b></div>
+        <p class="hint" style="margin-top:-6px;">Броят модели в автопарка се показва автоматично — тук се редактират само другите две цифри.</p>
+        <div class="se-row">
+          <div class="field"><label>Средно време за отговор</label><input data-path="stats.response_time"></div>
+          <div class="field"><label>Скрити такси</label><input data-path="stats.hidden_fees"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="policy">
+      <div class="panel">
+        <div class="panel-head"><b>Секция „Условия“</b></div>
+        <div class="field"><label>Надпис</label><input data-path="policy.eyebrow"></div>
+        <div class="field"><label>Заглавие</label><input data-path="policy.title"></div>
+        <div class="field"><label>Подзаглавие</label><input data-path="policy.subtitle"></div>
+      </div>
+      <div class="panel">
+        <div class="field"><label>Заглавие на картата</label><input data-path="policy.included_title"></div>
+        <div class="field"><label>Включено в наема (по един ред)</label><textarea rows="4" data-path-lines="policy.included"></textarea></div>
+      </div>
+      <div class="panel">
+        <div class="field"><label>Заглавие на картата</label><input data-path="policy.requirements_title"></div>
+        <div class="field"><label>Изисквания за наемане (по един ред)</label><textarea rows="4" data-path-lines="policy.requirements"></textarea></div>
+      </div>
+      <div class="panel">
+        <div class="field"><label>Заглавие на картата</label><input data-path="policy.flexibility_title"></div>
+        <div class="field"><label>Гъвкавост (по един ред)</label><textarea rows="4" data-path-lines="policy.flexibility"></textarea></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="testi">
+      <div class="panel">
+        <div class="panel-head"><b>Отзиви</b></div>
+        <div class="se-row">
+          <div class="field"><label>Надпис</label><input data-path="testimonials.eyebrow"></div>
+          <div class="field"><label>Заглавие</label><input data-path="testimonials.title"></div>
+        </div>
+        <div class="field"><label>Бележка под отзивите (напр. „Примерни отзиви…“, оставете празно за без бележка)</label><input data-path="testimonials.note"></div>
+        <div id="testiList"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="testiAddBtn">+ Добави отзив</button>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="faq">
+      <div class="panel">
+        <div class="panel-head"><b>Често задавани въпроси</b></div>
+        <div class="se-row">
+          <div class="field"><label>Надпис</label><input data-path="faq.eyebrow"></div>
+          <div class="field"><label>Заглавие</label><input data-path="faq.title"></div>
+        </div>
+        <div id="faqList"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="faqAddBtn">+ Добави въпрос</button>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="footer">
+      <div class="panel">
+        <div class="panel-head"><b>Финална лента (CTA)</b></div>
+        <div class="field"><label>Заглавие</label><input data-path="cta_band.title"></div>
+        <div class="field"><label>Подтекст</label><input data-path="cta_band.subtitle"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b>Футър</b></div>
+        <div class="field"><label>Кратко описание под логото</label><textarea rows="2" data-path="footer.tagline"></textarea></div>
+        <div class="se-row">
+          <div class="field"><label>Телефон (показван)</label><input data-path="footer.phone_display"></div>
+          <div class="field"><label>Телефон (tel: линк)</label><input data-path="footer.phone_tel"></div>
+        </div>
+        <div class="se-row">
+          <div class="field"><label>Имейл</label><input data-path="footer.email"></div>
+          <div class="field"><label>Адрес на офиса</label><input data-path="footer.address"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="se-save-bar">
+      <button type="submit" class="btn btn-primary">Запази промените</button>
+      <span class="se-save-msg" id="rcSaveMsg"></span>
+      <a href="https://dombi-rent-a-car.onrender.com" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left:auto;">Виж сайта →</a>
+    </div>
+  </form>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+let CONTENT = null;
+
+function getByPath(obj, path) {
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function setByPath(root, path, value) {
+  const keys = path.split('.');
+  let cur = root;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = keys[i];
+    const nextIsIndex = /^\d+$/.test(keys[i + 1]);
+    if (cur[k] === undefined || typeof cur[k] !== 'object') cur[k] = nextIsIndex ? [] : {};
+    cur = cur[k];
+  }
+  cur[keys[keys.length - 1]] = value;
+}
+
+function fillFormFromContent(content) {
+  document.querySelectorAll('#rcForm [data-path]').forEach(el => {
+    const v = getByPath(content, el.dataset.path);
+    if (typeof v === 'string') el.value = v;
+  });
+  // текстови полета, показващи масив от низове като по един ред
+  document.querySelectorAll('#rcForm [data-path-lines]').forEach(el => {
+    const v = getByPath(content, el.dataset.pathLines);
+    el.value = Array.isArray(v) ? v.join('\n') : '';
+  });
+}
+
+function collectFormContent() {
+  const out = {};
+  document.querySelectorAll('#rcForm [data-path]').forEach(el => {
+    setByPath(out, el.dataset.path, el.value);
+  });
+  document.querySelectorAll('#rcForm [data-path-lines]').forEach(el => {
+    const lines = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+    setByPath(out, el.dataset.pathLines, lines);
+  });
+  return out;
+}
+
+/* ---- Отзиви: динамичен, добавящ/премахващ се списък ---- */
+let testiItems = [];
+function renderTestiList() {
+  const host = document.getElementById('testiList');
+  host.innerHTML = testiItems.map((t, i) => `
+    <div class="se-card" data-testi="${i}">
+      <div class="se-card-head"><b>Отзив ${i + 1}</b><button type="button" class="btn btn-ghost btn-sm testi-remove" data-i="${i}">Премахни</button></div>
+      <div class="field"><label>Цитат</label><textarea rows="2" class="testi-quote" data-i="${i}">${escapeHtml(t.quote || '')}</textarea></div>
+      <div class="se-row">
+        <div class="field"><label>Име</label><input class="testi-name" data-i="${i}" value="${escapeHtml(t.name || '')}"></div>
+        <div class="field"><label>Подпис (напр. „Наем за 5 дни · София“)</label><input class="testi-sub" data-i="${i}" value="${escapeHtml(t.sub || '')}"></div>
+      </div>
+    </div>`).join('') || '<p class="hint">Няма добавени отзиви.</p>';
+
+  host.querySelectorAll('.testi-remove').forEach(btn => btn.addEventListener('click', () => {
+    testiItems.splice(Number(btn.dataset.i), 1);
+    syncTestiFromInputs(false);
+    renderTestiList();
+  }));
+  host.querySelectorAll('.testi-quote, .testi-name, .testi-sub').forEach(el => {
+    el.addEventListener('input', () => syncTestiFromInputs(false));
+  });
+}
+function syncTestiFromInputs(rerender) {
+  document.querySelectorAll('#testiList [data-testi]').forEach(card => {
+    const i = Number(card.dataset.testi);
+    if (!testiItems[i]) return;
+    testiItems[i].quote = card.querySelector('.testi-quote').value;
+    testiItems[i].name = card.querySelector('.testi-name').value;
+    testiItems[i].sub = card.querySelector('.testi-sub').value;
+  });
+  if (rerender) renderTestiList();
+}
+document.getElementById('testiAddBtn').addEventListener('click', () => {
+  syncTestiFromInputs(false);
+  testiItems.push({ quote: '', name: 'Клиент', sub: '' });
+  renderTestiList();
+});
+
+/* ---- Въпроси (FAQ): динамичен, добавящ/премахващ се списък ---- */
+let faqItems = [];
+function renderFaqList() {
+  const host = document.getElementById('faqList');
+  host.innerHTML = faqItems.map((f, i) => `
+    <div class="se-card" data-faq="${i}">
+      <div class="se-card-head"><b>Въпрос ${i + 1}</b><button type="button" class="btn btn-ghost btn-sm faq-remove" data-i="${i}">Премахни</button></div>
+      <div class="field"><label>Въпрос</label><input class="faq-q" data-i="${i}" value="${escapeHtml(f.q || '')}"></div>
+      <div class="field"><label>Отговор</label><textarea rows="2" class="faq-a" data-i="${i}">${escapeHtml(f.a || '')}</textarea></div>
+    </div>`).join('') || '<p class="hint">Няма добавени въпроси.</p>';
+
+  host.querySelectorAll('.faq-remove').forEach(btn => btn.addEventListener('click', () => {
+    faqItems.splice(Number(btn.dataset.i), 1);
+    syncFaqFromInputs(false);
+    renderFaqList();
+  }));
+  host.querySelectorAll('.faq-q, .faq-a').forEach(el => {
+    el.addEventListener('input', () => syncFaqFromInputs(false));
+  });
+}
+function syncFaqFromInputs(rerender) {
+  document.querySelectorAll('#faqList [data-faq]').forEach(card => {
+    const i = Number(card.dataset.faq);
+    if (!faqItems[i]) return;
+    faqItems[i].q = card.querySelector('.faq-q').value;
+    faqItems[i].a = card.querySelector('.faq-a').value;
+  });
+  if (rerender) renderFaqList();
+}
+document.getElementById('faqAddBtn').addEventListener('click', () => {
+  syncFaqFromInputs(false);
+  faqItems.push({ q: '', a: '' });
+  renderFaqList();
+});
+
+/* ---- Табове ---- */
+document.getElementById('rcTabs').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('#rcTabs .tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab-panel[data-panel="${tab.dataset.tab}"]`).classList.add('active');
+});
+
+/* ---- Зареждане ---- */
+async function loadContent() {
+  const { content } = await Api.get('/api/rentacar-site-content');
+  CONTENT = content;
+  fillFormFromContent(content);
+  testiItems = (content.testimonials && content.testimonials.items || []).map(t => ({ ...t }));
+  renderTestiList();
+  faqItems = (content.faq && content.faq.items || []).map(f => ({ ...f }));
+  renderFaqList();
+}
+
+document.getElementById('rcForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  syncTestiFromInputs(false);
+  syncFaqFromInputs(false);
+  const msg = document.getElementById('rcSaveMsg');
+  msg.textContent = 'Записване…';
+  msg.className = 'se-save-msg';
+  const payload = collectFormContent();
+  payload.testimonials = payload.testimonials || {};
+  payload.testimonials.items = testiItems.filter(t => (t.quote || '').trim());
+  payload.faq = payload.faq || {};
+  payload.faq.items = faqItems.filter(f => (f.q || '').trim() && (f.a || '').trim());
+  try {
+    const { content } = await Api.put('/api/rentacar-site-content', payload);
+    CONTENT = content;
+    fillFormFromContent(content);
+    testiItems = (content.testimonials.items || []).map(t => ({ ...t }));
+    renderTestiList();
+    faqItems = (content.faq.items || []).map(f => ({ ...f }));
+    renderFaqList();
+    msg.textContent = 'Записано ✓ — сайтът вече показва новия текст.';
+    msg.className = 'se-save-msg ok';
+  } catch (err) {
+    msg.textContent = 'Грешка: ' + err.message;
+    msg.className = 'se-save-msg bad';
+  }
+});
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = '<div class="error-box show">Нямате права да редактирате началната страница на Rent-a-Car сайта.</div>';
+    return;
+  }
+  const wrap = document.getElementById('rcWrap');
+  document.getElementById('app-content').appendChild(wrap);
+  wrap.style.display = '';
+  await loadContent();
+}
+
+init().catch(err => {
+  document.getElementById('rcSaveMsg').textContent = 'Грешка при зареждане: ' + err.message;
+  document.getElementById('rcSaveMsg').className = 'se-save-msg bad';
+});
+</script>
+</body>
+</html>
