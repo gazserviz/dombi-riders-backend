@@ -88,6 +88,7 @@ function fscCardHTML(item, index) {
           <div class="field"><label>Гориво</label><input type="text" class="fsc-fuel" data-fsc="${item.id}" value="${escapeHtml(item.fuel||'')}" maxlength="40"></div>
           <div class="field"><label>Скоростна кутия</label><input type="text" class="fsc-transmission" data-fsc="${item.id}" value="${escapeHtml(item.transmission||'')}" maxlength="40"></div>
           <div class="field" style="max-width:90px;"><label>Места</label><input type="number" min="1" max="9" class="fsc-seats" data-fsc="${item.id}" value="${item.seats||5}"></div>
+          <div class="field" style="max-width:130px;"><label>Цена (€/ден)</label><input type="number" min="0" step="1" class="fsc-daily-rate" data-fsc="${item.id}" value="${item.daily_rate!=null?item.daily_rate:''}" placeholder="напр. 35"></div>
           <div class="field"><label>Бадж</label>
             <select class="fsc-badge" data-fsc="${item.id}">
               <option value="" ${!item.badge?'selected':''}>Няма</option>
@@ -143,6 +144,7 @@ function collectItemPatch(fscId) {
     fuel: card.querySelector('.fsc-fuel').value.trim(),
     transmission: card.querySelector('.fsc-transmission').value.trim(),
     seats: Number(card.querySelector('.fsc-seats').value) || 5,
+    daily_rate: card.querySelector('.fsc-daily-rate').value === '' ? null : Number(card.querySelector('.fsc-daily-rate').value),
     badge: card.querySelector('.fsc-badge').value || null,
     active: card.querySelector('.fsc-active').checked,
     includes: (ITEMS.find(i => i.id === fscId) || {}).includes || [],

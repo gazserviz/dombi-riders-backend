@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Резервации (сайт под наем) — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px;}
+  .cal-dow{font-size:.7rem;color:var(--muted);text-align:center;padding:4px 0;text-transform:uppercase;letter-spacing:.04em;}
+  .cal-day{min-height:64px;border:1px solid var(--line);border-radius:8px;padding:5px 6px;font-size:.76rem;cursor:pointer;background:#ffffff05;}
+  .cal-day:hover{border-color:var(--green);}
+  .cal-day.other-month{opacity:.32;}
+  .cal-day.today{border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset;}
+  .cal-day.selected{background:var(--green-dim);border-color:var(--green);}
+  .cal-day .dnum{font-weight:700;margin-bottom:4px;}
+  .cal-dots{display:flex;flex-wrap:wrap;gap:3px;}
+  .cal-dot{width:7px;height:7px;border-radius:50%;}
+  .cal-dot.pending{background:var(--warn);}
+  .cal-dot.confirmed{background:var(--green);}
+  .cal-dot.other{background:var(--muted);}
+  .cal-nav{display:flex;align-items:center;gap:10px;}
+  .cal-nav .label{font-weight:800;min-width:150px;text-align:center;}
+  .rsv-row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .rsv-notes-row input{font-size:.78rem;padding:5px 8px;}
+  .assign-select{max-width:220px;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/reservations.html" data-title="Резервации (сайт под наем)"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const STATUS_LABELS = {
+  pending: ['Чакаща', 'badge-warn'],
+  confirmed: ['Потвърдена', 'badge-green'],
+  declined: ['Отказана', 'badge-danger'],
+  cancelled: ['Отменена', 'badge-muted'],
+  completed: ['Завършена', 'badge-muted'],
+};
+const DOW = ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
+
+let RESERVATIONS = [];
+let SHOWCASE_ITEMS = [];
+let VEHICLES = [];
+let calYear, calMonth; // 0-based month
+let selectedDay = null; // 'YYYY-MM-DD' or null
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function toDateStr(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+
+function reservationsCoveringDay(day) {
+  return RESERVATIONS.filter(r => r.pickup_date <= day && r.return_date >= day);
+}
+
+function renderCalendar() {
+  const first = new Date(calYear, calMonth, 1);
+  const startWeekday = (first.getDay() + 6) % 7; // понеделник = 0
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const prevMonthDays = new Date(calYear, calMonth, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) {
+    const d = prevMonthDays - startWeekday + i + 1;
+    cells.push({ d, other: true, dateStr: null });
+  }
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ d, other: false, dateStr: toDateStr(calYear, calMonth, d) });
+  while (cells.length % 7 !== 0) {
+    const d = cells.length - (startWeekday + daysInMonth) + 1;
+    cells.push({ d, other: true, dateStr: null });
+  }
+  const monthNames = ['януари','февруари','март','април','май','юни','юли','август','септември','октомври','ноември','декември'];
+  document.getElementById('calLabel').textContent = `${monthNames[calMonth]} ${calYear}`;
+  document.getElementById('calGrid').innerHTML = DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')
+    + cells.map(c => {
+      if (c.other) return `<div class="cal-day other-month"><div class="dnum">${c.d}</div></div>`;
+      const covering = reservationsCoveringDay(c.dateStr);
+      const dots = covering.slice(0, 8).map(r => `<span class="cal-dot ${r.status==='pending'?'pending':r.status==='confirmed'?'confirmed':'other'}"></span>`).join('');
+      const isToday = c.dateStr === todayStr();
+      const isSel = c.dateStr === selectedDay;
+      return `<div class="cal-day ${isToday?'today':''} ${isSel?'selected':''}" data-date="${c.dateStr}">
+        <div class="dnum">${c.d}</div>
+        <div class="cal-dots">${dots}</div>
+      </div>`;
+    }).join('');
+  document.querySelectorAll('.cal-day[data-date]').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedDay = selectedDay === el.dataset.date ? null : el.dataset.date;
+      renderCalendar();
+      renderList();
+    });
+  });
+}
+
+function showcaseName(r) {
+  if (r.car_name) return r.car_name;
+  const item = SHOWCASE_ITEMS.find(i => i.id === r.showcase_item_id);
+  return item ? item.name : '—';
+}
+
+function vehicleLabel(id) {
+  const v = VEHICLES.find(v => v.id === id);
+  return v ? `${v.plate_number} — ${v.make} ${v.model}` : '—';
+}
+
+function linkedVehicleOptions(r) {
+  const item = SHOWCASE_ITEMS.find(i => i.id === r.showcase_item_id);
+  const ids = item ? (item.linked_vehicle_ids || []) : VEHICLES.map(v => v.id);
+  return ids.map(id => VEHICLES.find(v => v.id === id)).filter(Boolean);
+}
+
+function rowActionsHTML(r) {
+  if (r.status === 'pending') {
+    const opts = linkedVehicleOptions(r);
+    return `
+      <div class="rsv-row-actions">
+        <select class="assign-select" data-id="${r.id}">
+          <option value="">— без назначена кола —</option>
+          ${opts.map(v => `<option value="${v.id}" ${r.assigned_vehicle_id===v.id?'selected':''}>${escapeHtml(v.plate_number)} — ${escapeHtml(v.make)} ${escapeHtml(v.model)}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-primary btn-sm confirmBtn" data-id="${r.id}">✓ Потвърди</button>
+        <button type="button" class="btn btn-ghost btn-sm declineBtn" data-id="${r.id}">✕ Откажи</button>
+      </div>`;
+  }
+  if (r.status === 'confirmed') {
+    return `
+      <div class="rsv-row-actions">
+        <span class="hint">${r.assigned_vehicle_id ? vehicleLabel(r.assigned_vehicle_id) : 'няма назначена кола'}</span>
+        <button type="button" class="btn btn-ghost btn-sm completeBtn" data-id="${r.id}">Завърши</button>
+        <button type="button" class="btn btn-ghost btn-sm cancelBtn" data-id="${r.id}">Отмени</button>
+      </div>`;
+  }
+  return `<span class="hint">${r.assigned_vehicle_id ? vehicleLabel(r.assigned_vehicle_id) : ''}</span>`;
+}
+
+function renderList() {
+  const statusFilter = document.getElementById('statusFilter').value;
+  let rows = RESERVATIONS;
+  if (selectedDay) rows = rows.filter(r => r.pickup_date <= selectedDay && r.return_date >= selectedDay);
+  if (statusFilter) rows = rows.filter(r => r.status === statusFilter);
+  rows = [...rows].sort((a, b) => (a.pickup_date < b.pickup_date ? -1 : 1));
+  document.getElementById('dayFilterHint').textContent = selectedDay ? `Филтър: резервации, покриващи ${fmtDate(selectedDay)} — ` : '';
+  document.getElementById('rsvTableHost').innerHTML = rows.length ? `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Кола</th><th>Период</th><th>Клиент</th><th>Телефон</th><th>Статус</th><th>Действия</th><th>Бележка</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${escapeHtml(showcaseName(r))}</td>
+            <td>${fmtDate(r.pickup_date)} — ${fmtDate(r.return_date)}${r.pickup_location?`<div class="hint">${escapeHtml(r.pickup_location)}</div>`:''}</td>
+            <td>${escapeHtml(r.customer_name)}${r.source==='phone'?' <span class="badge badge-muted">по телефон</span>':''}</td>
+            <td>${escapeHtml(r.customer_phone)}${r.customer_email?`<div class="hint">${escapeHtml(r.customer_email)}</div>`:''}</td>
+            <td><span class="badge ${STATUS_LABELS[r.status][1]}">${STATUS_LABELS[r.status][0]}</span></td>
+            <td>${rowActionsHTML(r)}</td>
+            <td class="rsv-notes-row"><input type="text" data-id="${r.id}" class="notesInput" value="${escapeHtml(r.admin_notes||'')}" placeholder="бележка…" style="width:140px;"></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>` : `<div class="empty-state">Няма резервации за показване.</div>`;
+
+  document.querySelectorAll('.confirmBtn').forEach(btn => btn.addEventListener('click', async () => {
+    const sel = document.querySelector(`.assign-select[data-id="${btn.dataset.id}"]`);
+    await patchReservation(btn.dataset.id, { status: 'confirmed', assigned_vehicle_id: sel.value || null });
+  }));
+  document.querySelectorAll('.declineBtn').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Да се откаже ли тази резервация?')) return;
+    await patchReservation(btn.dataset.id, { status: 'declined' });
+  }));
+  document.querySelectorAll('.completeBtn').forEach(btn => btn.addEventListener('click', async () => {
+    await patchReservation(btn.dataset.id, { status: 'completed' });
+  }));
+  document.querySelectorAll('.cancelBtn').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Да се отмени ли тази резервация?')) return;
+    await patchReservation(btn.dataset.id, { status: 'cancelled' });
+  }));
+  document.querySelectorAll('.notesInput').forEach(inp => {
+    inp.addEventListener('change', async () => { await patchReservation(inp.dataset.id, { admin_notes: inp.value }, true); });
+  });
+}
+
+async function patchReservation(id, patch, quiet) {
+  try {
+    const { reservation } = await Api.put(`/api/reservations/${id}`, patch);
+    const idx = RESERVATIONS.findIndex(r => r.id === id);
+    if (idx !== -1) RESERVATIONS[idx] = reservation;
+    if (!quiet) { renderCalendar(); renderList(); } else { renderList(); }
+  } catch (err) { alert(err.message); }
+}
+
+async function loadAll() {
+  const [{ reservations }, { items }, { vehicles }] = await Promise.all([
+    Api.get('/api/reservations'),
+    Api.get('/api/admin/fleet-showcase'),
+    Api.get('/api/vehicles'),
+  ]);
+  RESERVATIONS = reservations;
+  SHOWCASE_ITEMS = items;
+  VEHICLES = vehicles;
+  renderCalendar();
+  renderList();
+}
+
+// ---- ръчно вписване на резервация (телефонна поръчка) --------------------
+function openNewModal() {
+  const form = document.getElementById('newRsvForm');
+  form.reset();
+  document.getElementById('newRsvError').classList.remove('show');
+  document.getElementById('newRsvAvailability').innerHTML = '';
+  document.getElementById('newRsvModal').classList.add('show');
+}
+function closeNewModal() { document.getElementById('newRsvModal').classList.remove('show'); }
+
+async function checkNewRsvAvailability() {
+  const form = document.getElementById('newRsvForm');
+  const pickup = form.pickup_date.value, ret = form.return_date.value;
+  const host = document.getElementById('newRsvAvailability');
+  if (!pickup || !ret) { host.innerHTML = ''; return; }
+  host.innerHTML = '<span class="hint">Проверка…</span>';
+  try {
+    const { cars } = await Api.get(`/api/admin/availability?pickup_date=${pickup}&return_date=${ret}`);
+    host.innerHTML = cars.map(c => `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+      <input type="radio" name="showcase_item_id" value="${c.id}" data-name="${escapeHtml(c.name)}" ${!c.available?'disabled':''}>
+      <span>${escapeHtml(c.name)} ${c.available ? '<span class="badge badge-green">свободна</span>' : '<span class="badge badge-danger">заета</span>'}</span>
+    </label>`).join('') || '<span class="hint">Няма модели във витрината.</span>';
+  } catch (err) {
+    host.innerHTML = `<span class="hint">${err.message}</span>`;
+  }
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате резервации.</div>`;
+    return;
+  }
+  const now = new Date();
+  calYear = now.getFullYear(); calMonth = now.getMonth();
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="toolbar" style="margin-bottom:14px;"><div class="spacer"></div>
+      <button type="button" class="btn btn-primary btn-sm" id="newRsvBtn">+ Нова резервация (по телефон)</button>
+    </div>
+    <div class="panel">
+      <div class="cal-nav">
+        <button type="button" class="btn btn-ghost btn-sm" id="calPrevBtn">←</button>
+        <div class="label" id="calLabel"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="calNextBtn">→</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="calTodayBtn">Днес</button>
+        <div class="spacer"></div>
+        <span class="hint"><span class="cal-dot pending" style="display:inline-block;"></span> чакаща &nbsp; <span class="cal-dot confirmed" style="display:inline-block;"></span> потвърдена &nbsp; <span class="cal-dot other" style="display:inline-block;"></span> друго</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+    <div class="panel" style="margin-top:16px;">
+      <div class="toolbar" style="margin-bottom:4px;">
+        <span id="dayFilterHint" class="hint"></span>
+        <select id="statusFilter" style="width:auto;">
+          <option value="">Всички статуси</option>
+          ${Object.entries(STATUS_LABELS).map(([k,[l]]) => `<option value="${k}">${l}</option>`).join('')}
+        </select>
+        <div class="spacer"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="clearDayBtn">✕ Изчисти избрания ден</button>
+      </div>
+      <div id="rsvTableHost" class="loading">Зареждане…</div>
+    </div>
+
+    <div class="modal-overlay" id="newRsvModal">
+      <div class="modal-box" style="max-width:480px;">
+        <h3>Нова резервация (по телефон)</h3>
+        <div class="error-box" id="newRsvError"></div>
+        <form id="newRsvForm">
+          <div class="field-row">
+            <div class="field"><label>Дата на вземане *</label><input name="pickup_date" type="date" required></div>
+            <div class="field"><label>Дата на връщане *</label><input name="return_date" type="date" required></div>
+          </div>
+          <div class="field"><label>Модел кола *</label><div id="newRsvAvailability" class="hint">Изберете дати, за да видите наличност.</div></div>
+          <div class="field"><label>Място на вземане</label><input name="pickup_location" placeholder="напр. София — офис"></div>
+          <div class="field-row">
+            <div class="field"><label>Име на клиента *</label><input name="customer_name" required></div>
+            <div class="field"><label>Телефон *</label><input name="customer_phone" required></div>
+          </div>
+          <div class="field"><label>Имейл</label><input name="customer_email" type="email"></div>
+          <div class="field"><label>Бележка</label><input name="notes"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="newRsvCancelBtn">Отказ</button>
+            <button type="submit" class="btn btn-primary btn-sm">Запази като потвърдена</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+
+  document.getElementById('calPrevBtn').addEventListener('click', () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); });
+  document.getElementById('calNextBtn').addEventListener('click', () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); });
+  document.getElementById('calTodayBtn').addEventListener('click', () => { const n = new Date(); calYear = n.getFullYear(); calMonth = n.getMonth(); renderCalendar(); });
+  document.getElementById('statusFilter').addEventListener('change', renderList);
+  document.getElementById('clearDayBtn').addEventListener('click', () => { selectedDay = null; renderCalendar(); renderList(); });
+  document.getElementById('newRsvBtn').addEventListener('click', openNewModal);
+  document.getElementById('newRsvCancelBtn').addEventListener('click', closeNewModal);
+  document.getElementById('newRsvModal').addEventListener('click', (e) => { if (e.target.id === 'newRsvModal') closeNewModal(); });
+
+  const newForm = document.getElementById('newRsvForm');
+  newForm.pickup_date.addEventListener('change', checkNewRsvAvailability);
+  newForm.return_date.addEventListener('change', checkNewRsvAvailability);
+  newForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('newRsvError');
+    errorBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(newForm).entries());
+    const chosen = newForm.querySelector('input[name="showcase_item_id"]:checked');
+    if (!chosen) { errorBox.textContent = 'Изберете свободен модел кола.'; errorBox.classList.add('show'); return; }
+    data.showcase_item_id = chosen.value;
+    data.car_name = chosen.dataset.name;
+    data.status = 'confirmed';
+    const submitBtn = newForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      const { reservation } = await Api.post('/api/reservations', data);
+      RESERVATIONS.push(reservation);
+      closeNewModal();
+      renderCalendar();
+      renderList();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  try {
+    await loadAll();
+  } catch (err) {
+    document.getElementById('rsvTableHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>
