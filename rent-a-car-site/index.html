@@ -352,7 +352,7 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
       <a href="#contact">Контакти</a>
     </nav>
     <div class="nav-actions">
-      <a href="tel:+359887252727" class="btn btn-ghost btn-sm">📞 0887 25 27 27</a>
+      <a href="tel:+359887252727" class="btn btn-ghost btn-sm" id="navPhoneLink">📞 0887 25 27 27</a>
       <button class="btn btn-primary btn-sm" onclick="scrollToBooking()">Провери наличност</button>
       <button class="nav-toggle" id="navToggle" aria-label="Меню" aria-expanded="false"><span></span></button>
     </div>
@@ -365,17 +365,17 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
   <section class="hero">
     <div class="wrap hero-grid">
       <div>
-        <div class="eyebrow">Dombi Rent&#8209;a&#8209;Car · Автопарк под наем</div>
-        <h1>Наеми кола<br><span class="hl">за минути,</span><br>не за дни.</h1>
-        <p class="lead">Избери автомобил, посочи дати и изпрати заявка — потвърждаваме бързо по телефон. Застраховка и пътна помощ са включени във всеки наем, без скрити такси.</p>
+        <div class="eyebrow" id="heroEyebrow">Dombi Rent&#8209;a&#8209;Car · Автопарк под наем</div>
+        <h1><span id="heroLine1">Наеми кола</span><br><span class="hl" id="heroLine2">за минути,</span><br><span id="heroLine3">не за дни.</span></h1>
+        <p class="lead" id="heroLead">Избери автомобил, посочи дати и изпрати заявка — потвърждаваме бързо по телефон. Застраховка и пътна помощ са включени във всеки наем, без скрити такси.</p>
         <div class="hero-ctas">
-          <button class="btn btn-primary" onclick="scrollToBooking()">Провери наличност →</button>
-          <a href="#fleet" class="btn btn-ghost">Разгледай автопарка</a>
+          <button class="btn btn-primary" id="heroCtaPrimary" onclick="scrollToBooking()">Провери наличност →</button>
+          <a href="#fleet" class="btn btn-ghost" id="heroCtaSecondary">Разгледай автопарка</a>
         </div>
         <div class="trust-strip">
-          <div class="trust-item"><span class="ic">🛡️</span> Застраховка включена</div>
-          <div class="trust-item"><span class="ic">🛟</span> 24/7 пътна помощ</div>
-          <div class="trust-item"><span class="ic">✅</span> Без скрити такси</div>
+          <div class="trust-item"><span class="ic">🛡️</span> <span id="trustText0">Застраховка включена</span></div>
+          <div class="trust-item"><span class="ic">🛟</span> <span id="trustText1">24/7 пътна помощ</span></div>
+          <div class="trust-item"><span class="ic">✅</span> <span id="trustText2">Без скрити такси</span></div>
         </div>
       </div>
       <div class="hero-visual">
@@ -396,8 +396,8 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
           </div>
           <div class="hero-stats">
             <div class="hero-stat"><b id="statFleetSize">–</b><span>модела в автопарка</span></div>
-            <div class="hero-stat"><b>&lt; 2ч</b><span>отговор на заявка</span></div>
-            <div class="hero-stat"><b>0 лв</b><span>скрити такси</span></div>
+            <div class="hero-stat"><b id="statResponseTimeHero">&lt; 2ч</b><span>отговор на заявка</span></div>
+            <div class="hero-stat"><b id="statHiddenFees">0 лв</b><span>скрити такси</span></div>
           </div>
         </div>
       </div>
@@ -432,9 +432,9 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
   <section class="fleet-section" id="fleet">
     <div class="wrap">
       <div class="sec-head">
-        <div class="eyebrow">Автопарк</div>
-        <h2>Избери своя автомобил</h2>
-        <p>Всички коли се предлагат със застраховка и пътна помощ. Наличността по-долу е за избрания от теб период — или разгледай пълния автопарк.</p>
+        <div class="eyebrow" id="fleetEyebrow">Автопарк</div>
+        <h2 id="fleetTitle">Избери своя автомобил</h2>
+        <p id="fleetSubtitle">Всички коли се предлагат със застраховка и пътна помощ. Наличността по-долу е за избрания от теб период — или разгледай пълния автопарк.</p>
       </div>
       <div class="filter-row" id="filterRow">
         <button class="filter-chip active" data-cat="all">Всички</button>
@@ -452,29 +452,29 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
   <section class="how-section" id="how">
     <div class="wrap">
       <div class="sec-head center" style="margin-bottom:46px">
-        <div class="eyebrow">Как работи</div>
-        <h2>От избор до волана — 4 стъпки</h2>
+        <div class="eyebrow" id="howEyebrow">Как работи</div>
+        <h2 id="howTitle">От избор до волана — 4 стъпки</h2>
       </div>
-      <div class="steps-grid">
+      <div class="steps-grid" id="stepsGrid">
         <div class="step-card">
           <div class="step-num">1</div>
-          <h4>Избери кола и дати</h4>
-          <p>Прегледай автопарка и провери жива наличност за периода, който ти трябва.</p>
+          <h4 id="howStep0Title">Избери кола и дати</h4>
+          <p id="howStep0Desc">Прегледай автопарка и провери жива наличност за периода, който ти трябва.</p>
         </div>
         <div class="step-card">
           <div class="step-num">2</div>
-          <h4>Изпрати заявка</h4>
-          <p>Попълваш кратка форма с данни за контакт — без плащане на този етап.</p>
+          <h4 id="howStep1Title">Изпрати заявка</h4>
+          <p id="howStep1Desc">Попълваш кратка форма с данни за контакт — без плащане на този етап.</p>
         </div>
         <div class="step-card">
           <div class="step-num">3</div>
-          <h4>Потвърждаваме по телефон</h4>
-          <p>Екипът ни се свързва с теб до няколко часа, за да потвърди резервацията.</p>
+          <h4 id="howStep2Title">Потвърждаваме по телефон</h4>
+          <p id="howStep2Desc">Екипът ни се свързва с теб до няколко часа, за да потвърди резервацията.</p>
         </div>
         <div class="step-card">
           <div class="step-num">4</div>
-          <h4>Взимаш колата</h4>
-          <p>Подписваме кратък договор на място и потегляш — просто и бързо.</p>
+          <h4 id="howStep3Title">Взимаш колата</h4>
+          <p id="howStep3Desc">Подписваме кратък договор на място и потегляш — просто и бързо.</p>
         </div>
       </div>
     </div>
@@ -484,15 +484,15 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
   <section class="policy-section" id="policy">
     <div class="wrap">
       <div class="sec-head">
-        <div class="eyebrow">Условия</div>
-        <h2>Прозрачни условия, без изненади</h2>
-        <p>Всичко, което трябва да знаеш преди да изпратиш заявка.</p>
+        <div class="eyebrow" id="policyEyebrow">Условия</div>
+        <h2 id="policyTitle">Прозрачни условия, без изненади</h2>
+        <p id="policySubtitle">Всичко, което трябва да знаеш преди да изпратиш заявка.</p>
       </div>
       <div class="policy-grid">
         <div class="policy-card">
           <div class="ic">🛡️</div>
-          <h4>Включено в наема</h4>
-          <ul class="policy-list">
+          <h4 id="policyIncludedTitle">Включено в наема</h4>
+          <ul class="policy-list" id="policyIncludedList">
             <li>Застраховка "Гражданска отговорност"</li>
             <li>Пътна помощ 24/7</li>
             <li>Годишен преглед и поддръжка</li>
@@ -501,8 +501,8 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
         </div>
         <div class="policy-card">
           <div class="ic">📋</div>
-          <h4>Изисквания за наемане</h4>
-          <ul class="policy-list">
+          <h4 id="policyRequirementsTitle">Изисквания за наемане</h4>
+          <ul class="policy-list" id="policyRequirementsList">
             <li>Навършени 21 години</li>
             <li>Свидетелство за управление с минимум 1 година стаж</li>
             <li>Лична карта или паспорт</li>
@@ -511,8 +511,8 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
         </div>
         <div class="policy-card">
           <div class="ic">🔄</div>
-          <h4>Гъвкавост</h4>
-          <ul class="policy-list">
+          <h4 id="policyFlexibilityTitle">Гъвкавост</h4>
+          <ul class="policy-list" id="policyFlexibilityList">
             <li>Заявката е безплатна и необвързваща</li>
             <li>Без онлайн плащане при резервация</li>
             <li>Удължаване на наема при наличност</li>
@@ -530,7 +530,7 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
         <div class="stat-box"><b id="statFleetSize2">–</b><span>Модела в автопарка</span></div>
         <div class="stat-box"><b>100%</b><span>Прозрачни условия</span></div>
         <div class="stat-box"><b>24/7</b><span>Пътна помощ</span></div>
-        <div class="stat-box"><b>&lt;2ч</b><span>Средно време за отговор</span></div>
+        <div class="stat-box"><b id="statResponseTimeBand">&lt;2ч</b><span>Средно време за отговор</span></div>
       </div>
     </div>
   </section>
@@ -539,27 +539,11 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
   <section class="testi-section">
     <div class="wrap">
       <div class="sec-head center" style="margin-bottom:40px">
-        <div class="eyebrow">Отзиви</div>
-        <h2>Какво казват наши клиенти</h2>
+        <div class="eyebrow" id="testiEyebrow">Отзиви</div>
+        <h2 id="testiTitle">Какво казват наши клиенти</h2>
       </div>
-      <div class="testi-grid">
-        <div class="testi-card">
-          <div class="testi-stars">★★★★★</div>
-          <p>"Изпратих заявка вечерта и още на сутринта ме потвърдиха по телефона. Колата беше чиста и в отлично състояние."</p>
-          <div class="testi-who"><div class="testi-avatar">К</div><div><b>Клиент</b><span>Наем за 5 дни · София</span></div></div>
-        </div>
-        <div class="testi-card">
-          <div class="testi-stars">★★★★★</div>
-          <p>"Трябваше ми кола спешно за уикенда — целият процес отне по-малко от час, включително договора на място."</p>
-          <div class="testi-who"><div class="testi-avatar">К</div><div><b>Клиент</b><span>Уикенд наем · Пловдив</span></div></div>
-        </div>
-        <div class="testi-card">
-          <div class="testi-stars">★★★★★</div>
-          <p>"Оценявам, че няма скрити такси — цената, която видях онлайн, съвпадна напълно с крайната сметка."</p>
-          <div class="testi-who"><div class="testi-avatar">К</div><div><b>Клиент</b><span>Месечен наем · Варна</span></div></div>
-        </div>
-        <p class="testi-note">Примерни отзиви — ще бъдат заменени с реални мнения на клиенти.</p>
-      </div>
+      <div class="testi-grid" id="testiGrid"></div>
+      <p class="testi-note" id="testiNote">Примерни отзиви — ще бъдат заменени с реални мнения на клиенти.</p>
     </div>
   </section>
 
@@ -567,31 +551,31 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
   <section class="faq-section" id="faq">
     <div class="wrap">
       <div class="sec-head center" style="margin-bottom:40px">
-        <div class="eyebrow">Въпроси и отговори</div>
-        <h2>Често задавани въпроси</h2>
+        <div class="eyebrow" id="faqEyebrow">Въпроси и отговори</div>
+        <h2 id="faqTitle">Често задавани въпроси</h2>
       </div>
-      <div class="faq-list">
-        <details class="faq-item">
+      <div class="faq-list" id="faqList">
+        <details class="faq-item" data-faq-default>
           <summary>Как протича резервацията?</summary>
           <div class="faq-a">Избираш кола и период, изпращаш заявка от сайта — без онлайн плащане. Екипът ни се свързва с теб по телефон, за да потвърди резервацията и да уговори детайлите.</div>
         </details>
-        <details class="faq-item">
+        <details class="faq-item" data-faq-default>
           <summary>Какви документи са нужни за наемане?</summary>
           <div class="faq-a">Лична карта или паспорт и валидно свидетелство за управление с минимум 1 година стаж. Изисква се навършени 21 години.</div>
         </details>
-        <details class="faq-item">
+        <details class="faq-item" data-faq-default>
           <summary>Има ли депозит?</summary>
           <div class="faq-a">Да, при взимане на автомобила се удържа депозит, който се възстановява при връщането му в изправно състояние.</div>
         </details>
-        <details class="faq-item">
+        <details class="faq-item" data-faq-default>
           <summary>Какво е включено в цената?</summary>
           <div class="faq-a">Застраховка "Гражданска отговорност" и пътна помощ 24/7 са включени в наема. Гориво не е включено — автомобилът се взима и връща с равнозначно количество гориво.</div>
         </details>
-        <details class="faq-item">
+        <details class="faq-item" data-faq-default>
           <summary>Мога ли да удължа наема?</summary>
           <div class="faq-a">Да, свържи се с нас преди изтичане на текущия период — удължаваме при наличност на автомобила.</div>
         </details>
-        <details class="faq-item">
+        <details class="faq-item" data-faq-default>
           <summary>Мога ли да откажа заявка?</summary>
           <div class="faq-a">Разбира се — заявката е необвързваща до момента на потвърждение от наша страна. Можеш да откажеш по всяко време преди това, като ни се обадиш.</div>
         </details>
@@ -603,8 +587,8 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
   <section class="cta-band">
     <div class="wrap">
       <div class="cta-inner">
-        <h2>Готов ли си да потеглиш?</h2>
-        <p>Провери жива наличност за твоите дати и изпрати заявка за секунди.</p>
+        <h2 id="ctaTitle">Готов ли си да потеглиш?</h2>
+        <p id="ctaSubtitle">Провери жива наличност за твоите дати и изпрати заявка за секунди.</p>
         <button class="btn btn-primary" onclick="scrollToBooking()">Провери наличност →</button>
       </div>
     </div>
@@ -617,7 +601,7 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
     <div class="foot-grid">
       <div class="foot-brand">
         <a href="#top" class="brand"><span class="brand-badge">🚗</span><span>DOMBI<br><small>RENT&#8209;A&#8209;CAR</small></span></a>
-        <p>Част от Dombi Riders ЕООД — автопарк за наем с прозрачни условия, застраховка и пътна помощ, включени във всеки наем.</p>
+        <p id="footTagline">Част от Dombi Riders ЕООД — автопарк за наем с прозрачни условия, застраховка и пътна помощ, включени във всеки наем.</p>
       </div>
       <div class="foot-col">
         <h5>Навигация</h5>
@@ -628,9 +612,9 @@ footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); paddin
       </div>
       <div class="foot-col">
         <h5>Контакти</h5>
-        <a href="tel:+359887252727">📞 0887 25 27 27</a>
-        <a href="mailto:office@dombi.bg">✉️ office@dombi.bg</a>
-        <p>📍 гр. София, ул. Павел Красов 22</p>
+        <a href="tel:+359887252727" id="footPhoneLink">📞 0887 25 27 27</a>
+        <a href="mailto:office@dombi.bg" id="footEmailLink">✉️ office@dombi.bg</a>
+        <p id="footAddress">📍 гр. София, ул. Павел Красов 22</p>
       </div>
       <div class="foot-col">
         <h5>Друго</h5>
@@ -745,6 +729,120 @@ navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', () => na
 
 function scrollToBooking() {
   document.getElementById('bookingWidget').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ---------------- редактируемо съдържание (rentacar-site-editor.html) ----------------
+// Взима /api/rentacar-site-content и попълва всички елементи по-долу. При
+// грешка (мрежа/backend) просто не прави нищо — статичните стойности в HTML
+// вече съвпадат с DEFAULT_RENTACAR_CONTENT в lib/db.js, така че страницата
+// изглежда коректно дори офлайн.
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el && typeof text === 'string' && text) el.textContent = text;
+}
+function setList(id, items) {
+  const el = document.getElementById(id);
+  if (!el || !Array.isArray(items) || !items.length) return;
+  el.innerHTML = items.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+async function applySiteContent() {
+  try {
+    const res = await fetch(`${API_BASE}/api/rentacar-site-content`);
+    if (!res.ok) throw new Error('bad status');
+    const { content: c } = await res.json();
+    if (!c) return;
+
+    // hero
+    setText('heroEyebrow', c.hero.eyebrow);
+    setText('heroLine1', c.hero.title_line1);
+    setText('heroLine2', c.hero.title_line2);
+    setText('heroLine3', c.hero.title_line3);
+    setText('heroLead', c.hero.lead);
+    setText('heroCtaPrimary', c.hero.cta_primary);
+    setText('heroCtaSecondary', c.hero.cta_secondary);
+    (c.hero.trust_items || []).slice(0, 3).forEach((t, i) => setText(`trustText${i}`, t));
+    setText('statResponseTimeHero', c.stats.response_time);
+    setText('statHiddenFees', c.stats.hidden_fees);
+    setText('statResponseTimeBand', c.stats.response_time);
+    if (c.hero.phone_tel) {
+      const navPhone = document.getElementById('navPhoneLink');
+      if (navPhone) { navPhone.href = `tel:${c.hero.phone_tel}`; navPhone.textContent = `📞 ${c.hero.phone_display || c.hero.phone_tel}`; }
+    }
+
+    // автопарк — заглавия (списъкът с коли идва отделно от fleet-showcase)
+    setText('fleetEyebrow', c.fleet_section.eyebrow);
+    setText('fleetTitle', c.fleet_section.title);
+    setText('fleetSubtitle', c.fleet_section.subtitle);
+
+    // как работи
+    setText('howEyebrow', c.how.eyebrow);
+    setText('howTitle', c.how.title);
+    (c.how.steps || []).slice(0, 4).forEach((s, i) => {
+      setText(`howStep${i}Title`, s.title);
+      setText(`howStep${i}Desc`, s.desc);
+    });
+
+    // условия
+    setText('policyEyebrow', c.policy.eyebrow);
+    setText('policyTitle', c.policy.title);
+    setText('policySubtitle', c.policy.subtitle);
+    setText('policyIncludedTitle', c.policy.included_title);
+    setList('policyIncludedList', c.policy.included);
+    setText('policyRequirementsTitle', c.policy.requirements_title);
+    setList('policyRequirementsList', c.policy.requirements);
+    setText('policyFlexibilityTitle', c.policy.flexibility_title);
+    setList('policyFlexibilityList', c.policy.flexibility);
+
+    // отзиви
+    const testiGrid = document.getElementById('testiGrid');
+    if (testiGrid && Array.isArray(c.testimonials.items) && c.testimonials.items.length) {
+      testiGrid.innerHTML = c.testimonials.items.map(t => `
+        <div class="testi-card">
+          <div class="testi-stars">★★★★★</div>
+          <p>"${escapeHtml(t.quote)}"</p>
+          <div class="testi-who">
+            <div class="testi-avatar">${escapeHtml((t.name || 'К').trim().charAt(0).toUpperCase())}</div>
+            <div><b>${escapeHtml(t.name)}</b>${t.sub ? `<span>${escapeHtml(t.sub)}</span>` : ''}</div>
+          </div>
+        </div>`).join('');
+    } else if (testiGrid) {
+      testiGrid.innerHTML = '';
+    }
+    setText('testiNote', c.testimonials.note);
+
+    // въпроси и отговори
+    setText('faqEyebrow', c.faq.eyebrow);
+    setText('faqTitle', c.faq.title);
+    const faqList = document.getElementById('faqList');
+    if (faqList && Array.isArray(c.faq.items) && c.faq.items.length) {
+      faqList.innerHTML = c.faq.items.map(item => `
+        <details class="faq-item">
+          <summary>${escapeHtml(item.q)}</summary>
+          <div class="faq-a">${escapeHtml(item.a)}</div>
+        </details>`).join('');
+    }
+
+    // финален призив за действие
+    setText('ctaTitle', c.cta_band.title);
+    setText('ctaSubtitle', c.cta_band.subtitle);
+
+    // футър
+    setText('footTagline', c.footer.tagline);
+    if (c.footer.phone_tel) {
+      const footPhone = document.getElementById('footPhoneLink');
+      if (footPhone) { footPhone.href = `tel:${c.footer.phone_tel}`; footPhone.textContent = `📞 ${c.footer.phone_display || c.footer.phone_tel}`; }
+    }
+    if (c.footer.email) {
+      const footEmail = document.getElementById('footEmailLink');
+      if (footEmail) { footEmail.href = `mailto:${c.footer.email}`; footEmail.textContent = `✉️ ${c.footer.email}`; }
+    }
+    setText('footAddress', c.footer.address ? `📍 ${c.footer.address}` : '');
+  } catch (err) {
+    console.warn('rentacar-site-content: неуспешно зареждане, ползват се вградените стойности', err);
+  }
 }
 
 // ---------------- fleet loading ----------------
@@ -1008,6 +1106,7 @@ document.querySelectorAll('.modal-overlay').forEach(ov => {
 });
 
 loadFleet();
+applySiteContent();
 </script>
 </body>
 </html>
