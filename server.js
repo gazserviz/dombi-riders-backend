@@ -446,6 +446,9 @@ const PUBLIC_CORS_PATHS = new Set([
   // (отделен произход/домейн) — GET наличност + POST заявка, без сесия
   '/api/public/availability',
   '/api/public/reservations',
+  // съдържанието на новия рент-а-кар сайт (отделен произход/домейн) — GET
+  // без сесия, четено от rent-a-car-site/index.html
+  '/api/rentacar-site-content',
 ]);
 
 async function handleApi(req, res, pathname, query) {
@@ -477,6 +480,23 @@ async function handleApi(req, res, pathname, query) {
       const body = await readJsonBody(req);
       try {
         return sendJson(res, 200, { content: db.updateSiteContent(body) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // ---- СЪДЪРЖАНИЕ НА НОВИЯ РЕНТ-А-КАР САЙТ (rent-a-car-site) -------------
+    // GET е публичен (без сесия, CORS) — четe го rent-a-car-site/index.html.
+    // PUT е само за админ/мениджър — вика се от /rentacar-site-editor.html.
+    if (pathname === '/api/rentacar-site-content' && req.method === 'GET') {
+      return sendJson(res, 200, { content: db.getRentacarSiteContent() });
+    }
+    if (pathname === '/api/rentacar-site-content' && req.method === 'PUT') {
+      const user = requirePermission(req, res, 'rentacar_site', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        return sendJson(res, 200, { content: db.updateRentacarSiteContent(body) });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
       }
