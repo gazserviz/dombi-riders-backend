@@ -2741,6 +2741,13 @@ const server = http.createServer((req, res) => {
   }
 
   try {
+    const syncedCount = db.syncConfirmedTalonData();
+    if (syncedCount) console.log(`Синхронизирани talon_data с основните данни на колата за ${syncedCount} потвърдени талона.`);
+  } catch (e) {
+    console.error('Грешка при синхронизация на потвърдени талони:', e.message);
+  }
+
+  try {
     backup.scheduleAutoBackups(() => db.readDb());
     console.log(`Автоматични бекъпи: включени (папка ${backup.BACKUPS_DIR}).`);
   } catch (e) {
