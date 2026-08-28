@@ -43,12 +43,11 @@ const TALON_LABELS = {
   year: 'Година', color: 'Цвят', fuel: 'Гориво', seats: 'Места',
   talon_number: '№ на талона (СРМПС)', owner_name: 'Собственик (фирма)',
   power_kw: 'Мощност (kW)', engine_capacity_cc: 'Обем на двигателя (куб.см)',
-  registration_expiry: 'Дата на следваща регистрация',
 };
 
 function talonCard(v) {
   const data = v.talon_data || {};
-  const rows = Object.entries(data).filter(([,val]) => val != null && val !== '');
+  const rows = Object.entries(data).filter(([k,val]) => val != null && val !== '' && k !== 'registration_expiry');
   const statusBadge = !v.talon_photo_url
     ? '<span class="badge badge-muted">Няма снимка</span>'
     : v.talon_confirmed
@@ -58,7 +57,7 @@ function talonCard(v) {
   const photoHtml = !v.talon_photo_url
     ? '📄 Няма качен файл'
     : isPdf
-      ? `<a href="${v.talon_photo_url}" target="_blank" rel="noopener" style="display:flex;flex-direction:column;align-items:center;gap:4px;color:inherit;text-decoration:none;">📄<span style="font-size:.72rem;">PDF файл</span></a>`
+      ? `<a href="${v.talon_photo_url}" target="_blank" rel="noopener" style="display:block;width:100%;height:100%;"><iframe src="${v.talon_photo_url}#toolbar=0&navpanes=0&view=FitH" style="width:100%;height:100%;border:none;pointer-events:none;background:#fff;" title="Талон (PDF)"></iframe></a>`
       : `<a href="${v.talon_photo_url}" target="_blank" rel="noopener"><img src="${v.talon_photo_url}"></a>`;
   return `
     <div class="talon-card">

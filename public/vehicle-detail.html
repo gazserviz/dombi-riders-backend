@@ -512,7 +512,6 @@ const TALON_FIELD_MAP = [
   { key: 'owner_name', label: 'Собственик (фирма)', type: 'text' },
   { key: 'power_kw', label: 'Мощност (kW)', type: 'number' },
   { key: 'engine_capacity_cc', label: 'Обем на двигателя (куб.см)', type: 'number' },
-  { key: 'registration_expiry', label: 'Дата на следваща регистрация', type: 'date' },
 ];
 // същите ключове + приятелски етикет — за показване на суровата таблица с
 // разчетени данни (по-долу), вместо голите вътрешни имена на полетата.
@@ -528,13 +527,16 @@ function talonTab(v) {
         <h2>Данни от талон</h2>
         ${v.talon_photo_url ? (
           /\.pdf$/i.test(v.talon_photo_url)
-            ? `<a href="${v.talon_photo_url}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">📄 Отвори PDF на талона</a>`
+            ? `<div style="max-width:320px;">
+                 <iframe src="${v.talon_photo_url}#toolbar=0&navpanes=0&view=FitH" style="width:100%;height:280px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;" title="Талон (PDF)"></iframe>
+                 <a href="${v.talon_photo_url}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-top:6px;">📄 Отвори в цял размер</a>
+               </div>`
             : `<a href="${v.talon_photo_url}" target="_blank" rel="noopener" class="photo-grid" style="max-width:220px;display:block;"><img src="${v.talon_photo_url}"></a>`
         ) : `<p>Няма качен файл на талон.</p>`}
         ${v.talon_photo_url ? `<div style="margin-top:8px;">${docActionButtons(v.talon_photo_url, `talon-${v.plate_number}${(v.talon_photo_url.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `Талон — ${v.plate_number}`)}</div>` : ''}
         ${hasData ? `
           <div class="table-wrap" style="margin-top:14px;"><table>
-            ${Object.entries(td).filter(([,val])=>val!=null&&val!=='').map(([k,val])=>`<tr><td>${TALON_LABELS[k]||k}</td><td>${val}${copyValueButton(val)}</td></tr>`).join('')}
+            ${Object.entries(td).filter(([k,val])=>val!=null&&val!==''&&k!=='registration_expiry').map(([k,val])=>`<tr><td>${TALON_LABELS[k]||k}</td><td>${val}${copyValueButton(val)}</td></tr>`).join('')}
           </table></div>
           <div style="margin-top:10px;">${v.talon_confirmed ? '<span class="badge badge-green">Потвърдени</span>' : '<span class="badge badge-warn">Очаква потвърждение</span>'}</div>
         ` : ''}
