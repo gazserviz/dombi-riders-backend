@@ -62,6 +62,7 @@ const NAV = [
     { href: '/fleet-showcase.html', icon: '🖼️', label: 'Витрина на сайта (коли)', roles: ['admin','manager'] },
     { href: '/site-editor.html', icon: '🏠', label: 'Начална страница (сайт)', roles: ['admin','manager'] },
     { href: '/reservations.html', icon: '📅', label: 'Резервации (сайт под наем)', roles: ['admin','manager'] },
+    { href: '/rentacar-site-editor.html', icon: '🚙', label: 'Начална страница (Rent-a-Car)', roles: ['admin','manager'] },
   ]},
   { group: 'HR', items: [
     { href: '/wallet.html', icon: '👛', label: 'Портфейл', roles: ['admin','manager','driver'] },
