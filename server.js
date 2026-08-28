@@ -1437,8 +1437,8 @@ async function handleApi(req, res, pathname, query) {
       const cashier = db.findUserById(cashierId);
       return sendJson(res, 200, {
         cashier: cashier ? { id: cashier.id, full_name: cashier.full_name, role: cashier.role } : null,
-        balance: db.getWalletBalance(cashierId),
-        transactions: db.listWalletTransactions(cashierId),
+        balance: db.getCashierBalance(cashierId),
+        transactions: db.listCashierTransactions(cashierId),
       });
     }
     // връща и списък мениджъри/админи, измежду които супер администраторът
@@ -1475,7 +1475,7 @@ async function handleApi(req, res, pathname, query) {
         user_id: cashierId, amount: Number(body.amount),
         type: 'cashier_manual', note: body.note || null, created_by: user.id,
       });
-      return sendJson(res, 201, { transaction: rec, balance: db.getWalletBalance(cashierId) });
+      return sendJson(res, 201, { transaction: rec, balance: db.getCashierBalance(cashierId) });
     }
 
     // ---- СЧЕТОВОДСТВО (общ финансов отчет + ръчна счетоводна книга) -------
@@ -1909,10 +1909,12 @@ async function handleApi(req, res, pathname, query) {
       let entries = db.listPayrollEntries({ profileId, weekStart: query.week_start });
       // ако заявителят е самият шофьор и админ не му е разрешил да вижда
       // заработката, оставяме само броя поръчки — сумите се скриват изцяло
+      // (включително наема на кола — той също е парична сума, а не само
+      // gross/deduction/net; преди този фикс изтичаше немаскиран тук)
       const viewingOwnWithoutEarnings = profileId === user.id && !isManagerOrAbove(user) && !db.canViewEarnings(user);
       if (viewingOwnWithoutEarnings) {
         entries = entries.map(e => ({
-          ...e, gross_earnings: null, deduction_amount: null, net_amount: null,
+          ...e, gross_earnings: null, deduction_amount: null, car_rent_amount: null, net_amount: null,
         }));
       }
       return sendJson(res, 200, { entries, earnings_visible: !viewingOwnWithoutEarnings });
