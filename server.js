@@ -321,6 +321,9 @@ function sanitizeFleetShowcaseInput(body) {
   if (body.fuel !== undefined) out.fuel = String(body.fuel || '').slice(0, 40);
   if (body.transmission !== undefined) out.transmission = String(body.transmission || '').slice(0, 40);
   if (body.seats !== undefined) out.seats = Math.max(1, Math.min(9, Number(body.seats) || 5));
+  if (body.daily_rate !== undefined) {
+    out.daily_rate = body.daily_rate === '' || body.daily_rate === null ? null : Math.max(0, Number(body.daily_rate) || 0);
+  }
   if (body.badge !== undefined) {
     const badge = body.badge || null;
     if (!FLEET_SHOWCASE_BADGES.has(badge)) throw new Error('Невалиден бадж');
@@ -439,6 +442,10 @@ const PUBLIC_CORS_PATHS = new Set([
   '/api/site-content',
   // формата „Заяви наем на кола“ на публичния сайт — POST без сесия
   '/api/rent-requests',
+  // booking търсачката и формата за резервация на новия рент-а-кар сайт
+  // (отделен произход/домейн) — GET наличност + POST заявка, без сесия
+  '/api/public/availability',
+  '/api/public/reservations',
 ]);
 
 async function handleApi(req, res, pathname, query) {
@@ -527,6 +534,130 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 404, { error: err.message });
       }
       return sendJson(res, 200, { deleted: true });
+    }
+
+    // ---- РЕЗЕРВАЦИИ (booking календар на новия сайт "рент-а-кар") ---------
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    function validateBookingDates(pickupDate, returnDate) {
+      if (!DATE_RE.test(pickupDate || '') || !DATE_RE.test(returnDate || '')) {
+        return 'Невалиден формат на дата (очаква се ГГГГ-ММ-ДД).';
+      }
+      const today = db.nowIso().slice(0, 10);
+      if (pickupDate < today) return 'Датата на вземане не може да е в миналото.';
+      if (returnDate < pickupDate) return 'Датата на връщане трябва да е след датата на вземане.';
+      return null;
+    }
+
+    // публично — GET наличност на витринните карти за конкретен период (за
+    // booking търсачката на новия сайт), без сесия, CORS
+    if (pathname === '/api/public/availability' && req.method === 'GET') {
+      const err = validateBookingDates(query.pickup_date, query.return_date);
+      if (err) return sendJson(res, 400, { error: err });
+      return sendJson(res, 200, { cars: db.getShowcaseAvailability(query.pickup_date, query.return_date) });
+    }
+
+    // публично — POST нова резервация (заявка, изисква ръчно потвърждение от
+    // администратор — виж PUT /api/reservations/:id по-долу)
+    if (pathname === '/api/public/reservations' && req.method === 'POST') {
+      if (rateLimited(`reservation:${clientIp(req)}`, { max: 8, windowMs: 30 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много заявки от този адрес. Опитайте по-късно.' });
+      }
+      const body = await readJsonBody(req);
+      const dateErr = validateBookingDates(body.pickup_date, body.return_date);
+      if (dateErr) return sendJson(res, 400, { error: dateErr });
+      if (!body.showcase_item_id || !body.customer_name || !body.customer_phone) {
+        return sendJson(res, 400, { error: 'Липсват задължителни полета (кола, име, телефон).' });
+      }
+      if (!db.isShowcaseItemAvailable(body.showcase_item_id, body.pickup_date, body.return_date)) {
+        return sendJson(res, 409, { error: 'За съжаление избраната кола вече не е свободна за тези дати — опитайте друг период или друг модел.' });
+      }
+      const rec = db.createReservation({
+        showcase_item_id: escapeHtml(String(body.showcase_item_id).slice(0, 80)),
+        car_name: body.car_name ? escapeHtml(String(body.car_name).slice(0, 120)) : null,
+        pickup_date: body.pickup_date,
+        return_date: body.return_date,
+        pickup_location: body.pickup_location ? escapeHtml(String(body.pickup_location).slice(0, 200)) : null,
+        customer_name: escapeHtml(String(body.customer_name).slice(0, 200)),
+        customer_phone: escapeHtml(String(body.customer_phone).slice(0, 30)),
+        customer_email: body.customer_email ? escapeHtml(String(body.customer_email).slice(0, 200)) : null,
+        notes: body.notes ? escapeHtml(String(body.notes).slice(0, 1000)) : null,
+        source: 'website',
+      });
+      try {
+        await mail.sendMail({
+          to: 'office@dombi.bg',
+          subject: 'Нова резервация — рент-а-кар сайт',
+          text: `Нова заявка за резервация:\n\nКола: ${rec.car_name || rec.showcase_item_id}\nПериод: ${rec.pickup_date} — ${rec.return_date}\nМясто на вземане: ${rec.pickup_location || '-'}\n\nИме: ${rec.customer_name}\nТелефон: ${rec.customer_phone}\nИмейл: ${rec.customer_email || '-'}\nБележка: ${rec.notes || '-'}\n\nВсички резервации: https://dombi-riders-backend.onrender.com/reservations.html`,
+        });
+      } catch (err) {
+        console.error('Грешка при изпращане на имейл известие за резервация:', err.message);
+      }
+      return sendJson(res, 201, { reservation: { id: rec.id } });
+    }
+
+    // администраторски панел — наличност (за ръчно вписване на телефонна резервация)
+    if (pathname === '/api/admin/availability' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'reservations', 'view');
+      if (!user) return;
+      const err = validateBookingDates(query.pickup_date, query.return_date);
+      if (err) return sendJson(res, 400, { error: err });
+      return sendJson(res, 200, { cars: db.getShowcaseAvailability(query.pickup_date, query.return_date) });
+    }
+
+    if (pathname === '/api/reservations' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'reservations', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { reservations: db.listReservations({ status: query.status, from: query.from, to: query.to }) });
+    }
+    if (pathname === '/api/reservations' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'reservations', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const dateErr = validateBookingDates(body.pickup_date, body.return_date);
+      if (dateErr) return sendJson(res, 400, { error: dateErr });
+      if (!body.customer_name || !body.customer_phone) {
+        return sendJson(res, 400, { error: 'Липсват задължителни полета (име, телефон).' });
+      }
+      const rec = db.createReservation({
+        showcase_item_id: body.showcase_item_id || null,
+        car_name: body.car_name || null,
+        pickup_date: body.pickup_date,
+        return_date: body.return_date,
+        pickup_location: body.pickup_location || null,
+        customer_name: body.customer_name,
+        customer_phone: body.customer_phone,
+        customer_email: body.customer_email || null,
+        notes: body.notes || null,
+        status: body.status === 'confirmed' ? 'confirmed' : 'pending',
+        assigned_vehicle_id: body.assigned_vehicle_id || null,
+        source: 'phone',
+        created_by: user.id,
+      });
+      return sendJson(res, 201, { reservation: rec });
+    }
+    const reservationMatch = pathname.match(/^\/api\/reservations\/([\w-]+)$/);
+    if (reservationMatch && req.method === 'PUT') {
+      const user = requirePermission(req, res, 'reservations', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const patch = {};
+      const VALID_STATUSES = new Set(['pending', 'confirmed', 'declined', 'cancelled', 'completed']);
+      if (body.status !== undefined) {
+        if (!VALID_STATUSES.has(body.status)) return sendJson(res, 400, { error: 'Невалиден статус' });
+        patch.status = body.status;
+        patch.decided_by = user.id;
+        patch.decided_at = db.nowIso();
+      }
+      if (body.assigned_vehicle_id !== undefined) patch.assigned_vehicle_id = body.assigned_vehicle_id || null;
+      if (body.admin_notes !== undefined) patch.admin_notes = body.admin_notes;
+      if (body.pickup_date !== undefined) patch.pickup_date = body.pickup_date;
+      if (body.return_date !== undefined) patch.return_date = body.return_date;
+      try {
+        const rec = db.updateReservation(reservationMatch[1], patch);
+        return sendJson(res, 200, { reservation: rec });
+      } catch (err) {
+        return sendJson(res, 404, { error: err.message });
+      }
     }
 
     // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (админ панел) -------------------------
