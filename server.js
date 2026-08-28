@@ -2433,7 +2433,6 @@ async function handleApi(req, res, pathname, query) {
         driver_license_expiry: body.driver_license_expiry || null,
         desired_contract_type: body.desired_contract_type === 'civil' ? 'civil' : 'labor',
         desired_hours_per_day: body.desired_hours_per_day ? Number(body.desired_hours_per_day) : null,
-        notes: body.notes ? escapeHtml(String(body.notes).slice(0, 1000)) : null,
         had_glovo_bolt_account: body.had_glovo_bolt_account === 'yes' ? 'yes' : (body.had_glovo_bolt_account === 'no' ? 'no' : null),
         glovo_bolt_platform: body.glovo_bolt_platform ? escapeHtml(String(body.glovo_bolt_platform).slice(0, 100)) : null,
         city: VALID_CITIES.has(body.city) ? body.city : null,
@@ -2442,6 +2441,12 @@ async function handleApi(req, res, pathname, query) {
         nationality_other: body.nationality_other ? escapeHtml(String(body.nationality_other).slice(0, 100)) : null,
         ...photos,
       };
+      // Бележките се пипат само ако кандидатът реално е въвел нещо в това
+      // изпращане — иначе (празно поле) пазим каквото вече е записано (напр.
+      // генерираните от краткия формуляр на маркетинг сайта), вместо да го
+      // изтрием безследно с null (виж completeApplicationDetails в lib/db.js:
+      // презаписва само ключове, които реално присъстват в patch).
+      if (body.notes) patch.notes = escapeHtml(String(body.notes).slice(0, 1000));
       try {
         const app = db.completeApplicationDetails(applyDetailsMatch[1], patch);
         return sendJson(res, 200, { application: { id: app.id, status: app.status } });
