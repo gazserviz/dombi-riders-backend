@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dombi Rent-a-Car — Наеми кола за минути</title>
+<meta name="description" content="Наеми кола бързо и лесно от Dombi Rent-a-Car — жив календар за наличност, прозрачни цени, застраховка и пътна помощ включени. Изпрати заявка и потвърждаваме до часове.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230a0e14'/%3E%3Cpath d='M20 62l7-20a8 8 0 017.6-5.5h30.8A8 8 0 0173 42l7 20' stroke='%23ff7a1a' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='16' y='60' width='68' height='16' rx='6' fill='%23ff7a1a'/%3E%3Ccircle cx='30' cy='80' r='7' fill='%230a0e14' stroke='%23ff7a1a' stroke-width='4'/%3E%3Ccircle cx='70' cy='80' r='7' fill='%230a0e14' stroke='%23ff7a1a' stroke-width='4'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#080b11; --bg-alt:#0d121c; --surface:#121a29; --surface-2:#182338;
+  --border:#233047; --border-soft:#1a2338;
+  --text:#f5f7fb; --text-dim:#9aa7bd; --text-faint:#6c7690;
+  --accent:#ff7a1a; --accent-2:#ffb347; --accent-soft:rgba(255,122,26,.14);
+  --success:#22d3aa; --success-soft:rgba(34,211,170,.14);
+  --danger:#f4536b; --danger-soft:rgba(244,83,107,.14);
+  --radius-lg:22px; --radius-md:14px; --radius-sm:9px;
+  --shadow-lg:0 30px 60px -20px rgba(0,0,0,.55);
+  --shadow-md:0 14px 30px -12px rgba(0,0,0,.5);
+  --maxw:1240px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  line-height:1.55; -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif; line-height:1.15; letter-spacing:-.01em}
+a{color:inherit; text-decoration:none}
+img{max-width:100%; display:block}
+button{font-family:inherit; cursor:pointer}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+section{scroll-margin-top:84px}
+.eyebrow{
+  display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--accent-2);
+  margin-bottom:14px;
+}
+.eyebrow::before{content:'';width:22px;height:2px;background:var(--accent);border-radius:2px}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding:14px 26px; border-radius:100px; font-weight:700; font-size:15px;
+  border:1px solid transparent; transition:.18s transform,.18s box-shadow,.18s background,.18s border-color,.18s color;
+  white-space:nowrap;
+}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#1a0e04; box-shadow:0 12px 26px -8px rgba(255,122,26,.55)}
+.btn-primary:hover{box-shadow:0 16px 32px -8px rgba(255,122,26,.7); transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.55; cursor:not-allowed; transform:none; box-shadow:none}
+.btn-ghost{background:transparent; border-color:var(--border); color:var(--text)}
+.btn-ghost:hover{border-color:var(--accent); color:var(--accent-2)}
+.btn-block{width:100%}
+.btn-sm{padding:10px 18px; font-size:13.5px}
+
+/* ---------- header ---------- */
+header{
+  position:sticky; top:0; z-index:200; background:rgba(8,11,17,.82); backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border-soft);
+}
+.nav-row{display:flex; align-items:center; justify-content:space-between; height:74px; gap:20px}
+.brand{display:flex; align-items:center; gap:10px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:19px}
+.brand-badge{
+  width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 8px 18px -6px rgba(255,122,26,.6);
+}
+.brand small{display:block; font-family:'Inter',sans-serif; font-weight:500; font-size:11px; color:var(--text-dim); letter-spacing:.04em}
+.nav-links{display:flex; align-items:center; gap:30px; font-size:14.5px; font-weight:600; color:var(--text-dim)}
+.nav-links a{transition:.15s color}
+.nav-links a:hover{color:var(--text)}
+.nav-actions{display:flex; align-items:center; gap:14px}
+.nav-toggle{display:none; width:42px; height:42px; border-radius:11px; background:var(--surface); border:1px solid var(--border); align-items:center; justify-content:center}
+.nav-toggle span, .nav-toggle::before, .nav-toggle::after{content:'';display:block;width:18px;height:2px;background:var(--text);border-radius:2px}
+.nav-toggle{flex-direction:column; gap:4px}
+
+/* ---------- hero ---------- */
+.hero{position:relative; padding:76px 0 40px; overflow:hidden}
+.hero::before{
+  content:''; position:absolute; top:-220px; right:-160px; width:640px; height:640px; border-radius:50%;
+  background:radial-gradient(circle,rgba(255,122,26,.28),transparent 65%); pointer-events:none;
+}
+.hero::after{
+  content:''; position:absolute; bottom:-260px; left:-200px; width:560px; height:560px; border-radius:50%;
+  background:radial-gradient(circle,rgba(34,211,170,.14),transparent 65%); pointer-events:none;
+}
+.hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center; position:relative}
+.hero h1{font-size:clamp(36px,5vw,58px); font-weight:700; margin-bottom:20px}
+.hero h1 .hl{background:linear-gradient(135deg,var(--accent),var(--accent-2)); -webkit-background-clip:text; background-clip:text; color:transparent}
+.hero p.lead{font-size:17.5px; color:var(--text-dim); max-width:520px; margin-bottom:28px}
+.hero-ctas{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:34px}
+.trust-strip{display:flex; gap:26px; flex-wrap:wrap}
+.trust-item{display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--text-dim); font-weight:600}
+.trust-item .ic{width:30px;height:30px;border-radius:9px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+
+/* hero visual */
+.hero-visual{position:relative}
+.hero-card{
+  background:linear-gradient(160deg,var(--surface),var(--surface-2)); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:30px; box-shadow:var(--shadow-lg); position:relative; overflow:hidden;
+}
+.hero-card::before{content:'';position:absolute; inset:0; background:radial-gradient(circle at 85% 0%,rgba(255,122,26,.16),transparent 55%); pointer-events:none}
+.car-illustration{display:flex; align-items:center; justify-content:center; padding:10px 0 26px}
+.car-illustration svg{width:100%; max-width:340px; filter:drop-shadow(0 22px 30px rgba(0,0,0,.5))}
+.hero-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:6px}
+.hero-stat{background:var(--bg-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:14px 10px; text-align:center}
+.hero-stat b{display:block; font-family:'Space Grotesk',sans-serif; font-size:20px; color:var(--accent-2)}
+.hero-stat span{font-size:11.5px; color:var(--text-dim); font-weight:600}
+
+/* ---------- booking widget ---------- */
+.booking-widget{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:22px; box-shadow:var(--shadow-md); margin-top:-34px; position:relative; z-index:20;
+}
+.bw-grid{display:grid; grid-template-columns:1fr 1fr 1.2fr auto; gap:14px; align-items:end}
+.bw-field{display:flex; flex-direction:column; gap:7px}
+.bw-field label{font-size:12px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em}
+.bw-field input, .bw-field select{
+  background:var(--bg-alt); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 13px;
+  color:var(--text); font-size:14.5px; font-family:inherit; width:100%;
+}
+.bw-field input:focus, .bw-field select:focus, .bw-field input:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.bw-note{font-size:12.5px; color:var(--text-faint); margin-top:10px}
+.search-status{font-size:13.5px; color:var(--text-dim); display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px}
+.search-status .pill-clear{color:var(--accent-2); font-weight:700; cursor:pointer}
+
+/* ---------- section heading ---------- */
+.sec-head{max-width:640px; margin-bottom:40px}
+.sec-head.center{margin-left:auto; margin-right:auto; text-align:center}
+.sec-head h2{font-size:clamp(26px,3.4vw,38px); margin-bottom:12px}
+.sec-head p{color:var(--text-dim); font-size:15.5px}
+
+/* ---------- fleet ---------- */
+.fleet-section{padding:84px 0}
+.filter-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:30px}
+.filter-chip{
+  padding:9px 18px; border-radius:100px; border:1px solid var(--border); background:var(--surface);
+  color:var(--text-dim); font-size:13.5px; font-weight:700; transition:.15s;
+}
+.filter-chip.active, .filter-chip:hover{border-color:var(--accent); color:var(--accent-2); background:var(--accent-soft)}
+.fleet-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:22px}
+.car-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden;
+  display:flex; flex-direction:column; transition:.2s transform,.2s box-shadow,.2s border-color; cursor:pointer;
+}
+.car-card:hover{transform:translateY(-4px); box-shadow:var(--shadow-md); border-color:var(--border)}
+.car-media{
+  aspect-ratio:16/10; background:linear-gradient(150deg,var(--surface-2),var(--bg-alt)); position:relative;
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
+}
+.car-media img{width:100%; height:100%; object-fit:cover}
+.car-media svg{width:62%; opacity:.9}
+.car-badge{
+  position:absolute; top:12px; left:12px; padding:5px 11px; border-radius:100px; font-size:11px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.04em; background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#1a0e04;
+}
+.avail-pill{
+  position:absolute; top:12px; right:12px; padding:5px 11px; border-radius:100px; font-size:11px; font-weight:800;
+  background:var(--success-soft); color:var(--success); border:1px solid rgba(34,211,170,.35);
+}
+.avail-pill.no{background:var(--danger-soft); color:var(--danger); border-color:rgba(244,83,107,.35)}
+.car-body{padding:20px; display:flex; flex-direction:column; gap:12px; flex:1}
+.car-body h3{font-size:18.5px}
+.car-specs{display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--text-dim); font-weight:600}
+.car-specs span{display:flex; align-items:center; gap:5px}
+.car-foot{display:flex; align-items:center; justify-content:space-between; margin-top:auto; padding-top:6px}
+.car-price b{font-family:'Space Grotesk',sans-serif; font-size:20px; color:var(--text)}
+.car-price span{font-size:12px; color:var(--text-dim)}
+.empty-state{
+  grid-column:1/-1; text-align:center; padding:60px 20px; color:var(--text-dim); border:1px dashed var(--border);
+  border-radius:var(--radius-lg);
+}
+
+/* ---------- how it works ---------- */
+.how-section{padding:84px 0; background:var(--bg-alt); border-top:1px solid var(--border-soft); border-bottom:1px solid var(--border-soft)}
+.steps-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:22px}
+.step-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:24px; position:relative}
+.step-num{
+  width:38px; height:38px; border-radius:11px; background:var(--accent-soft); color:var(--accent-2); font-weight:800;
+  display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-size:16px; margin-bottom:16px;
+}
+.step-card h4{font-size:16px; margin-bottom:8px}
+.step-card p{font-size:13.5px; color:var(--text-dim)}
+
+/* ---------- policy / included ---------- */
+.policy-section{padding:84px 0}
+.policy-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:22px}
+.policy-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:28px}
+.policy-card .ic{width:46px;height:46px;border-radius:13px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:16px}
+.policy-card h4{font-size:17px; margin-bottom:10px}
+.policy-list{list-style:none; display:flex; flex-direction:column; gap:9px}
+.policy-list li{font-size:13.5px; color:var(--text-dim); display:flex; gap:9px; align-items:flex-start}
+.policy-list li::before{content:'✓'; color:var(--success); font-weight:800; flex-shrink:0}
+
+/* ---------- why us stats ---------- */
+.stats-section{padding:60px 0}
+.stats-band{
+  background:linear-gradient(135deg,var(--surface),var(--surface-2)); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:40px; display:grid; grid-template-columns:repeat(4,1fr); gap:20px;
+}
+.stat-box{text-align:center}
+.stat-box b{display:block; font-family:'Space Grotesk',sans-serif; font-size:32px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); -webkit-background-clip:text; background-clip:text; color:transparent}
+.stat-box span{font-size:13px; color:var(--text-dim); font-weight:600}
+
+/* ---------- testimonials ---------- */
+.testi-section{padding:84px 0; background:var(--bg-alt); border-top:1px solid var(--border-soft); border-bottom:1px solid var(--border-soft)}
+.testi-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:22px}
+.testi-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:26px}
+.testi-stars{color:var(--accent-2); font-size:14px; margin-bottom:14px; letter-spacing:2px}
+.testi-card p{font-size:14.5px; color:var(--text-dim); margin-bottom:18px; font-style:italic}
+.testi-who{display:flex; align-items:center; gap:12px}
+.testi-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-weight:800;color:#1a0e04;font-size:14px}
+.testi-who b{font-size:13.5px; display:block}
+.testi-who span{font-size:12px; color:var(--text-faint)}
+.testi-note{grid-column:1/-1; text-align:center; font-size:12px; color:var(--text-faint); margin-top:4px}
+
+/* ---------- faq ---------- */
+.faq-section{padding:84px 0}
+.faq-list{max-width:800px; margin:0 auto; display:flex; flex-direction:column; gap:12px}
+.faq-item{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden}
+.faq-item summary{
+  padding:19px 22px; font-weight:700; font-size:15px; cursor:pointer; list-style:none; display:flex;
+  align-items:center; justify-content:space-between; gap:14px;
+}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary::after{content:'+'; font-size:20px; color:var(--accent-2); flex-shrink:0; transition:.2s transform}
+.faq-item[open] summary::after{transform:rotate(45deg)}
+.faq-item .faq-a{padding:0 22px 20px; color:var(--text-dim); font-size:14px}
+
+/* ---------- final cta ---------- */
+.cta-band{padding:70px 0}
+.cta-inner{
+  background:linear-gradient(135deg,rgba(255,122,26,.16),rgba(34,211,170,.10)); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:54px 40px; text-align:center;
+}
+.cta-inner h2{font-size:clamp(24px,3.2vw,34px); margin-bottom:14px}
+.cta-inner p{color:var(--text-dim); margin-bottom:26px; max-width:520px; margin-left:auto; margin-right:auto}
+
+/* ---------- footer ---------- */
+footer{background:var(--bg-alt); border-top:1px solid var(--border-soft); padding:60px 0 26px}
+.foot-grid{display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:40px; margin-bottom:40px}
+.foot-brand p{color:var(--text-dim); font-size:13.5px; margin-top:14px; max-width:280px}
+.foot-col h5{font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint); margin-bottom:16px}
+.foot-col a, .foot-col p{display:block; font-size:14px; color:var(--text-dim); margin-bottom:10px}
+.foot-col a:hover{color:var(--accent-2)}
+.foot-bottom{
+  border-top:1px solid var(--border-soft); padding-top:22px; display:flex; justify-content:space-between;
+  flex-wrap:wrap; gap:12px; font-size:12.5px; color:var(--text-faint);
+}
+
+/* ---------- modal ---------- */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(4,6,10,.72); backdrop-filter:blur(4px); z-index:500;
+  display:none; align-items:flex-start; justify-content:center; padding:40px 18px; overflow-y:auto;
+}
+.modal-overlay.show{display:flex}
+.modal-box{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); max-width:600px; width:100%;
+  box-shadow:var(--shadow-lg); animation:pop .18s ease; margin:auto 0;
+}
+@keyframes pop{from{opacity:0; transform:translateY(10px) scale(.98)} to{opacity:1; transform:none}}
+.modal-head{display:flex; align-items:flex-start; justify-content:space-between; padding:24px 26px 0}
+.modal-head h3{font-size:20px}
+.modal-close{
+  width:34px;height:34px;border-radius:10px;background:var(--bg-alt);border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center; font-size:16px; color:var(--text-dim); flex-shrink:0;
+}
+.modal-body{padding:20px 26px 26px}
+.modal-actions{padding:0 26px 26px; display:flex; gap:12px}
+.detail-media{aspect-ratio:16/9; border-radius:var(--radius-md); overflow:hidden; background:linear-gradient(150deg,var(--surface-2),var(--bg-alt)); display:flex; align-items:center; justify-content:center; margin-bottom:18px}
+.detail-media img{width:100%; height:100%; object-fit:cover}
+.detail-media svg{width:50%}
+.detail-tags{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px}
+.tag{background:var(--bg-alt); border:1px solid var(--border); padding:6px 12px; border-radius:100px; font-size:12px; color:var(--text-dim); font-weight:600}
+.detail-cols{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:18px}
+.detail-cols h5{font-size:13px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:10px}
+.detail-cols ul{list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13.5px; color:var(--text-dim)}
+.detail-cols ul li::before{content:'• '; color:var(--accent-2)}
+.detail-price{display:flex; align-items:center; justify-content:space-between; background:var(--bg-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:16px 18px; margin-bottom:6px}
+.detail-price b{font-family:'Space Grotesk',sans-serif; font-size:24px}
+
+.form-row{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px}
+.form-field{display:flex; flex-direction:column; gap:7px; margin-bottom:14px}
+.form-field label{font-size:12.5px; font-weight:700; color:var(--text-dim)}
+.form-field input, .form-field textarea{
+  background:var(--bg-alt); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 13px;
+  color:var(--text); font-size:14.5px; font-family:inherit; width:100%; resize:vertical;
+}
+.form-field input:focus, .form-field textarea:focus{outline:2px solid var(--accent); outline-offset:1px}
+.form-hint{font-size:12px; color:var(--text-faint); margin-top:-8px; margin-bottom:14px}
+.error-box{background:var(--danger-soft); border:1px solid rgba(244,83,107,.35); color:#ffb3bf; padding:12px 14px; border-radius:var(--radius-sm); font-size:13.5px; margin-bottom:16px}
+.success-box{text-align:center; padding:20px 6px}
+.success-icon{width:64px;height:64px;border-radius:50%;background:var(--success-soft);border:1px solid rgba(34,211,170,.4);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 18px;color:var(--success)}
+.success-box h3{font-size:19px; margin-bottom:10px}
+.success-box p{color:var(--text-dim); font-size:14px; margin-bottom:6px}
+
+/* sticky mobile cta */
+.mobile-cta{
+  display:none; position:fixed; bottom:0; left:0; right:0; z-index:150; padding:12px 16px;
+  background:rgba(8,11,17,.92); backdrop-filter:blur(10px); border-top:1px solid var(--border-soft);
+}
+
+@media (max-width:960px){
+  .hero-grid{grid-template-columns:1fr; gap:38px}
+  .hero-visual{order:-1}
+  .bw-grid{grid-template-columns:1fr 1fr}
+  .fleet-grid{grid-template-columns:repeat(2,1fr)}
+  .steps-grid{grid-template-columns:repeat(2,1fr)}
+  .policy-grid{grid-template-columns:1fr}
+  .stats-band{grid-template-columns:repeat(2,1fr)}
+  .testi-grid{grid-template-columns:1fr}
+  .foot-grid{grid-template-columns:1fr 1fr}
+}
+@media (max-width:720px){
+  .nav-links{
+    position:fixed; top:74px; left:0; right:0; background:var(--bg); border-bottom:1px solid var(--border-soft);
+    flex-direction:column; align-items:flex-start; padding:20px 24px; gap:18px; transform:translateY(-140%);
+    transition:.22s transform; z-index:190;
+  }
+  .nav-links.open{transform:translateY(0)}
+  .nav-toggle{display:flex}
+  .nav-actions .btn-ghost{display:none}
+  .hero{padding-top:44px}
+  .bw-grid{grid-template-columns:1fr}
+  .fleet-grid{grid-template-columns:1fr}
+  .steps-grid{grid-template-columns:1fr}
+  .stats-band{grid-template-columns:1fr 1fr; padding:26px}
+  .foot-grid{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr}
+  .mobile-cta{display:block}
+  body{padding-bottom:78px}
+  .detail-cols{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav-row">
+    <a href="#top" class="brand">
+      <span class="brand-badge">🚗</span>
+      <span>DOMBI<br><small>RENT&#8209;A&#8209;CAR</small></span>
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a href="#fleet">Автопарк</a>
+      <a href="#how">Как работи</a>
+      <a href="#policy">Условия</a>
+      <a href="#faq">Въпроси</a>
+      <a href="#contact">Контакти</a>
+    </nav>
+    <div class="nav-actions">
+      <a href="tel:+359887252727" class="btn btn-ghost btn-sm">📞 0887 25 27 27</a>
+      <button class="btn btn-primary btn-sm" onclick="scrollToBooking()">Провери наличност</button>
+      <button class="nav-toggle" id="navToggle" aria-label="Меню" aria-expanded="false"><span></span></button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="eyebrow">Dombi Rent&#8209;a&#8209;Car · Автопарк под наем</div>
+        <h1>Наеми кола<br><span class="hl">за минути,</span><br>не за дни.</h1>
+        <p class="lead">Избери автомобил, посочи дати и изпрати заявка — потвърждаваме бързо по телефон. Застраховка и пътна помощ са включени във всеки наем, без скрити такси.</p>
+        <div class="hero-ctas">
+          <button class="btn btn-primary" onclick="scrollToBooking()">Провери наличност →</button>
+          <a href="#fleet" class="btn btn-ghost">Разгледай автопарка</a>
+        </div>
+        <div class="trust-strip">
+          <div class="trust-item"><span class="ic">🛡️</span> Застраховка включена</div>
+          <div class="trust-item"><span class="ic">🛟</span> 24/7 пътна помощ</div>
+          <div class="trust-item"><span class="ic">✅</span> Без скрити такси</div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-card">
+          <div class="car-illustration">
+            <svg viewBox="0 0 200 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="100" cy="98" rx="86" ry="8" fill="black" opacity=".35"/>
+              <path d="M20 74 L30 42a14 14 0 0113-9h50a14 14 0 0113 9l10 32" stroke="url(#g1)" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="14" y="70" width="172" height="30" rx="12" fill="url(#g1)"/>
+              <rect x="40" y="46" width="46" height="22" rx="4" fill="#0a0e14" opacity=".55"/>
+              <rect x="94" y="46" width="46" height="22" rx="4" fill="#0a0e14" opacity=".55"/>
+              <circle cx="54" cy="100" r="15" fill="#0a0e14" stroke="url(#g1)" stroke-width="5"/>
+              <circle cx="146" cy="100" r="15" fill="#0a0e14" stroke="url(#g1)" stroke-width="5"/>
+              <circle cx="54" cy="100" r="5" fill="#ffb347"/>
+              <circle cx="146" cy="100" r="5" fill="#ffb347"/>
+              <defs><linearGradient id="g1" x1="0" y1="0" x2="200" y2="0"><stop stop-color="#ff7a1a"/><stop offset="1" stop-color="#ffb347"/></linearGradient></defs>
+            </svg>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat"><b id="statFleetSize">–</b><span>модела в автопарка</span></div>
+            <div class="hero-stat"><b>&lt; 2ч</b><span>отговор на заявка</span></div>
+            <div class="hero-stat"><b>0 лв</b><span>скрити такси</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="booking-widget" id="bookingWidget">
+        <form id="bookingSearchForm">
+          <div class="bw-grid">
+            <div class="bw-field">
+              <label for="searchPickup">Дата на вземане</label>
+              <input type="date" id="searchPickup" required>
+            </div>
+            <div class="bw-field">
+              <label for="searchReturn">Дата на връщане</label>
+              <input type="date" id="searchReturn" required>
+            </div>
+            <div class="bw-field">
+              <label for="searchLocation">Място на вземане</label>
+              <input type="text" id="searchLocation" placeholder="напр. офис София, ул. Павел Красов 22">
+            </div>
+            <button type="submit" class="btn btn-primary">Провери наличност</button>
+          </div>
+        </form>
+        <div class="search-status" id="searchStatus" style="display:none"></div>
+        <p class="bw-note">Резервацията е заявка — ние се свързваме с теб за потвърждение, без онлайн плащане.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FLEET -->
+  <section class="fleet-section" id="fleet">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="eyebrow">Автопарк</div>
+        <h2>Избери своя автомобил</h2>
+        <p>Всички коли се предлагат със застраховка и пътна помощ. Наличността по-долу е за избрания от теб период — или разгледай пълния автопарк.</p>
+      </div>
+      <div class="filter-row" id="filterRow">
+        <button class="filter-chip active" data-cat="all">Всички</button>
+        <button class="filter-chip" data-cat="economy">Икономични</button>
+        <button class="filter-chip" data-cat="comfort">Комфорт</button>
+        <button class="filter-chip" data-cat="eco">Електрически / Еко</button>
+      </div>
+      <div class="fleet-grid" id="fleetGrid">
+        <div class="empty-state">Зареждане на автопарка…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how-section" id="how">
+    <div class="wrap">
+      <div class="sec-head center" style="margin-bottom:46px">
+        <div class="eyebrow">Как работи</div>
+        <h2>От избор до волана — 4 стъпки</h2>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num">1</div>
+          <h4>Избери кола и дати</h4>
+          <p>Прегледай автопарка и провери жива наличност за периода, който ти трябва.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">2</div>
+          <h4>Изпрати заявка</h4>
+          <p>Попълваш кратка форма с данни за контакт — без плащане на този етап.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">3</div>
+          <h4>Потвърждаваме по телефон</h4>
+          <p>Екипът ни се свързва с теб до няколко часа, за да потвърди резервацията.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">4</div>
+          <h4>Взимаш колата</h4>
+          <p>Подписваме кратък договор на място и потегляш — просто и бързо.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POLICY / TRANSPARENCY -->
+  <section class="policy-section" id="policy">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="eyebrow">Условия</div>
+        <h2>Прозрачни условия, без изненади</h2>
+        <p>Всичко, което трябва да знаеш преди да изпратиш заявка.</p>
+      </div>
+      <div class="policy-grid">
+        <div class="policy-card">
+          <div class="ic">🛡️</div>
+          <h4>Включено в наема</h4>
+          <ul class="policy-list">
+            <li>Застраховка "Гражданска отговорност"</li>
+            <li>Пътна помощ 24/7</li>
+            <li>Годишен преглед и поддръжка</li>
+            <li>Смяна на автомобил при повреда не по твоя вина</li>
+          </ul>
+        </div>
+        <div class="policy-card">
+          <div class="ic">📋</div>
+          <h4>Изисквания за наемане</h4>
+          <ul class="policy-list">
+            <li>Навършени 21 години</li>
+            <li>Свидетелство за управление с минимум 1 година стаж</li>
+            <li>Лична карта или паспорт</li>
+            <li>Депозит при взимане на автомобила</li>
+          </ul>
+        </div>
+        <div class="policy-card">
+          <div class="ic">🔄</div>
+          <h4>Гъвкавост</h4>
+          <ul class="policy-list">
+            <li>Заявката е безплатна и необвързваща</li>
+            <li>Без онлайн плащане при резервация</li>
+            <li>Удължаване на наема при наличност</li>
+            <li>Отказ по всяко време преди потвърждение</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="stats-section">
+    <div class="wrap">
+      <div class="stats-band">
+        <div class="stat-box"><b id="statFleetSize2">–</b><span>Модела в автопарка</span></div>
+        <div class="stat-box"><b>100%</b><span>Прозрачни условия</span></div>
+        <div class="stat-box"><b>24/7</b><span>Пътна помощ</span></div>
+        <div class="stat-box"><b>&lt;2ч</b><span>Средно време за отговор</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="testi-section">
+    <div class="wrap">
+      <div class="sec-head center" style="margin-bottom:40px">
+        <div class="eyebrow">Отзиви</div>
+        <h2>Какво казват наши клиенти</h2>
+      </div>
+      <div class="testi-grid">
+        <div class="testi-card">
+          <div class="testi-stars">★★★★★</div>
+          <p>"Изпратих заявка вечерта и още на сутринта ме потвърдиха по телефона. Колата беше чиста и в отлично състояние."</p>
+          <div class="testi-who"><div class="testi-avatar">К</div><div><b>Клиент</b><span>Наем за 5 дни · София</span></div></div>
+        </div>
+        <div class="testi-card">
+          <div class="testi-stars">★★★★★</div>
+          <p>"Трябваше ми кола спешно за уикенда — целият процес отне по-малко от час, включително договора на място."</p>
+          <div class="testi-who"><div class="testi-avatar">К</div><div><b>Клиент</b><span>Уикенд наем · Пловдив</span></div></div>
+        </div>
+        <div class="testi-card">
+          <div class="testi-stars">★★★★★</div>
+          <p>"Оценявам, че няма скрити такси — цената, която видях онлайн, съвпадна напълно с крайната сметка."</p>
+          <div class="testi-who"><div class="testi-avatar">К</div><div><b>Клиент</b><span>Месечен наем · Варна</span></div></div>
+        </div>
+        <p class="testi-note">Примерни отзиви — ще бъдат заменени с реални мнения на клиенти.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq-section" id="faq">
+    <div class="wrap">
+      <div class="sec-head center" style="margin-bottom:40px">
+        <div class="eyebrow">Въпроси и отговори</div>
+        <h2>Често задавани въпроси</h2>
+      </div>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>Как протича резервацията?</summary>
+          <div class="faq-a">Избираш кола и период, изпращаш заявка от сайта — без онлайн плащане. Екипът ни се свързва с теб по телефон, за да потвърди резервацията и да уговори детайлите.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Какви документи са нужни за наемане?</summary>
+          <div class="faq-a">Лична карта или паспорт и валидно свидетелство за управление с минимум 1 година стаж. Изисква се навършени 21 години.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Има ли депозит?</summary>
+          <div class="faq-a">Да, при взимане на автомобила се удържа депозит, който се възстановява при връщането му в изправно състояние.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Какво е включено в цената?</summary>
+          <div class="faq-a">Застраховка "Гражданска отговорност" и пътна помощ 24/7 са включени в наема. Гориво не е включено — автомобилът се взима и връща с равнозначно количество гориво.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Мога ли да удължа наема?</summary>
+          <div class="faq-a">Да, свържи се с нас преди изтичане на текущия период — удължаваме при наличност на автомобила.</div>
+        </details>
+        <details class="faq-item">
+          <summary>Мога ли да откажа заявка?</summary>
+          <div class="faq-a">Разбира се — заявката е необвързваща до момента на потвърждение от наша страна. Можеш да откажеш по всяко време преди това, като ни се обадиш.</div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section class="cta-band">
+    <div class="wrap">
+      <div class="cta-inner">
+        <h2>Готов ли си да потеглиш?</h2>
+        <p>Провери жива наличност за твоите дати и изпрати заявка за секунди.</p>
+        <button class="btn btn-primary" onclick="scrollToBooking()">Провери наличност →</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer id="contact">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a href="#top" class="brand"><span class="brand-badge">🚗</span><span>DOMBI<br><small>RENT&#8209;A&#8209;CAR</small></span></a>
+        <p>Част от Dombi Riders ЕООД — автопарк за наем с прозрачни условия, застраховка и пътна помощ, включени във всеки наем.</p>
+      </div>
+      <div class="foot-col">
+        <h5>Навигация</h5>
+        <a href="#fleet">Автопарк</a>
+        <a href="#how">Как работи</a>
+        <a href="#policy">Условия</a>
+        <a href="#faq">Въпроси</a>
+      </div>
+      <div class="foot-col">
+        <h5>Контакти</h5>
+        <a href="tel:+359887252727">📞 0887 25 27 27</a>
+        <a href="mailto:office@dombi.bg">✉️ office@dombi.bg</a>
+        <p>📍 гр. София, ул. Павел Красов 22</p>
+      </div>
+      <div class="foot-col">
+        <h5>Друго</h5>
+        <a href="https://dombi-riders-backend.onrender.com/privacy.html" target="_blank" rel="noopener">Политика за поверителност</a>
+        <a href="https://dombi-riders.onrender.com" target="_blank" rel="noopener">Търсиш работа като куриер? →</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span id="year"></span> Dombi Riders ЕООД · ЕИК 208513455</span>
+      <span>Наемите се извършват след потвърждение от екипа ни по телефон.</span>
+    </div>
+  </div>
+</footer>
+
+<div class="mobile-cta">
+  <button class="btn btn-primary btn-block" onclick="scrollToBooking()">Провери наличност</button>
+</div>
+
+<!-- CAR DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="detailTitle">Автомобил</h3>
+      <button class="modal-close" onclick="closeModal('detailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- BOOKING FORM MODAL -->
+<div class="modal-overlay" id="bookModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="bookTitle">Заяви резервация</h3>
+      <button class="modal-close" onclick="closeModal('bookModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="bookFormWrap">
+        <div class="error-box" id="bookError" style="display:none"></div>
+        <form id="bookForm">
+          <div class="form-row">
+            <div class="form-field">
+              <label for="bfPickup">Дата на вземане *</label>
+              <input type="date" id="bfPickup" required>
+            </div>
+            <div class="form-field">
+              <label for="bfReturn">Дата на връщане *</label>
+              <input type="date" id="bfReturn" required>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="bfLocation">Място на вземане</label>
+            <input type="text" id="bfLocation" placeholder="напр. офис София, ул. Павел Красов 22">
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="bfName">Име *</label>
+              <input type="text" id="bfName" required maxlength="200">
+            </div>
+            <div class="form-field">
+              <label for="bfPhone">Телефон *</label>
+              <input type="tel" id="bfPhone" required maxlength="30" placeholder="08XX XXX XXX">
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="bfEmail">Имейл (по желание)</label>
+            <input type="email" id="bfEmail" maxlength="200">
+          </div>
+          <div class="form-field">
+            <label for="bfNotes">Бележка (по желание)</label>
+            <textarea id="bfNotes" rows="3" maxlength="1000" placeholder="Допълнителна информация…"></textarea>
+          </div>
+          <p class="form-hint">Изпращайки заявката, приемаш да се свържем с теб на посочения телефон за потвърждение. Няма онлайн плащане.</p>
+        </form>
+      </div>
+      <div class="success-box" id="bookSuccess" style="display:none">
+        <div class="success-icon">✓</div>
+        <h3>Заявката е изпратена!</h3>
+        <p>Ще се свържем с теб на посочения телефон в рамките на кратко време, за да потвърдим резервацията.</p>
+        <p style="color:var(--text-faint); font-size:13px">Няма нужда от онлайн плащане на този етап.</p>
+      </div>
+    </div>
+    <div class="modal-actions" id="bookActions">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('bookModal')">Отказ</button>
+      <button type="button" class="btn btn-primary" id="bookSubmitBtn" onclick="submitBooking()">Изпрати заявка</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = 'https://dombi-riders-backend.onrender.com';
+document.getElementById('year').textContent = new Date().getFullYear();
+
+// ---------------- state ----------------
+let fleetData = [];          // master list from /api/public/fleet-showcase
+let availabilityMap = null;  // {id: bool} set after a date search, else null
+let searchDates = null;      // {pickup, return}
+let activeCategory = 'all';
+let selectedCar = null;      // for detail/booking modal
+
+const CATEGORY_LABELS = { economy: 'Икономична', comfort: 'Комфорт', eco: 'Електрическа / Еко' };
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+// ---------------- nav ----------------
+const navToggle = document.getElementById('navToggle');
+const navLinks = document.getElementById('navLinks');
+navToggle.addEventListener('click', () => {
+  const open = navLinks.classList.toggle('open');
+  navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', () => navLinks.classList.remove('open')));
+
+function scrollToBooking() {
+  document.getElementById('bookingWidget').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ---------------- fleet loading ----------------
+async function loadFleet() {
+  const grid = document.getElementById('fleetGrid');
+  try {
+    const res = await fetch(`${API_BASE}/api/public/fleet-showcase`);
+    if (!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    fleetData = data.cars || [];
+    document.getElementById('statFleetSize').textContent = fleetData.length || '–';
+    document.getElementById('statFleetSize2').textContent = fleetData.length || '–';
+    renderFleet();
+  } catch (err) {
+    grid.innerHTML = '<div class="empty-state">Автопаркът не можа да се зареди в момента. Опитайте да презаредите страницата или се обадете на 0887 25 27 27.</div>';
+  }
+}
+
+function carSvgPlaceholder() {
+  return `<svg viewBox="0 0 200 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M20 74 L30 42a14 14 0 0113-9h50a14 14 0 0113 9l10 32" stroke="#39465f" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="14" y="70" width="172" height="30" rx="12" fill="#233047"/>
+    <circle cx="54" cy="100" r="15" fill="#0a0e14" stroke="#39465f" stroke-width="5"/>
+    <circle cx="146" cy="100" r="15" fill="#0a0e14" stroke="#39465f" stroke-width="5"/>
+  </svg>`;
+}
+
+function renderFleet() {
+  const grid = document.getElementById('fleetGrid');
+  let list = fleetData.filter(c => activeCategory === 'all' || c.category === activeCategory);
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty-state">Няма автомобили в тази категория в момента.</div>';
+    return;
+  }
+  grid.innerHTML = list.map(car => {
+    let available, availLabel;
+    if (availabilityMap) {
+      available = !!availabilityMap[car.id];
+      availLabel = available ? 'Свободна' : 'Заета за периода';
+    } else {
+      available = car.status === 'available';
+      availLabel = available ? 'Свободна' : 'Скоро';
+    }
+    const media = car.image_url
+      ? `<img src="${escapeHtml(car.image_url)}" alt="${escapeHtml(car.name)}" loading="lazy">`
+      : carSvgPlaceholder();
+    const badge = car.badge === 'top' ? '<span class="car-badge">Топ избор</span>' : (car.badge === 'new' ? '<span class="car-badge">Ново</span>' : '');
+    return `
+      <div class="car-card" onclick="openDetail('${car.id}')">
+        <div class="car-media">
+          ${badge}
+          <span class="avail-pill ${available ? '' : 'no'}">${availLabel}</span>
+          ${media}
+        </div>
+        <div class="car-body">
+          <h3>${escapeHtml(car.name)}</h3>
+          <div class="car-specs">
+            <span>⛽ ${fuelLabel(car.fuel)}</span>
+            <span>⚙️ ${transLabel(car.transmission)}</span>
+            <span>👤 ${car.seats || '–'} места</span>
+          </div>
+          <div class="car-foot">
+            <div class="car-price">
+              ${car.daily_rate != null ? `<b>${car.daily_rate} €</b><span>/ден</span>` : '<span>Цена при запитване</span>'}
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openDetail('${car.id}')">Детайли</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function fuelLabel(f) {
+  return { petrol: 'Бензин', diesel: 'Дизел', hybrid: 'Хибрид', electric: 'Електрическа', gas: 'Газ/Бензин' }[f] || (f || '–');
+}
+function transLabel(t) {
+  return { manual: 'Ръчна', automatic: 'Автоматична' }[t] || (t || '–');
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+document.getElementById('filterRow').addEventListener('click', (e) => {
+  const chip = e.target.closest('.filter-chip');
+  if (!chip) return;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  activeCategory = chip.dataset.cat;
+  renderFleet();
+});
+
+// ---------------- availability search ----------------
+const searchPickupEl = document.getElementById('searchPickup');
+const searchReturnEl = document.getElementById('searchReturn');
+searchPickupEl.min = todayStr();
+searchReturnEl.min = todayStr();
+searchPickupEl.addEventListener('change', () => {
+  searchReturnEl.min = searchPickupEl.value || todayStr();
+  if (searchReturnEl.value && searchReturnEl.value < searchPickupEl.value) searchReturnEl.value = searchPickupEl.value;
+});
+
+document.getElementById('bookingSearchForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pickup = searchPickupEl.value, ret = searchReturnEl.value;
+  if (!pickup || !ret) return;
+  const statusEl = document.getElementById('searchStatus');
+  statusEl.style.display = 'flex';
+  statusEl.innerHTML = 'Проверка на наличност…';
+  try {
+    const res = await fetch(`${API_BASE}/api/public/availability?pickup_date=${pickup}&return_date=${ret}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Грешка');
+    availabilityMap = {};
+    (data.cars || []).forEach(c => { availabilityMap[c.id] = c.available; });
+    searchDates = { pickup, return: ret };
+    statusEl.innerHTML = `Показва се наличност за <strong>${fmtDate(pickup)} — ${fmtDate(ret)}</strong> &nbsp;·&nbsp; <span class="pill-clear" onclick="clearSearch()">Изчисти търсенето</span>`;
+    renderFleet();
+    document.getElementById('fleet').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    statusEl.innerHTML = 'Грешка при проверка на наличността. Опитай отново.';
+  }
+});
+
+function clearSearch() {
+  availabilityMap = null;
+  searchDates = null;
+  document.getElementById('searchStatus').style.display = 'none';
+  renderFleet();
+}
+
+function fmtDate(iso) {
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+// ---------------- detail modal ----------------
+function openDetail(id) {
+  const car = fleetData.find(c => c.id === id);
+  if (!car) return;
+  selectedCar = car;
+  document.getElementById('detailTitle').textContent = car.name;
+  const media = car.image_url
+    ? `<img src="${escapeHtml(car.image_url)}" alt="${escapeHtml(car.name)}">`
+    : carSvgPlaceholder();
+  const includes = (car.includes || []).length ? car.includes : ['Застраховка', 'Пътна помощ 24/7'];
+  const requirements = (car.requirements || []).length ? car.requirements : ['Мин. 21 години', 'Стаж по книжка 1+ година'];
+  document.getElementById('detailBody').innerHTML = `
+    <div class="detail-media">${media}</div>
+    <div class="detail-tags">
+      <span class="tag">${CATEGORY_LABELS[car.category] || car.category || 'Автомобил'}</span>
+      <span class="tag">⛽ ${fuelLabel(car.fuel)}</span>
+      <span class="tag">⚙️ ${transLabel(car.transmission)}</span>
+      <span class="tag">👤 ${car.seats || '–'} места</span>
+    </div>
+    <div class="detail-cols">
+      <div><h5>Включено</h5><ul>${includes.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul></div>
+      <div><h5>Изисквания</h5><ul>${requirements.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul></div>
+    </div>
+    <div class="detail-price">
+      <span>Цена на наем</span>
+      ${car.daily_rate != null ? `<b>${car.daily_rate} € <span style="font-size:13px;color:var(--text-dim);font-weight:600">/ден</span></b>` : '<b style="font-size:15px">При запитване</b>'}
+    </div>
+  `;
+  document.getElementById('detailModal').classList.add('show');
+  document.getElementById('detailBody').insertAdjacentHTML('beforeend', `
+    <div style="margin-top:20px; display:flex; gap:12px">
+      <button class="btn btn-primary btn-block" onclick="closeModal('detailModal'); openBooking('${car.id}')">Заяви резервация →</button>
+    </div>
+  `);
+}
+
+// ---------------- booking modal ----------------
+function openBooking(id) {
+  const car = fleetData.find(c => c.id === id) || selectedCar;
+  selectedCar = car;
+  document.getElementById('bookTitle').textContent = car ? `Заяви — ${car.name}` : 'Заяви резервация';
+  document.getElementById('bfPickup').min = todayStr();
+  document.getElementById('bfReturn').min = todayStr();
+  if (searchDates) {
+    document.getElementById('bfPickup').value = searchDates.pickup;
+    document.getElementById('bfReturn').value = searchDates.return;
+    document.getElementById('bfReturn').min = searchDates.pickup;
+  }
+  document.getElementById('bookError').style.display = 'none';
+  document.getElementById('bookFormWrap').style.display = 'block';
+  document.getElementById('bookSuccess').style.display = 'none';
+  document.getElementById('bookActions').style.display = 'flex';
+  document.getElementById('bookForm').reset();
+  if (searchDates) {
+    document.getElementById('bfPickup').value = searchDates.pickup;
+    document.getElementById('bfReturn').value = searchDates.return;
+  }
+  document.getElementById('bookModal').classList.add('show');
+}
+
+document.getElementById('bfPickup').addEventListener('change', function () {
+  document.getElementById('bfReturn').min = this.value || todayStr();
+});
+
+async function submitBooking() {
+  const errEl = document.getElementById('bookError');
+  errEl.style.display = 'none';
+  const pickup = document.getElementById('bfPickup').value;
+  const ret = document.getElementById('bfReturn').value;
+  const name = document.getElementById('bfName').value.trim();
+  const phone = document.getElementById('bfPhone').value.trim();
+  const email = document.getElementById('bfEmail').value.trim();
+  const location = document.getElementById('bfLocation').value.trim();
+  const notes = document.getElementById('bfNotes').value.trim();
+
+  if (!pickup || !ret) { showBookError('Моля, посочи дати на вземане и връщане.'); return; }
+  if (ret < pickup) { showBookError('Датата на връщане трябва да е след датата на вземане.'); return; }
+  if (!name || !phone) { showBookError('Моля, попълни име и телефон за връзка.'); return; }
+
+  const btn = document.getElementById('bookSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Изпращане…';
+  try {
+    const res = await fetch(`${API_BASE}/api/public/reservations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        showcase_item_id: selectedCar ? selectedCar.id : null,
+        car_name: selectedCar ? selectedCar.name : null,
+        pickup_date: pickup,
+        return_date: ret,
+        pickup_location: location || null,
+        customer_name: name,
+        customer_phone: phone,
+        customer_email: email || null,
+        notes: notes || null,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showBookError(data.error || 'Възникна грешка. Опитай отново или ни се обади на 0887 25 27 27.');
+      return;
+    }
+    document.getElementById('bookFormWrap').style.display = 'none';
+    document.getElementById('bookActions').style.display = 'none';
+    document.getElementById('bookSuccess').style.display = 'block';
+  } catch (err) {
+    showBookError('Проблем с връзката. Провери интернет връзката си и опитай отново.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Изпрати заявка';
+  }
+}
+
+function showBookError(msg) {
+  const errEl = document.getElementById('bookError');
+  errEl.textContent = msg;
+  errEl.style.display = 'block';
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.classList.remove('show'); });
+});
+
+loadFleet();
+</script>
+</body>
+</html>
