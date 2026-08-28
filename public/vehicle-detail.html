@@ -509,7 +509,14 @@ const TALON_FIELD_MAP = [
   { key: 'fuel', label: 'Гориво', type: 'text' },
   { key: 'seats', label: 'Места', type: 'number' },
   { key: 'talon_number', label: '№ на талона (СРМПС)', type: 'text' },
+  { key: 'owner_name', label: 'Собственик (фирма)', type: 'text' },
+  { key: 'power_kw', label: 'Мощност (kW)', type: 'number' },
+  { key: 'engine_capacity_cc', label: 'Обем на двигателя (куб.см)', type: 'number' },
+  { key: 'registration_expiry', label: 'Дата на следваща регистрация', type: 'date' },
 ];
+// същите ключове + приятелски етикет — за показване на суровата таблица с
+// разчетени данни (по-долу), вместо голите вътрешни имена на полетата.
+const TALON_LABELS = Object.fromEntries(TALON_FIELD_MAP.map(f => [f.key, f.label]));
 
 function talonTab(v) {
   const canWrite = canEdit();
@@ -527,7 +534,7 @@ function talonTab(v) {
         ${v.talon_photo_url ? `<div style="margin-top:8px;">${docActionButtons(v.talon_photo_url, `talon-${v.plate_number}${(v.talon_photo_url.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `Талон — ${v.plate_number}`)}</div>` : ''}
         ${hasData ? `
           <div class="table-wrap" style="margin-top:14px;"><table>
-            ${Object.entries(td).filter(([,val])=>val!=null&&val!=='').map(([k,val])=>`<tr><td>${k}</td><td>${val}</td></tr>`).join('')}
+            ${Object.entries(td).filter(([,val])=>val!=null&&val!=='').map(([k,val])=>`<tr><td>${TALON_LABELS[k]||k}</td><td>${val}${copyValueButton(val)}</td></tr>`).join('')}
           </table></div>
           <div style="margin-top:10px;">${v.talon_confirmed ? '<span class="badge badge-green">Потвърдени</span>' : '<span class="badge badge-warn">Очаква потвърждение</span>'}</div>
         ` : ''}

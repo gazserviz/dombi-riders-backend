@@ -36,6 +36,16 @@
 <script>
 let ALL_VEHICLES = [];
 
+// приятелски етикети за суровите ключове на talon_data (разчетени от AI) —
+// вижте съответния списък в public/vehicle-detail.html (TALON_FIELD_MAP).
+const TALON_LABELS = {
+  plate_number: 'Рег. номер', vin: 'VIN / Рама', make: 'Марка', model: 'Модел',
+  year: 'Година', color: 'Цвят', fuel: 'Гориво', seats: 'Места',
+  talon_number: '№ на талона (СРМПС)', owner_name: 'Собственик (фирма)',
+  power_kw: 'Мощност (kW)', engine_capacity_cc: 'Обем на двигателя (куб.см)',
+  registration_expiry: 'Дата на следваща регистрация',
+};
+
 function talonCard(v) {
   const data = v.talon_data || {};
   const rows = Object.entries(data).filter(([,val]) => val != null && val !== '');
@@ -56,7 +66,7 @@ function talonCard(v) {
       <div class="body">
         <div class="plate">${v.plate_number}</div>
         <div class="meta">${v.make} ${v.model} · ${v.year||'—'} ${statusBadge}</div>
-        ${rows.length ? `<table>${rows.map(([k,val]) => `<tr><td>${k}</td><td>${val}</td></tr>`).join('')}</table>` : '<p class="hint">Няма разчетени данни от талон.</p>'}
+        ${rows.length ? `<table>${rows.map(([k,val]) => `<tr><td>${TALON_LABELS[k]||k}</td><td>${val}${copyValueButton(val)}</td></tr>`).join('')}</table>` : '<p class="hint">Няма разчетени данни от талон.</p>'}
         <a href="/vehicle-detail.html?id=${v.id}#talon" class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%;">Отвори картона на колата</a>
       </div>
     </div>`;
