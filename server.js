@@ -1139,7 +1139,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requirePermission(req, res, 'contracts', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
-      const rec = db.addPayment(body);
+      const rec = db.addPayment({ ...body, created_by: user.id });
       return sendJson(res, 201, { payment: rec });
     }
 
