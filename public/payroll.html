@@ -459,7 +459,17 @@ async function init() {
         if (active && deductionField && !deductionField.value) deductionField.value = active.weekly_deduction_amount || 0;
         const activeRental = (rental_contracts || []).find(c => c.status === 'active');
         const rentField = document.querySelector('#entryForm input[name="car_rent_amount"]');
-        if (activeRental && rentField && !rentField.value) rentField.value = activeRental.rate_amount || 0;
+        // договорът за наем на кола може да е на седмица, месец или ден
+        // (виж contract-new.html/assignments.html) — тук винаги удържаме
+        // СЕДМИЧНО от заплатата, затова конвертираме към седмичен еквивалент;
+        // преди този фикс полето взимаше суровия rate_amount, което за
+        // месечен наем удържаше 4+ пъти повече от реалната седмична вноска
+        // (напр. €600/месец се удържаше като €600/седмица вместо ~€140).
+        if (activeRental && rentField && !rentField.value) {
+          const RATE_PERIOD_DAYS = { day: 1, week: 7, month: 30 };
+          const days = RATE_PERIOD_DAYS[activeRental.rate_period] || 7;
+          rentField.value = Math.round((Number(activeRental.rate_amount || 0) / days) * 7 * 100) / 100;
+        }
       } catch (e) { /* незадължително */ }
       await loadEntries();
     });
