@@ -934,6 +934,7 @@ async function handleApi(req, res, pathname, query) {
       const { mimeType, base64 } = saveBase64Talon(body.photo, 'talon-preview');
       try {
         const extracted = await callClaudeVision(base64, mimeType);
+        if (extracted && extracted.owner_name) extracted.owner_name = db.normalizeOwnerName(extracted.owner_name);
         return sendJson(res, 200, { extracted });
       } catch (err) {
         if (err.message === 'NO_API_KEY') {
@@ -956,6 +957,7 @@ async function handleApi(req, res, pathname, query) {
       db.updateVehicle(talonMatch[1], { talon_photo_url: url });
       try {
         const extracted = await callClaudeVision(base64, mimeType);
+        if (extracted && extracted.owner_name) extracted.owner_name = db.normalizeOwnerName(extracted.owner_name);
         db.updateVehicle(talonMatch[1], { talon_data: extracted, talon_confirmed: false });
         return sendJson(res, 200, { photo_url: url, extracted });
       } catch (err) {
@@ -976,8 +978,10 @@ async function handleApi(req, res, pathname, query) {
       const user = requirePermission(req, res, 'vehicles', 'manage');
       if (!user) return;
       const body = await readJsonBody(req);
+      const talonData = body.talon_data ? { ...body.talon_data } : body.talon_data;
+      if (talonData && talonData.owner_name) talonData.owner_name = db.normalizeOwnerName(talonData.owner_name);
       const vehicle = db.updateVehicle(talonConfirmMatch[1], {
-        talon_data: body.talon_data,
+        talon_data: talonData,
         talon_confirmed: true,
         ...(body.apply_to_fields || {}),
       });
@@ -2745,6 +2749,13 @@ const server = http.createServer((req, res) => {
     if (syncedCount) console.log(`Синхронизирани talon_data с основните данни на колата за ${syncedCount} потвърдени талона.`);
   } catch (e) {
     console.error('Грешка при синхронизация на потвърдени талони:', e.message);
+  }
+
+  try {
+    const ownerFixedCount = db.normalizeAllTalonOwnerNames();
+    if (ownerFixedCount) console.log(`Коригирано изкривено AI-разчитане на "собственик (фирма)" в talon_data за ${ownerFixedCount} коли.`);
+  } catch (e) {
+    console.error('Грешка при нормализация на собственика във talon_data:', e.message);
   }
 
   try {
