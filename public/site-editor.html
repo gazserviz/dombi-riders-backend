@@ -25,7 +25,7 @@
 <body>
 <div id="app-shell" data-active="/site-editor.html" data-title="Начална страница (сайт)"></div>
 
-<div class="wrap" style="max-width:980px;">
+<div class="wrap" id="seWrap" style="max-width:980px;display:none;">
   <p class="hint" style="margin-bottom:18px;">
     Тук се редактират текстовете на публичния сайт <b>dombi.bg</b> — промените излизат на живо веднага след запис (сайтът ги презарежда автоматично при отваряне).
     Списъкът с коли под наем се управлява отделно, в <a href="/fleet-showcase.html">„Витрина на сайта (коли)“</a>.
@@ -401,7 +401,26 @@ async function loadRentRequests() {
   }
 }
 
-loadContent().catch(err => {
+async function init() {
+  // Тази страница исторически рисуваше формите директно в тялото, без да
+  // вика mountShell() — затова нямаше sidebar/меню и нямаше как да се
+  // излезе обратно към останалата част от админ панела. Сега, както
+  // всички по-нови страници, first mount-ваме shell-а (sidebar + topbar),
+  // после преместваме съществуващото съдържание (непроменено) в
+  // #app-content, който mountShell() създава.
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = '<div class="error-box show">Нямате права да редактирате началната страница на сайта.</div>';
+    return;
+  }
+  const wrap = document.getElementById('seWrap');
+  document.getElementById('app-content').appendChild(wrap);
+  wrap.style.display = '';
+  await loadContent();
+}
+
+init().catch(err => {
   document.getElementById('seSaveMsg').textContent = 'Грешка при зареждане: ' + err.message;
   document.getElementById('seSaveMsg').className = 'se-save-msg bad';
 });
