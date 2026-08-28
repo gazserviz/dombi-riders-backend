@@ -190,17 +190,31 @@ async function refresh() {
       const data = Object.fromEntries(new FormData(e.target).entries());
       if (!data.manager_id) delete data.manager_id;
       if (!data.temp_password) delete data.temp_password;
+      const submitBtn = form.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
       try {
         const result = await Api.post(`/api/hr/applications/${form.dataset.id}/approve`, data);
+        // ВАЖНО: одобрената кандидатура вече не е в текущия таб (напр.
+        // "Чакащи"), затова НЕ опресняваме таблицата веднага — refresh() би
+        // премахнал реда (и с него временната парола, показана само сега)
+        // от екрана, преди админът да успее да я прочете/копира. Скриваме
+        // формата (да не се подаде повторно) и показваме съобщението с
+        // изричен бутон за опресняване, натискан от админа, когато е готов.
+        form.style.display = 'none';
         successBox.innerHTML = `Профилът е създаден.<br>
           Имейл: <strong>${result.profile.email}</strong> · Временна парола: <strong>${result.temp_password}</strong><br>
-          Запишете паролата сега — няма да бъде показана отново.<br><br>
-          <a href="/employment-contract-print.html?id=${result.contract.id}" target="_blank" class="btn btn-primary btn-sm">📄 Отвори договора → изпрати за подпис</a>`;
+          <strong style="color:var(--danger,#ff5a5a);">Запишете паролата сега — няма да бъде показана отново.</strong><br><br>
+          <a href="/employment-contract-print.html?id=${result.contract.id}&profile_id=${result.profile.id}" target="_blank" class="btn btn-primary btn-sm">📄 Отвори договора → изпрати за подпис</a>
+          <button type="button" class="btn btn-ghost btn-sm approve-done-btn" style="margin-left:8px;">Готово, опресни списъка</button>`;
         successBox.classList.add('show');
-        await refresh();
+        successBox.querySelector('.approve-done-btn').addEventListener('click', () => {
+          expandedId = null;
+          refresh();
+        });
       } catch (err) {
         errorBox.textContent = err.message;
         errorBox.classList.add('show');
+        submitBtn.disabled = false;
       }
     });
   });
