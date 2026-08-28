@@ -598,9 +598,48 @@ function docActionButtons(url, filename, title) {
     `</span>`;
 }
 
+// малък бутон "копирай" за една стойност (напр. ред от таблица с разчетени
+// от AI данни на талон) — ползва Clipboard API с резервен вариант за по-стари
+// браузъри. Кликовете се хващат централно от делегирания listener по-долу.
+function copyValueButton(value) {
+  if (value == null || value === '') return '';
+  const safeValue = escapeHtml(String(value));
+  return `<button type="button" class="btn btn-ghost btn-sm copy-value-btn" data-value="${safeValue}" title="Копирай" style="padding:1px 7px;font-size:.72rem;margin-left:6px;">📋</button>`;
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      return true;
+    } catch (e2) {
+      return false;
+    }
+  }
+}
+
 document.addEventListener('click', (e) => {
   const printBtn = e.target.closest('.doc-print-btn');
   if (printBtn) { printDocumentUrl(printBtn.dataset.url, printBtn.dataset.title); return; }
   const downloadBtn = e.target.closest('.doc-download-btn');
   if (downloadBtn) { downloadDocumentUrl(downloadBtn.dataset.url, downloadBtn.dataset.filename); return; }
+  const copyBtn = e.target.closest('.copy-value-btn');
+  if (copyBtn) {
+    copyToClipboard(copyBtn.dataset.value).then(ok => {
+      const original = copyBtn.textContent;
+      copyBtn.textContent = ok ? '✓' : '✗';
+      setTimeout(() => { copyBtn.textContent = original; }, 1200);
+    });
+    return;
+  }
 });
