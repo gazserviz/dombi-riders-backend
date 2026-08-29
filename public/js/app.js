@@ -430,11 +430,13 @@ function mountPeriodPicker(host, startInput, endInput, opts) {
   opts = opts || {};
   const wireWeekEnd = opts.wireWeekEnd !== false;
   const useMonthPreset = !!opts.useMonthPreset;
+  const useDayPreset = !!opts.useDayPreset;
   const weekPresetMode = opts.weekPresetMode || 'range';
   const onApply = opts.onApply;
   const weeks = recentWeekOptions(20);
   host.innerHTML = `
     <div class="period-picker">
+      ${useDayPreset ? '<button type="button" class="btn btn-ghost btn-sm" data-pp="today">Днес</button>' : ''}
       <button type="button" class="btn btn-ghost btn-sm" data-pp="this-week">Тази седмица</button>
       <button type="button" class="btn btn-ghost btn-sm" data-pp="last-week">Миналата седмица</button>
       ${useMonthPreset ? '<button type="button" class="btn btn-ghost btn-sm" data-pp="this-month">Този месец</button>' : ''}
@@ -447,6 +449,10 @@ function mountPeriodPicker(host, startInput, endInput, opts) {
     startInput.value = start;
     endInput.value = end;
     if (onApply) onApply(start, end);
+  }
+  const todayBtn = host.querySelector('[data-pp="today"]');
+  if (todayBtn) {
+    todayBtn.addEventListener('click', () => { const t = todayStr(); apply(t, t); });
   }
   host.querySelector('[data-pp="this-week"]').addEventListener('click', () => {
     const s = currentWeekStart(); apply(s, weekPresetMode === 'single' ? s : addDaysStr(s, 6));
