@@ -889,8 +889,12 @@ async function handleApi(req, res, pathname, query) {
       if (removesLastSuperAdmin) {
         return sendJson(res, 400, { error: 'Не може да останете без нито един супер администратор в системата' });
       }
-      const updated = db.updateUser(userMatch[1], body);
-      return sendJson(res, 200, { user: updated });
+      try {
+        const updated = db.updateUser(userMatch[1], body);
+        return sendJson(res, 200, { user: updated });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
     // ръчно нулиране на паролата на служител от админ (напр. забравена
     // парола) — по избор с конкретна нова парола, иначе автогенерирана по
