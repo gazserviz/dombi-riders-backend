@@ -78,6 +78,32 @@ function wireTempPasswordBox(container) {
   closeBtn.addEventListener('click', () => box.remove());
 }
 
+// показва иметo/имейла/телефона на потребителя (статичен изглед на клетката) —
+// използва се и при първоначалното изчертаване на таблицата, и при "Откажи"
+// след натиснат бутон "Редактирай"
+function userCellDisplay(u) {
+  return `
+    <span class="u-name">${escapeHtml(u.full_name)}</span>
+    <span class="u-sub">${escapeHtml(u.email)}</span>
+    ${u.phone ? `<span class="u-sub">${escapeHtml(u.phone)}</span>` : ''}`;
+}
+
+// инлайн форма за редакция на име/имейл/телефон — показва се на мястото на
+// userCellDisplay при натиснат бутон "Редактирай"; паролата НЕ се редактира
+// оттук (за нея си остава отделният бутон "Нова парола" — вижте по-долу)
+function userCellEditForm(u) {
+  return `
+    <form class="edit-user-form" data-id="${u.id}">
+      <div class="field" style="margin-bottom:6px;"><input name="full_name" value="${escapeHtml(u.full_name)}" required placeholder="Пълно име"></div>
+      <div class="field" style="margin-bottom:6px;"><input name="email" type="email" value="${escapeHtml(u.email)}" required placeholder="Имейл"></div>
+      <div class="field" style="margin-bottom:6px;"><input name="phone" value="${escapeHtml(u.phone || '')}" placeholder="Телефон"></div>
+      <div style="display:flex;gap:6px;">
+        <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+        <button type="button" class="btn btn-ghost btn-sm cancel-edit-btn">Откажи</button>
+      </div>
+    </form>`;
+}
+
 function usersTable(users, viewerIsSuperAdmin) {
   return `
     <div class="table-wrap">
@@ -90,11 +116,7 @@ function usersTable(users, viewerIsSuperAdmin) {
             const locked = u.role === 'super_admin' && !viewerIsSuperAdmin;
             return `
             <tr>
-              <td class="user-cell">
-                <span class="u-name">${escapeHtml(u.full_name)}</span>
-                <span class="u-sub">${escapeHtml(u.email)}</span>
-                ${u.phone ? `<span class="u-sub">${escapeHtml(u.phone)}</span>` : ''}
-              </td>
+              <td class="user-cell" id="user-cell-${u.id}">${userCellDisplay(u)}</td>
               <td>
                 ${locked
                   ? `<span class="badge badge-green">${ROLE_LABELS.super_admin}</span>`
@@ -118,6 +140,7 @@ function usersTable(users, viewerIsSuperAdmin) {
               </td>
               <td>
                 <div class="row-actions">
+                  <button class="btn btn-ghost btn-sm edit-user-btn" data-id="${u.id}" ${locked?'disabled':''}>✎ Редактирай</button>
                   <button class="btn btn-ghost btn-sm toggle-status-btn" data-id="${u.id}" data-status="${u.status}" ${locked?'disabled':''}>${u.status==='active'?'Спри':'Активирай'}</button>
                   <button class="btn btn-ghost btn-sm reset-password-btn" data-id="${u.id}" data-name="${escapeHtml(u.full_name)}" ${locked?'disabled':''}>🔑 Нова парола</button>
                 </div>
@@ -217,6 +240,27 @@ async function init() {
         const permissions = { ...(target.permissions || {}), can_view_earnings: chk.checked };
         try { await Api.put(`/api/users/${chk.dataset.id}`, { permissions }); }
         catch (err) { alert(err.message); chk.checked = !chk.checked; }
+      });
+    });
+    document.querySelectorAll('.edit-user-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = users.find(u => u.id === btn.dataset.id);
+        const cell = document.getElementById(`user-cell-${btn.dataset.id}`);
+        cell.innerHTML = userCellEditForm(target);
+        const form = cell.querySelector('.edit-user-form');
+        form.querySelector('.cancel-edit-btn').addEventListener('click', () => {
+          cell.innerHTML = userCellDisplay(target);
+        });
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const data = Object.fromEntries(new FormData(form).entries());
+          try {
+            await Api.put(`/api/users/${target.id}`, data);
+            refreshTable();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
       });
     });
     document.querySelectorAll('.reset-password-btn').forEach(btn => {
