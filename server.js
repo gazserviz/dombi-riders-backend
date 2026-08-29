@@ -1423,12 +1423,16 @@ async function handleApi(req, res, pathname, query) {
     }
 
     // ---- ОБЩА КАСА ---------------------------------------------------------
-    // Един избран профил (обикновено мениджър), чийто портфейл служи за общата
-    // фирмена каса — наемите от коли постъпват тук автоматично при въвеждане
-    // на седмица в "Заплати" (виж db.syncCarRentKasaEntry). Кой е касиерът се
-    // избира САМО от супер администратора; ръчните движения по касата също са
-    // заключени само за super_admin — нарочно НЕ минават през configurable
-    // permissions matrix, за да няма как да бъдат отворени за друга роля.
+    // Един избран профил (обикновено мениджър), чийто портфейл служи за
+    // общата фирмена каса. Тук постъпват само РЕАЛНИ движения на пари в брой:
+    // изплатени заплати (markPayrollPaid), наеми от външни наематели
+    // (addPayment), ремонти (repair-entry), ръчни корекции и платени
+    // комисионни — виж коментара над CASHIER_TX_TYPES в lib/db.js. Наемът на
+    // кола/удръжката по договор НЕ участват тук, а са чиста статистика (виж
+    // /api/finance/non-cash-payroll-stats). Кой е касиерът се избира САМО от
+    // супер администратора; ръчните движения по касата също са заключени само
+    // за super_admin — нарочно НЕ минават през configurable permissions
+    // matrix, за да няма как да бъдат отворени за друга роля.
     if (pathname === '/api/cashier' && req.method === 'GET') {
       const user = requirePermission(req, res, 'cashier', 'view');
       if (!user) return;
@@ -1438,7 +1442,7 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, {
         cashier: cashier ? { id: cashier.id, full_name: cashier.full_name, role: cashier.role } : null,
         balance: db.getCashierBalance(cashierId),
-        transactions: db.listCashierTransactions(cashierId),
+        transactions: db.listCashierTransactions(cashierId, { from: query.from, to: query.to }),
       });
     }
     // връща и списък мениджъри/админи, измежду които супер администраторът
@@ -1462,6 +1466,8 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 400, { error: err.message });
       }
     }
+    // "Друго" — общ ръчен приход/разход по касата; описанието вече е
+    // ЗАДЪЛЖИТЕЛНО (по изрично изискване — трябва да има опис за какво е)
     if (pathname === '/api/cashier/adjustments' && req.method === 'POST') {
       const user = requireSuperAdmin(req, res);
       if (!user) return;
@@ -1471,11 +1477,64 @@ async function handleApi(req, res, pathname, query) {
       if (body.amount == null || isNaN(Number(body.amount)) || Number(body.amount) === 0) {
         return sendJson(res, 400, { error: 'Невалидна сума' });
       }
+      if (!body.note || !String(body.note).trim()) {
+        return sendJson(res, 400, { error: 'Нужен е опис за какво е движението' });
+      }
       const rec = db.addWalletAdjustment({
         user_id: cashierId, amount: Number(body.amount),
-        type: 'cashier_manual', note: body.note || null, created_by: user.id,
+        type: 'cashier_manual', note: body.note, created_by: user.id,
       });
       return sendJson(res, 201, { transaction: rec, balance: db.getCashierBalance(cashierId) });
+    }
+    // Ремонт/разход по кола, платен директно от касата — създава едновременно
+    // запис в сервизната книжка (км по избор) и касов разход
+    if (pathname === '/api/cashier/repair-entry' && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const result = db.addCashierRepairEntry({
+          vehicleId: body.vehicle_id, amount: body.amount, description: body.description,
+          odometerKm: body.odometer_km, serviceDate: body.service_date, createdBy: user.id,
+        });
+        return sendJson(res, 201, result);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    // Движения по банкова сметка — отделен дневник от касата в брой
+    if (pathname === '/api/cashier/bank-movements' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'cashier', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { movements: db.listBankMovements({ from: query.from, to: query.to }) });
+    }
+    if (pathname === '/api/cashier/bank-movements' && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const rec = db.addBankMovement({
+          direction: body.direction, amount: body.amount, description: body.description,
+          movement_date: body.movement_date, created_by: user.id,
+        });
+        return sendJson(res, 201, { movement: rec });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    // обобщение за период (ден/седмица/месец — просто from/to дати): всичко,
+    // което реално мина през касата + банковите движения = ясна печалба
+    if (pathname === '/api/cashier/period-summary' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'cashier', 'view');
+      if (!user) return;
+      return sendJson(res, 200, db.getCashierPeriodSummary({ from: query.from, to: query.to }));
+    }
+    // статистика (НЕ касова!) за наем на коли + удръжки по договор — виж
+    // коментара над CASHIER_TX_TYPES/upsertPayrollEntry в lib/db.js
+    if (pathname === '/api/cashier/non-cash-payroll-stats' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'cashier', 'view');
+      if (!user) return;
+      return sendJson(res, 200, db.getNonCashPayrollStats({ from: query.from, to: query.to }));
     }
 
     // ---- СЧЕТОВОДСТВО (общ финансов отчет + ръчна счетоводна книга) -------
@@ -2135,7 +2194,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requirePermission(req, res, 'payroll', 'finalize');
       if (!user) return;
       const body = await readJsonBody(req);
-      const rec = db.markPayrollPaid(payrollPaidMatch[1], body.paid !== false);
+      const rec = db.markPayrollPaid(payrollPaidMatch[1], body.paid !== false, user.id);
       return sendJson(res, 200, { entry: rec });
     }
 
@@ -2306,6 +2365,37 @@ async function handleApi(req, res, pathname, query) {
       }
       const stats = db.getPartnerStats(targetId, { from: query.from, to: query.to });
       return sendJson(res, 200, stats);
+    }
+
+    // История/маркиране на ПЛАТЕНИ комисионни — за разлика от /stats (което
+    // само изчислява "на живо" колко се дължи), тук се пази трайна следа
+    // кога/за какъв период/колко точно е платено, и се записва като реален
+    // разход в общата каса (виж db.createPartnerCommissionPayment) — заключено
+    // само за super_admin, както всяко друго касово движение.
+    const partnerCommissionPaymentsMatch = pathname.match(/^\/api\/hr\/partners\/([\w-]+)\/commission-payments$/);
+    if (partnerCommissionPaymentsMatch && req.method === 'GET') {
+      const user = requireAuth(req, res);
+      if (!user) return;
+      const targetId = partnerCommissionPaymentsMatch[1];
+      if (targetId !== user.id && !isAdminOrAbove(user)) {
+        return sendJson(res, 403, { error: 'Нямате права за това действие' });
+      }
+      return sendJson(res, 200, { payments: db.listPartnerCommissionPayments({ profileId: targetId }) });
+    }
+    if (partnerCommissionPaymentsMatch && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const targetId = partnerCommissionPaymentsMatch[1];
+      const body = await readJsonBody(req);
+      try {
+        const rec = db.createPartnerCommissionPayment({
+          profileId: targetId, periodFrom: body.period_from, periodTo: body.period_to,
+          amount: body.amount, note: body.note, createdBy: user.id,
+        });
+        return sendJson(res, 201, { payment: rec, cashier_balance: db.getCashierBalance(db.getCashierProfileId()) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
 
     // ---- САМОКАНДИДАТСТВАНЕ (публична форма, без вход) --------------------
@@ -2930,6 +3020,15 @@ const server = http.createServer((req, res) => {
     if (strayRegExpiryFixedCount) console.log(`Премахнато погрешно записано поле "следваща регистрация" от основния запис за ${strayRegExpiryFixedCount} коли.`);
   } catch (e) {
     console.error('Грешка при почистване на "следваща регистрация":', e.message);
+  }
+
+  try {
+    // наемът на кола вече не е касово движение (виж коментара над
+    // CASHIER_TX_TYPES в lib/db.js) — почистваме старите автоматични записи
+    const obsoleteCarRentTxCount = db.cleanupObsoleteCarRentCashierEntries();
+    if (obsoleteCarRentTxCount) console.log(`Премахнати ${obsoleteCarRentTxCount} остарели автоматични записа за "наем на кола" от касата (вече е само статистика).`);
+  } catch (e) {
+    console.error('Грешка при почистване на остарелите записи за наем в касата:', e.message);
   }
 
   try {
