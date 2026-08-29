@@ -19,6 +19,7 @@ const PERIOD_LABELS = { week: 'седмица', month: 'месец' };
 let CURRENT_USER = null;
 let PARTNERS = [];
 let selectedId = null;
+let LAST_STATS = null;
 
 function compSummary(c) {
   if (!c || !c.active) return '<span class="badge badge-muted">Не е зададена</span>';
@@ -117,6 +118,41 @@ async function loadStats() {
         </tbody>
       </table>
     </div>` : ''}`;
+  LAST_STATS = stats;
+}
+
+function paymentsHtml(payments) {
+  if (!payments.length) return '<p class="hint">Няма платени комисионни за този партньор все още.</p>';
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Платено на</th><th>Период</th><th>Сума</th><th>Бележка</th></tr></thead>
+      <tbody>
+        ${payments.map(p => `
+          <tr>
+            <td>${fmtDateTime(p.paid_at)}</td>
+            <td>${fmtDate(p.period_from)} – ${fmtDate(p.period_to)}</td>
+            <td><strong>${fmtMoney(p.amount)}</strong></td>
+            <td>${p.note || ''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+async function loadPayments() {
+  const host = document.getElementById('paymentsHost');
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const { payments } = await Api.get(`/api/hr/partners/${selectedId}/commission-payments`);
+  host.innerHTML = paymentsHtml(payments);
+}
+
+function prefillPaymentForm() {
+  const form = document.getElementById('paymentForm');
+  if (!form) return;
+  const from = document.getElementById('statsFrom').value;
+  const to = document.getElementById('statsTo').value;
+  if (from) form.period_from.value = from;
+  if (to) form.period_to.value = to;
+  if (LAST_STATS && LAST_STATS.commission_owed != null) form.amount.value = LAST_STATS.commission_owed;
 }
 
 async function selectPartner(id) {
@@ -126,6 +162,8 @@ async function selectPartner(id) {
   document.getElementById('detailTitle').textContent = `Партньор: ${partner.full_name}`;
   fillCommissionForm(partner.commission);
   await loadStats();
+  prefillPaymentForm();
+  await loadPayments();
 }
 
 async function init() {
@@ -180,17 +218,37 @@ async function init() {
       </div>
       <button type="button" class="btn btn-ghost btn-sm" id="statsRefreshBtn">Обнови статистиката</button>
       <div id="statsHost" style="margin-top:14px;"></div>
+
+      <div class="panel-head" style="margin-top:22px;"><h2>Плащане на комисионна</h2></div>
+      <p class="hint">Записва действително платена комисионна — с период и сума, за да е ясно кога, за какво и колко е платено. Отразява се и като разход в общата каса (виж „Обща каса“). Само супер администратор.</p>
+      ${CURRENT_USER && CURRENT_USER.role === 'super_admin' ? `
+      <div class="error-box" id="paymentError"></div>
+      <div class="success-box" id="paymentSuccess"></div>
+      <form id="paymentForm">
+        <div class="field-row">
+          <div class="field"><label>Период от *</label><input name="period_from" type="date" required></div>
+          <div class="field"><label>Период до *</label><input name="period_to" type="date" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" min="0" required></div>
+          <div class="field"><label>Бележка</label><input name="note" placeholder="за какво/уточнение"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Маркирай платено</button>
+      </form>` : '<p class="hint">Само супер администратор може да маркира плащане.</p>'}
+
+      <div class="panel-head" style="margin-top:18px;"><h3 style="margin:0;">История на плащанията</h3></div>
+      <div id="paymentsHost" class="loading">Зареждане…</div>
     </div>
   `;
 
   document.getElementById('compTypeSelect').addEventListener('change', toggleCompFields);
-  document.getElementById('statsRefreshBtn').addEventListener('click', loadStats);
+  document.getElementById('statsRefreshBtn').addEventListener('click', async () => { await loadStats(); prefillPaymentForm(); });
 
   const statsFrom = document.getElementById('statsFrom');
   const statsTo = document.getElementById('statsTo');
   mountPeriodPicker(document.getElementById('statsPeriodPicker'), statsFrom, statsTo, {
     wireWeekEnd: false, weekPresetMode: 'single', useMonthPreset: true,
-    onApply: () => { if (selectedId) loadStats(); },
+    onApply: async () => { if (selectedId) { await loadStats(); prefillPaymentForm(); } },
   });
   // по подразбиране предходната седмица — най-честият случай при преглед
   statsFrom.value = previousWeekStart();
@@ -225,6 +283,29 @@ async function init() {
       errorBox.classList.add('show');
     }
   });
+
+  const paymentForm = document.getElementById('paymentForm');
+  if (paymentForm) {
+    paymentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById('paymentError');
+      const successBox = document.getElementById('paymentSuccess');
+      errorBox.classList.remove('show'); successBox.classList.remove('show');
+      const form = e.target;
+      try {
+        await Api.post(`/api/hr/partners/${selectedId}/commission-payments`, {
+          period_from: form.period_from.value, period_to: form.period_to.value,
+          amount: Number(form.amount.value), note: form.note.value || null,
+        });
+        successBox.textContent = 'Комисионната е маркирана като платена.';
+        successBox.classList.add('show');
+        await loadPayments();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  }
 
   await loadPartners();
 }

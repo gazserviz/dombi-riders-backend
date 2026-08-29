@@ -13,25 +13,34 @@
 
 <script src="/js/app.js"></script>
 <script>
+// касови типове (реални пари в брой — виж CASHIER_TX_TYPES в lib/db.js);
+// 'car_rent_income' е оставен само за съвместимост с исторически записи,
+// които вече не се генерират (наемът на кола е чиста статистика оттук нататък)
 const TXN_TYPE_LABELS = {
-  car_rent_income: 'Наем на кола (автоматично)',
-  cashier_manual: 'Ръчно движение',
+  wage_payout: 'Изплатена заработка',
+  external_rent_income: 'Наем от външен наемател',
+  external_rent_expense: 'Разход по договор (напр. депозит)',
+  vehicle_repair: 'Ремонт на кола',
+  commission_payout: 'Изплатена комисионна',
+  cashier_manual: 'Друго (ръчно)',
+  car_rent_income: 'Наем на кола (стар, вече неактивен тип)',
   admin_adjustment: 'Ръчна корекция',
   transfer: 'Превод',
 };
 function txnTypeLabel(t) { return TXN_TYPE_LABELS[t] || t; }
 
 let CURRENT_USER = null;
+let VEHICLES = [];
 
 function summaryHtml(cashier, balance) {
   if (!cashier) {
-    return `<div class="panel"><p class="hint">Все още не е избран касиер — общата каса няма да натрупва наеми от коли, докато супер администраторът не избере кой служител я управлява.</p></div>`;
+    return `<div class="panel"><p class="hint">Все още не е избран касиер — общата каса няма да натрупва движения, докато супер администраторът не избере кой служител я управлява.</p></div>`;
   }
   return `
     <div class="stat-grid">
       <div class="stat-card"><div class="label">Касиер</div><div class="value" style="font-size:1.1rem;">${cashier.full_name}</div>
         <div class="sub">${ROLE_LABELS[cashier.role] || cashier.role}</div></div>
-      <div class="stat-card"><div class="label">Текущо салдо в касата</div><div class="value ${balance >= 0 ? 'green' : 'warn'}">${fmtMoney(balance)}</div></div>
+      <div class="stat-card"><div class="label">Текуща наличност в брой</div><div class="value ${balance >= 0 ? 'green' : 'warn'}">${fmtMoney(balance)}</div></div>
     </div>`;
 }
 
@@ -52,19 +61,77 @@ function transactionsHtml(transactions) {
     </table></div>`;
 }
 
-function manualFormHtml() {
+function bankMovementsHtml(movements) {
+  if (!movements.length) return '<p class="hint">Няма движения по банкова сметка за периода.</p>';
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Дата</th><th>Описание</th><th>Сума</th></tr></thead>
+      <tbody>
+        ${movements.map(m => `
+          <tr>
+            <td>${fmtDate(m.movement_date)}</td>
+            <td>${m.description}</td>
+            <td style="color:${m.direction === 'income' ? 'var(--green)' : 'var(--danger)'};font-weight:700;">${m.direction === 'income' ? '+' : '-'}${fmtMoney(m.amount)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+// формата за корекция по касата — полетата се сменят според избрания тип
+function adjustmentFormHtml() {
   return `
     <div class="panel">
-      <div class="panel-head"><h2>Ръчно движение (само супер администратор)</h2></div>
-      <p class="hint">Положителна сума = внасяне в касата, отрицателна = теглене от касата.</p>
-      <div class="error-box" id="manualError"></div>
-      <div class="success-box" id="manualSuccess"></div>
-      <form id="manualForm">
-        <div class="field-row">
-          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" required></div>
-          <div class="field"><label>Бележка</label><input name="note" placeholder="напр. теглене в брой"></div>
+      <div class="panel-head"><h2>Ново движение по касата (само супер администратор)</h2></div>
+      <p class="hint">Изберете вид движение — полетата отдолу ще се сменят според типа. Опис „за какво е“ е задължителен за всеки тип.</p>
+      <div class="error-box" id="adjError"></div>
+      <div class="success-box" id="adjSuccess"></div>
+      <form id="adjForm">
+        <div class="field"><label>Вид движение *</label>
+          <select name="kind" id="adjKindSelect">
+            <option value="other">Друго (общ приход/разход в брой)</option>
+            <option value="repair">Ремонт / разход по кола</option>
+            <option value="bank">Движение по банкова сметка</option>
+          </select>
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">Запиши движение</button>
+
+        <div id="otherFields">
+          <div class="field-row">
+            <div class="field"><label>Сума (€) *</label><input name="other_amount" type="number" step="0.01"></div>
+            <div class="field"><label>Опис *</label><input name="other_note" placeholder="напр. теглене в брой за дребни разходи"></div>
+          </div>
+          <p class="hint">Положителна сума = внасяне в касата, отрицателна = теглене.</p>
+        </div>
+
+        <div id="repairFields" style="display:none;">
+          <div class="field-row">
+            <div class="field"><label>Кола *</label>
+              <select name="repair_vehicle_id"><option value="">— избери —</option>
+                ${VEHICLES.map(v => `<option value="${v.id}">${v.plate_number} — ${v.make} ${v.model}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field"><label>Сума (€) *</label><input name="repair_amount" type="number" step="0.01" min="0"></div>
+          </div>
+          <div class="field"><label>Опис *</label><input name="repair_description" placeholder="напр. смяна на накладки"></div>
+          <div class="field-row">
+            <div class="field"><label>Пробег при ремонта (км)</label><input name="repair_odometer_km" type="number" min="0"></div>
+            <div class="field"><label>Дата</label><input name="repair_service_date" type="date"></div>
+          </div>
+          <p class="hint">Записва се автоматично и в сервизната книжка на колата. Пробегът не е задължителен.</p>
+        </div>
+
+        <div id="bankFields" style="display:none;">
+          <div class="field-row">
+            <div class="field"><label>Тип *</label>
+              <select name="bank_direction"><option value="income">Постъпление</option><option value="expense">Плащане</option></select>
+            </div>
+            <div class="field"><label>Сума (€) *</label><input name="bank_amount" type="number" step="0.01" min="0"></div>
+          </div>
+          <div class="field"><label>Опис *</label><input name="bank_note" placeholder="напр. банков превод към доставчик"></div>
+          <div class="field"><label>Дата</label><input name="bank_date" type="date"></div>
+          <p class="hint">Движенията по банкова сметка се пазят отделно от наличността в брой, но участват в общата печалба за периода.</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-sm" style="margin-top:10px;">Запиши движение</button>
       </form>
     </div>`;
 }
@@ -83,6 +150,38 @@ function settingsFormHtml(cashierProfileId, candidates) {
     </div>`;
 }
 
+function periodSummaryHtml(summary, nonCash) {
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>Обобщение за периода</h2></div>
+      <div id="summaryPeriodPicker"></div>
+      <div class="field-row">
+        <div class="field"><label>От</label><input type="date" id="summaryFrom"></div>
+        <div class="field"><label>До</label><input type="date" id="summaryTo"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="summaryRefreshBtn">Обнови</button>
+
+      <div style="margin-top:16px;">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="label">Приход в брой</div><div class="value green">${fmtMoney(summary.cash.income)}</div></div>
+          <div class="stat-card"><div class="label">Разход в брой</div><div class="value warn">${fmtMoney(summary.cash.expense)}</div></div>
+          <div class="stat-card"><div class="label">Банка — нето</div><div class="value ${summary.bank.net >= 0 ? 'green' : 'warn'}">${fmtMoney(summary.bank.net)}</div></div>
+          <div class="stat-card"><div class="label">Обща печалба за периода</div><div class="value ${summary.total_profit >= 0 ? 'green' : 'warn'}" style="font-size:1.4rem;">${fmtMoney(summary.total_profit)}</div></div>
+        </div>
+        <p class="hint" style="margin-top:10px;">Печалбата тук е от РЕАЛНИ пари — каса в брой + банкова сметка. Не включва наема на кола/удръжките по договор (те са отделна статистика по-долу, защото никога не са напускали „джоба“ на шофьора в брой).</p>
+      </div>
+
+      <div class="panel" style="margin-top:16px;background:var(--bg-alt,#f6f6f8);">
+        <div class="panel-head"><h3 style="margin:0;">Статистика — НЕ участва в касата</h3></div>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="label">Наем на коли от удръжки</div><div class="value">${fmtMoney(nonCash.car_rent_total)}</div></div>
+          <div class="stat-card"><div class="label">Удръжки по договор (такса)</div><div class="value">${fmtMoney(nonCash.deduction_total)}</div></div>
+          <div class="stat-card"><div class="label">Общо (некасово)</div><div class="value">${fmtMoney(nonCash.total)}</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
 async function loadCashier() {
   const host = document.getElementById('cashierHost');
   host.innerHTML = `<div class="loading">Зареждане…</div>`;
@@ -91,32 +190,86 @@ async function loadCashier() {
 
   host.innerHTML = `
     ${summaryHtml(cashier, balance)}
-    ${isSuperAdmin ? manualFormHtml() : ''}
+    ${isSuperAdmin ? adjustmentFormHtml() : ''}
     <div class="panel">
-      <div class="panel-head"><h2>Движения</h2></div>
+      <div class="panel-head"><h2>Движения в брой</h2></div>
       ${transactionsHtml(transactions)}
     </div>
   `;
 
   if (isSuperAdmin) {
-    document.getElementById('manualForm').addEventListener('submit', async (e) => {
+    const kindSelect = document.getElementById('adjKindSelect');
+    function syncKindFields() {
+      const k = kindSelect.value;
+      document.getElementById('otherFields').style.display = k === 'other' ? '' : 'none';
+      document.getElementById('repairFields').style.display = k === 'repair' ? '' : 'none';
+      document.getElementById('bankFields').style.display = k === 'bank' ? '' : 'none';
+    }
+    kindSelect.addEventListener('change', syncKindFields);
+    syncKindFields();
+
+    document.getElementById('adjForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const errorBox = document.getElementById('manualError');
-      const successBox = document.getElementById('manualSuccess');
+      const errorBox = document.getElementById('adjError');
+      const successBox = document.getElementById('adjSuccess');
       errorBox.classList.remove('show'); successBox.classList.remove('show');
       const data = Object.fromEntries(new FormData(e.target).entries());
       try {
-        await Api.post('/api/cashier/adjustments', { amount: Number(data.amount), note: data.note || null });
+        if (data.kind === 'other') {
+          await Api.post('/api/cashier/adjustments', { amount: Number(data.other_amount), note: data.other_note || null });
+        } else if (data.kind === 'repair') {
+          await Api.post('/api/cashier/repair-entry', {
+            vehicle_id: data.repair_vehicle_id, amount: Number(data.repair_amount),
+            description: data.repair_description, odometer_km: data.repair_odometer_km || null,
+            service_date: data.repair_service_date || null,
+          });
+        } else if (data.kind === 'bank') {
+          await Api.post('/api/cashier/bank-movements', {
+            direction: data.bank_direction, amount: Number(data.bank_amount),
+            description: data.bank_note, movement_date: data.bank_date || null,
+          });
+        }
         successBox.textContent = 'Записано.';
         successBox.classList.add('show');
         e.target.reset();
+        syncKindFields();
         await loadCashier();
+        await loadBankMovements();
+        await loadSummary();
       } catch (err) {
         errorBox.textContent = err.message;
         errorBox.classList.add('show');
       }
     });
   }
+}
+
+async function loadBankMovements() {
+  const host = document.getElementById('bankMovementsHost');
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const { movements } = await Api.get('/api/cashier/bank-movements');
+  host.innerHTML = bankMovementsHtml(movements);
+}
+
+async function loadSummary() {
+  const from = document.getElementById('summaryFrom') ? document.getElementById('summaryFrom').value : '';
+  const to = document.getElementById('summaryTo') ? document.getElementById('summaryTo').value : '';
+  const qs = new URLSearchParams();
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  const [summary, nonCash] = await Promise.all([
+    Api.get(`/api/cashier/period-summary?${qs.toString()}`),
+    Api.get(`/api/cashier/non-cash-payroll-stats?${qs.toString()}`),
+  ]);
+  document.getElementById('summaryHost').innerHTML = periodSummaryHtml(summary, nonCash);
+  const summaryFrom = document.getElementById('summaryFrom');
+  const summaryTo = document.getElementById('summaryTo');
+  summaryFrom.value = from; summaryTo.value = to;
+  mountPeriodPicker(document.getElementById('summaryPeriodPicker'), summaryFrom, summaryTo, {
+    wireWeekEnd: false, weekPresetMode: 'single', useMonthPreset: true, useDayPreset: true,
+    onApply: loadSummary,
+  });
+  document.getElementById('summaryRefreshBtn').addEventListener('click', loadSummary);
 }
 
 async function loadSettings() {
@@ -149,12 +302,22 @@ async function init() {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате общата каса.</div>`;
     return;
   }
+  if (CURRENT_USER.role === 'super_admin') {
+    try { const { vehicles } = await Api.get('/api/vehicles'); VEHICLES = vehicles; } catch (e) { /* по избор */ }
+  }
   document.getElementById('app-content').innerHTML = `
     <div id="settingsHost"></div>
+    <div id="summaryHost" class="loading">Зареждане…</div>
     <div id="cashierHost" class="loading">Зареждане…</div>
+    <div class="panel">
+      <div class="panel-head"><h2>Движения по банкова сметка</h2></div>
+      <div id="bankMovementsHost" class="loading">Зареждане…</div>
+    </div>
   `;
   if (CURRENT_USER.role === 'super_admin') await loadSettings();
+  await loadSummary();
   await loadCashier();
+  await loadBankMovements();
 }
 init();
 </script>
