@@ -1284,6 +1284,39 @@ async function handleApi(req, res, pathname, query) {
       return sendBuffer(res, 200, result.buffer, { contentType: result.contentType, filename: result.filename });
     }
 
+    // Депозит по договор за наем — вземане/връщане в брой. Съзнателно САМО
+    // super_admin (както всички други касови действия, виж repair-entry/
+    // bank-movements/adjustments по-горе) — НЕ през конфигурируемата матрица
+    // с права, за да не може по грешка да се отвори на по-нисша роля.
+    const contractDepositTakeMatch = pathname.match(/^\/api\/contracts\/([\w-]+)\/deposit\/take$/);
+    if (contractDepositTakeMatch && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const result = db.addContractDeposit({
+          contractId: contractDepositTakeMatch[1], amount: body.amount, note: body.note, createdBy: user.id,
+        });
+        return sendJson(res, 201, result);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    const contractDepositReturnMatch = pathname.match(/^\/api\/contracts\/([\w-]+)\/deposit\/return$/);
+    if (contractDepositReturnMatch && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const result = db.returnContractDeposit({
+          contractId: contractDepositReturnMatch[1], amount: body.amount, note: body.note, createdBy: user.id,
+        });
+        return sendJson(res, 201, result);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // ---- PAYMENTS (приходи/разходи) -----------------------------------
     if (pathname === '/api/payments' && req.method === 'GET') {
       const user = requirePermission(req, res, 'contracts', 'view');
