@@ -29,6 +29,20 @@ function balanceCell(c) {
   return `<span style="color:var(--green);font-weight:600;">Платено до ${fmtDate(b.paid_through_date)}</span>`;
 }
 
+// "Депозит" колоната — извежда се на живо от касовите транзакции (виж
+// getContractDepositState в lib/db.js), не е флаг на самия договор, за да
+// поддържа и частично връщане (напр. удържане за щета).
+function depositCell(c) {
+  const d = c.deposit;
+  if (!c.deposit_amount && (!d || !d.taken)) return '<span class="hint">без депозит</span>';
+  if (!d || !d.taken) return `<span class="hint">не е взет (${fmtMoney(c.deposit_amount)})</span>`;
+  if (d.currently_held > 0) {
+    return `<span style="color:var(--green);font-weight:700;">Държим ${fmtMoney(d.currently_held)}</span>` +
+      (d.returned ? `<br><span class="hint">частично върнат ${fmtMoney(d.returned_amount)}</span>` : '');
+  }
+  return `<span class="hint">върнат изцяло (${fmtMoney(d.returned_amount)})</span>`;
+}
+
 async function init() {
   const user = await mountShell();
   if (!user) return;
@@ -44,6 +58,11 @@ async function init() {
   const contractsById = Object.fromEntries(contracts.map(c => [c.id, c]));
 
   const canEdit = ['admin','manager','super_admin'].includes(user.role);
+  // депозитните действия (вземане/връщане) са САМО super_admin — сървърът ги
+  // налага строго (виж requireSuperAdmin в server.js), затова тук бутоните се
+  // показват само на super_admin, за да не се показва действие, което ще
+  // получи 403.
+  const canManageDeposit = user.role === 'super_admin';
 
   content.innerHTML = `
     <div class="toolbar no-print"><div class="spacer"></div>
@@ -54,11 +73,12 @@ async function init() {
     <div class="panel">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>№</th><th>Кола</th><th>Наемател</th><th>Период</th><th>Наем</th><th>Дължи</th><th>Статус</th><th></th></tr></thead>
+          <thead><tr><th>№</th><th>Кола</th><th>Наемател</th><th>Период</th><th>Наем</th><th>Дължи</th><th>Депозит</th><th>Статус</th><th></th></tr></thead>
           <tbody>
             ${contracts.length ? contracts.map(c => {
               const v = vehiclesById[c.vehicle_id];
               const [label, cls] = STATUS_LABELS[c.status] || [c.status, 'badge-muted'];
+              const d = c.deposit;
               return `<tr>
                 <td><strong>${c.contract_number}</strong></td>
                 <td>${v ? v.plate_number+' — '+v.make+' '+v.model : c.vehicle_id}</td>
@@ -66,6 +86,7 @@ async function init() {
                 <td>${fmtDate(c.start_date)} — ${c.end_date?fmtDate(c.end_date):'—'}</td>
                 <td>${fmtMoney(c.rate_amount)} / ${c.rate_period==='week'?'седмица':c.rate_period==='month'?'месец':'ден'}</td>
                 <td>${balanceCell(c)}</td>
+                <td>${depositCell(c)}</td>
                 <td>${canEdit ? `
                   <select class="statusSelect no-print" data-id="${c.id}" style="width:auto;padding:5px 8px;font-size:.76rem;">
                     ${Object.entries(STATUS_LABELS).map(([val,[lbl]]) => `<option value="${val}" ${c.status===val?'selected':''}>${lbl}</option>`).join('')}
@@ -75,9 +96,11 @@ async function init() {
                 <td class="no-print">
                   <a class="btn btn-ghost btn-sm" href="/contract-print.html?id=${c.id}">🖨 Печат</a>
                   ${canEdit && c.balance ? `<button type="button" class="btn btn-primary btn-sm paymentBtn" data-id="${c.id}" style="margin-left:6px;">💰 Плащане</button>` : ''}
+                  ${canManageDeposit && !(d && d.currently_held > 0) ? `<button type="button" class="btn btn-ghost btn-sm depositTakeBtn" data-id="${c.id}" style="margin-left:6px;">💵 Вземи депозит</button>` : ''}
+                  ${canManageDeposit && d && d.currently_held > 0 ? `<button type="button" class="btn btn-ghost btn-sm depositReturnBtn" data-id="${c.id}" style="margin-left:6px;">↩️ Върни депозит</button>` : ''}
                 </td>
               </tr>`;
-            }).join('') : `<tr><td colspan="8" class="empty-state">Няма договори за наем.</td></tr>`}
+            }).join('') : `<tr><td colspan="9" class="empty-state">Няма договори за наем.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -95,6 +118,23 @@ async function init() {
           <div class="modal-actions">
             <button type="button" class="btn btn-ghost btn-sm" id="paymentCancelBtn">Отказ</button>
             <button type="submit" class="btn btn-primary btn-sm">Запази плащането</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="modal-overlay" id="depositModal">
+      <div class="modal-box">
+        <h3 id="depositModalTitle">Депозит</h3>
+        <p class="hint" id="depositModalHint"></p>
+        <div class="error-box" id="depositError"></div>
+        <form id="depositForm">
+          <input type="hidden" name="contract_id">
+          <input type="hidden" name="mode">
+          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+          <div class="field"><label>Бележка</label><input name="note" placeholder="напр. удържане за щета"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="depositCancelBtn">Отказ</button>
+            <button type="submit" class="btn btn-primary btn-sm" id="depositSubmitBtn">Запази</button>
           </div>
         </form>
       </div>
@@ -160,6 +200,67 @@ async function init() {
     } catch (err) {
       paymentError.textContent = err.message;
       paymentError.classList.add('show');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  // ---- вземане/връщане на депозит по договор — виж canManageDeposit по-горе
+  // (само super_admin), сървърът налага същото ограничение строго ----
+  const depositModal = document.getElementById('depositModal');
+  const depositForm = document.getElementById('depositForm');
+  const depositError = document.getElementById('depositError');
+  const depositModalTitle = document.getElementById('depositModalTitle');
+  const depositModalHint = document.getElementById('depositModalHint');
+  const depositSubmitBtn = document.getElementById('depositSubmitBtn');
+  function openDepositModal(contractId, mode) {
+    const c = contractsById[contractId];
+    if (!c) return;
+    depositError.classList.remove('show');
+    depositForm.reset();
+    depositForm.contract_id.value = contractId;
+    depositForm.mode.value = mode;
+    const d = c.deposit;
+    if (mode === 'take') {
+      depositModalTitle.textContent = 'Вземане на депозит';
+      depositModalHint.textContent = `${c.renter_name || 'Наемателят'} — договорен депозит ${fmtMoney(c.deposit_amount)}.`;
+      depositForm.amount.value = c.deposit_amount || '';
+      depositSubmitBtn.textContent = 'Запиши вземане';
+    } else {
+      depositModalTitle.textContent = 'Връщане на депозит';
+      depositModalHint.textContent = `${c.renter_name || 'Наемателят'} — в момента държим ${fmtMoney(d.currently_held)}.`;
+      depositForm.amount.value = d.currently_held || '';
+      depositForm.amount.max = d.currently_held;
+      depositSubmitBtn.textContent = 'Запиши връщане';
+    }
+    depositModal.classList.add('show');
+  }
+  function closeDepositModal() { depositModal.classList.remove('show'); }
+  document.querySelectorAll('.depositTakeBtn').forEach(btn => {
+    btn.addEventListener('click', () => openDepositModal(btn.dataset.id, 'take'));
+  });
+  document.querySelectorAll('.depositReturnBtn').forEach(btn => {
+    btn.addEventListener('click', () => openDepositModal(btn.dataset.id, 'return'));
+  });
+  document.getElementById('depositCancelBtn').addEventListener('click', closeDepositModal);
+  depositModal.addEventListener('click', (e) => { if (e.target === depositModal) closeDepositModal(); });
+  depositForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    depositError.classList.remove('show');
+    const data = Object.fromEntries(new FormData(depositForm).entries());
+    const submitBtn = depositForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      const endpoint = data.mode === 'take' ? 'take' : 'return';
+      await Api.post(`/api/contracts/${data.contract_id}/deposit/${endpoint}`, {
+        amount: Number(data.amount),
+        note: data.note || undefined,
+      });
+      closeDepositModal();
+      init();
+    } catch (err) {
+      depositError.textContent = err.message;
+      depositError.classList.add('show');
     } finally {
       submitBtn.disabled = false;
     }

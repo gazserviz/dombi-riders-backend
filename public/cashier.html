@@ -19,10 +19,12 @@
 const TXN_TYPE_LABELS = {
   wage_payout: 'Изплатена заработка',
   external_rent_income: 'Наем от външен наемател',
-  external_rent_expense: 'Разход по договор (напр. депозит)',
+  external_rent_expense: 'Разход по договор за наем',
   vehicle_repair: 'Ремонт на кола',
   commission_payout: 'Изплатена комисионна',
   cashier_manual: 'Друго (ръчно)',
+  deposit_received: 'Взет депозит по договор',
+  deposit_returned: 'Върнат депозит по договор',
   car_rent_income: 'Наем на кола (стар, вече неактивен тип)',
   admin_adjustment: 'Ръчна корекция',
   transfer: 'Превод',
@@ -169,6 +171,16 @@ function periodSummaryHtml(summary, nonCash) {
           <div class="stat-card"><div class="label">Обща печалба за периода</div><div class="value ${summary.total_profit >= 0 ? 'green' : 'warn'}" style="font-size:1.4rem;">${fmtMoney(summary.total_profit)}</div></div>
         </div>
         <p class="hint" style="margin-top:10px;">Печалбата тук е от РЕАЛНИ пари — каса в брой + банкова сметка. Не включва наема на кола/удръжките по договор (те са отделна статистика по-долу, защото никога не са напускали „джоба“ на шофьора в брой).</p>
+      </div>
+
+      <div class="panel" style="margin-top:16px;background:var(--bg-alt,#f6f6f8);">
+        <div class="panel-head"><h3 style="margin:0;">Депозити по договори за наем</h3></div>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="label">Взети депозити за периода</div><div class="value">${fmtMoney(summary.deposits.received_in_period)}</div></div>
+          <div class="stat-card"><div class="label">Върнати депозити за периода</div><div class="value">${fmtMoney(summary.deposits.returned_in_period)}</div></div>
+          <div class="stat-card"><div class="label">Общо задържани в момента</div><div class="value ${summary.deposits.currently_held_total > 0 ? 'warn' : ''}">${fmtMoney(summary.deposits.currently_held_total)}</div></div>
+        </div>
+        <p class="hint" style="margin-top:10px;">Депозитите са реални пари в касата (влизат в наличността в брой), но НЕ са приход/печалба на фирмата — задължение са за връщане на наемателя. „Общо задържани в момента“ е текущо състояние по всички договори, не е ограничено до избрания период.</p>
       </div>
 
       <div class="panel" style="margin-top:16px;background:var(--bg-alt,#f6f6f8);">
