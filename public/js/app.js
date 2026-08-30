@@ -374,7 +374,20 @@ async function mountShell() {
 // Седмиците следват ISO 8601 (понеделник — начало), както реалните данни
 // от Bolt/Glovo (week_start винаги е понеделник).
 // ---------------------------------------------------------------------------
-function isoDateOnly(dt) { return dt.toISOString().slice(0, 10); }
+// ВАЖНО: НЕ ползваме dt.toISOString() тук — то винаги връща датата в UTC, а
+// навсякъде другаде в тези помощни функции (mondayOf, addDaysStr и т.н.)
+// боравим с ЛОКАЛНИ компоненти на датата (getDate/setDate/getDay). В часови
+// пояс пред UTC (напр. България, UTC+2/+3) полунощ по локално време пада в
+// ПРЕДИШНИЯ ден по UTC — с toISOString() всяка дата (и оттам всички седмични
+// граници навсякъде в системата — каса, заплати, партньори...) излизаше с
+// един ден назад спрямо реалната. Затова тук строим низа директно от
+// локалните getFullYear/getMonth/getDate, а не през UTC конверсия.
+function isoDateOnly(dt) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 function addDaysStr(dateStr, n) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDateOnly(d); }
 function mondayOf(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
