@@ -48,7 +48,8 @@ let VEHICLES = [];
 let calYear, calMonth; // 0-based month
 let selectedDay = null; // 'YYYY-MM-DD' or null
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+// todayStr() идва от app.js (споделена, поправена версия — виж isoDateOnly
+// там за обяснение на бъга с UTC/локална дата, който бе оправен тук).
 function toDateStr(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
 function reservationsCoveringDay(day) {

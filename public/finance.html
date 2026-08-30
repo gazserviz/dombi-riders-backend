@@ -28,8 +28,10 @@ let CURRENT_USER = null;
 let REPORT = null;
 let GRANULARITY = 'week';
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
-function daysAgoStr(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
+// todayStr() идва от app.js (споделена, поправена версия — виж isoDateOnly
+// там за обяснение на бъга с UTC/локална дата, който бе оправен). Тук само
+// добавяме daysAgoStr, изразено чрез споделената addDaysStr (също от app.js).
+function daysAgoStr(n) { return addDaysStr(todayStr(), -n); }
 
 function isoWeekStart(dateStr) {
   const d = new Date(dateStr + 'T00:00:00Z');
