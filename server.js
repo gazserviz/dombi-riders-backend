@@ -1363,6 +1363,8 @@ async function handleApi(req, res, pathname, query) {
       const wallets = db.listUsers().map(u => ({
         user_id: u.id, full_name: u.full_name, role: u.role,
         balance: db.getWalletBalance(u.id),
+        // ЕГН/Bolt/Glovo ID — за да се вижда шофьорът навсякъде (виж driverIdLine в app.js)
+        egn: u.egn || null, external_ids: u.external_ids || null,
       }));
       return sendJson(res, 200, { wallets });
     }
@@ -1786,6 +1788,10 @@ async function handleApi(req, res, pathname, query) {
         driver_license_expiry: u.driver_license_expiry || null,
         next_alert: nextAlertByProfile[u.id] || null,
         platforms: platformsByProfile[u.id] ? [...platformsByProfile[u.id]] : [],
+        // ЕГН/Bolt/Glovo ID — за списъка "Всички служители" (виж driverIdLine
+        // в app.js); ЕГН се маскира на клиента, external_ids се показват изцяло
+        egn: u.egn || null,
+        external_ids: u.external_ids || null,
       }));
       return sendJson(res, 200, { employees });
     }
