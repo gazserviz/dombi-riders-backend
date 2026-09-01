@@ -105,6 +105,38 @@ function escapeHtml(str) {
 }
 
 // ---------------------------------------------------------------------------
+// ID НОМЕРА НА ШОФЬОРИ — показват се навсякъде, където се вижда шофьор
+// (users.html, personnel.html, assignments.html, payroll.html, wallet.html,
+// leave.html и т.н.), за бързо сверяване с Bolt/Glovo износи и документи.
+// ЕГН е лични данни — тук винаги маскирано (последни 4 цифри), както вече
+// беше в personnel-detail.html; пълният ЕГН се вижда само там (бутон
+// "Покажи"). Bolt/Glovo ID-тата не са лични данни (акаунт номера на
+// платформа), затова се показват изцяло.
+// ---------------------------------------------------------------------------
+function maskEgn(egn) {
+  const s = String(egn || '').trim();
+  if (!s) return '';
+  return s.length > 4 ? '•'.repeat(s.length - 4) + s.slice(-4) : s;
+}
+
+// компактен ред с ЕГН/Glovo/Bolt ID под името на шофьора — връща '' ако
+// потребителят не е шофьор или няма нито едно от тези полета попълнено
+function driverIdLine(u) {
+  if (!u || u.role !== 'driver') return '';
+  const ext = u.external_ids || {};
+  const parts = [];
+  if (u.egn) parts.push(`ЕГН ${maskEgn(u.egn)}`);
+  if (ext.glovo_courier_id) parts.push(`Glovo ${escapeHtml(ext.glovo_courier_id)}`);
+  if (ext.bolt_courier_uid) parts.push(`Bolt ${escapeHtml(ext.bolt_courier_uid)}`);
+  if (!parts.length) return '';
+  const full = parts.join(' · ');
+  // собствено overflow/ellipsis, независимо от родителската клетка (много от
+  // таблиците, в които се вгражда, имат white-space:nowrap на самата <td>,
+  // което не съкращава вложени блокови елементи автоматично)
+  return `<div class="hint" title="${escapeHtml(full)}" style="margin-top:2px;font-size:.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">${full}</div>`;
+}
+
+// ---------------------------------------------------------------------------
 // слепва запазена в базата конфигурация на менюто (само label + ред) върху
 // базовия NAV масив от кода. href/икона/roles ВИНАГИ идват от кода — конфиг
 // може само да преименува и пренарежда, никога да не разкрие/скрие страница
