@@ -223,7 +223,7 @@ async function loadAdminOverview() {
       <tbody>
         ${wallets.map(w => `
           <tr>
-            <td>${w.full_name}</td><td>${ROLE_LABELS[w.role] || w.role}</td><td>${fmtMoney(w.balance)}</td>
+            <td>${w.full_name}${driverIdLine(w)}</td><td>${ROLE_LABELS[w.role] || w.role}</td><td>${fmtMoney(w.balance)}</td>
             <td><button type="button" class="btn btn-ghost btn-sm view-wallet-btn" data-id="${w.user_id}" data-name="${w.full_name}">Приходи/разходи →</button></td>
           </tr>`).join('')}
       </tbody>

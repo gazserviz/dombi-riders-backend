@@ -33,6 +33,9 @@ let DIRECTORY = [];
 // с исторически седмични заплати на спрян служител иначе показва суровото ID
 // вместо името му (виж loadPayrollStats)
 let ALL_NAMES_BY_ID = {};
+// пълни профили (за ЕГН/Bolt/Glovo ID под името в разбивката по служител —
+// виж driverIdLine в app.js), само за admin/manager (виж init())
+let ALL_PROFILES_BY_ID = {};
 let selectedProfileId = null;
 let earningsVisible = true;
 
@@ -332,7 +335,7 @@ async function loadPayrollStats() {
         <tbody>
           ${profileRows.map(r => `
             <tr>
-              <td><a class="employee-name-link" href="/personnel-detail.html?id=${r.id}">${r.name}</a></td>
+              <td><a class="employee-name-link" href="/personnel-detail.html?id=${r.id}">${r.name}</a>${driverIdLine(ALL_PROFILES_BY_ID[r.id] || {})}</td>
               <td>${r.weeks}</td>
               <td>${r.orders}</td>
               <td>${fmtMoney(r.gross)}</td>
@@ -364,6 +367,7 @@ async function init() {
     try {
       const { users: allUsers } = await Api.get('/api/users');
       ALL_NAMES_BY_ID = Object.fromEntries(allUsers.map(u => [u.id, u.full_name]));
+      ALL_PROFILES_BY_ID = Object.fromEntries(allUsers.map(u => [u.id, u]));
     } catch (e) { /* не е фатално — таблицата просто ще пада обратно към DIRECTORY */ }
   }
 

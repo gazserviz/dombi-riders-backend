@@ -85,7 +85,8 @@ function userCellDisplay(u) {
   return `
     <span class="u-name">${escapeHtml(u.full_name)}</span>
     <span class="u-sub">${escapeHtml(u.email)}</span>
-    ${u.phone ? `<span class="u-sub">${escapeHtml(u.phone)}</span>` : ''}`;
+    ${u.phone ? `<span class="u-sub">${escapeHtml(u.phone)}</span>` : ''}
+    ${driverIdLine(u)}`;
 }
 
 // инлайн форма за редакция на име/имейл/телефон — показва се на мястото на

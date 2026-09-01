@@ -69,7 +69,7 @@ function personnelTable(employees) {
         <tbody>
           ${sorted.map(e => `
             <tr class="clickable" onclick="window.location='/personnel-detail.html?id=${e.id}'" title="${escapeHtml(e.full_name)}">
-              <td><a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a></td>
+              <td><a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a>${driverIdLine(e)}</td>
               <td title="${escapeHtml(e.email)}">${e.email}</td>
               <td>${e.phone || '<span class="hint">—</span>'}</td>
               <td>${e.city || '<span class="hint">—</span>'}</td>

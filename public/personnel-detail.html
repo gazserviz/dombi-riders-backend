@@ -92,6 +92,10 @@ async function loadFile() {
           <tr><td><strong>Роля</strong></td><td>${ROLE_LABELS[profile.role] || profile.role}</td></tr>
           <tr><td><strong>Мениджър</strong></td><td>${manager ? manager.full_name : '<span class="hint">не е зададен</span>'}</td></tr>
           <tr><td><strong>ЕГН</strong></td><td>${profile.egn ? `<span id="egnMasked">${'•'.repeat(Math.max(profile.egn.length - 4, 0))}${profile.egn.slice(-4)}</span><span id="egnFull" style="display:none;">${profile.egn}</span> <button type="button" class="btn btn-ghost btn-sm" id="egnToggleBtn" style="padding:2px 8px;font-size:.68rem;">Покажи</button>` : '<span class="hint">—</span>'}</td></tr>
+          ${profile.role === 'driver' ? `
+          <tr><td><strong>Glovo ID</strong></td><td>${profile.external_ids && profile.external_ids.glovo_courier_id ? escapeHtml(profile.external_ids.glovo_courier_id) : '<span class="hint">—</span>'}</td></tr>
+          <tr><td><strong>Bolt ID</strong></td><td>${profile.external_ids && profile.external_ids.bolt_courier_uid ? escapeHtml(profile.external_ids.bolt_courier_uid) : '<span class="hint">—</span>'}</td></tr>
+          ` : ''}
           <tr><td><strong>Адрес</strong></td><td>${profile.address || '<span class="hint">—</span>'}</td></tr>
           <tr><td><strong>Град</strong></td><td>${profile.city || '<span class="hint">—</span>'}</td></tr>
           <tr><td><strong>Начало на работа</strong></td><td>${profile.start_date ? fmtDate(profile.start_date) : '<span class="hint">—</span>'}</td></tr>

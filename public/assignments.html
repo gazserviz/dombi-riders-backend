@@ -107,7 +107,7 @@ function listHtml(list) {
             ${list.length ? list.map(a => `
               <tr>
                 <td>${a.vehicle_label||a.vehicle_id}</td>
-                <td>${a.driver_id ? (a.driver_name||a.driver_id) : (a.external_name+' (външен)')}</td>
+                <td>${a.driver_id ? (a.driver_name||a.driver_id) : (a.external_name+' (външен)')}${a.driver_profile ? driverIdLine(a.driver_profile) : ''}</td>
                 <td>${PURPOSE_LABELS[a.purpose]||a.purpose}</td>
                 <td>${fmtDate(a.start_date)} — ${a.end_date?fmtDate(a.end_date):'сега'}</td>
                 <td>${a.status==='active' ? '<span class="badge badge-green">Активно</span>' : '<span class="badge badge-muted">Приключено</span>'}</td>
@@ -123,9 +123,10 @@ function listHtml(list) {
 async function loadAssignments(vehiclesById) {
   const { assignments } = await Api.get('/api/assignments');
   let usersById = {};
-  try { const { users } = await Api.get('/api/users'); usersById = Object.fromEntries(users.map(u=>[u.id,u.full_name])); } catch(e){}
+  try { const { users } = await Api.get('/api/users'); usersById = Object.fromEntries(users.map(u=>[u.id,u])); } catch(e){}
   assignments.forEach(a => {
-    a.driver_name = a.driver_id ? usersById[a.driver_id] : null;
+    a.driver_profile = a.driver_id ? (usersById[a.driver_id] || null) : null;
+    a.driver_name = a.driver_profile ? a.driver_profile.full_name : null;
     const v = vehiclesById[a.vehicle_id];
     a.vehicle_label = v ? `${v.plate_number} — ${v.make} ${v.model}` : a.vehicle_id;
   });

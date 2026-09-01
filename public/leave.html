@@ -39,7 +39,7 @@ function requestsTable(requests, opts) {
       <tbody>
         ${requests.map(r => `
           <tr>
-            ${showEmployee ? `<td>${r.employee_name || r.profile_id}</td>` : ''}
+            ${showEmployee ? `<td>${r.employee_name || r.profile_id}${r.employee_profile ? driverIdLine(r.employee_profile) : ''}</td>` : ''}
             <td>${LEAVE_TYPE_LABELS[r.type] || r.type}</td>
             <td>${fmtDate(r.start_date)} — ${fmtDate(r.end_date)}</td>
             <td><strong>${r.days}</strong></td>
@@ -88,7 +88,19 @@ async function loadTeamRequests() {
   const { requests } = await Api.get(url);
   const { users } = await Api.get('/api/wallet/directory');
   const nameById = Object.fromEntries(users.map(u => [u.id, u.full_name]));
-  requests.forEach(r => { r.employee_name = nameById[r.profile_id] || r.profile_id; });
+  // ЕГН/Bolt/Glovo ID (виж driverIdLine в app.js) — от досието на персонала
+  // (/api/hr/personnel), не от /api/wallet/directory, защото последното е
+  // нарочно олекотено (само id/име/роля) и достъпно за ВСЕКИ вписан
+  // потребител — не бива да разкрива лични данни на всички.
+  let profileById = {};
+  try {
+    const { employees } = await Api.get('/api/hr/personnel');
+    profileById = Object.fromEntries(employees.map(e => [e.id, e]));
+  } catch (e) { /* незадължително — таблицата просто няма да показва ID-тата */ }
+  requests.forEach(r => {
+    r.employee_name = nameById[r.profile_id] || r.profile_id;
+    r.employee_profile = profileById[r.profile_id] || null;
+  });
   host.innerHTML = requestsTable(requests, { showEmployee: true, showActions: true });
   host.querySelectorAll('.decide-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
