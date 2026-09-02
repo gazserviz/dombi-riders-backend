@@ -35,7 +35,16 @@ let IS_SELF = false;
 let CAN_EDIT = false;
 let MANAGERS = [];
 
-function docFieldRow(label, value, expiry, photoFrontUrl, photoBackUrl) {
+// бутон "✕" за премахване на качена снимка на документ (напр. качена по
+// грешка/сгрешена/разменена лице↔гръб) — вика DELETE към съответния endpoint
+// (виж removeDocPhotoBtn делегирания listener по-долу); показва се само на
+// CAN_EDIT (админ/мениджър), а не на самия служител през личния му изглед
+function removeDocPhotoBtn(endpoint, side) {
+  if (!CAN_EDIT) return '';
+  return `<button type="button" class="btn btn-ghost btn-sm doc-remove-btn" data-endpoint="${endpoint}" ${side ? `data-side="${side}"` : ''} title="Премахни снимката" style="padding:1px 6px;font-size:.66rem;color:var(--danger);margin-left:4px;">✕</button>`;
+}
+
+function docFieldRow(label, value, expiry, photoFrontUrl, photoBackUrl, endpoint) {
   let expiryHtml = '—';
   if (expiry) {
     const diff = new Date(expiry) - new Date();
@@ -45,10 +54,10 @@ function docFieldRow(label, value, expiry, photoFrontUrl, photoBackUrl) {
   }
   const photoCell = [
     photoFrontUrl
-      ? `<a href="${photoFrontUrl}" target="_blank">Лице</a> ${docActionButtons(photoFrontUrl, `${label}-лице${(photoFrontUrl.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `${label} — лице`)}`
+      ? `<a href="${photoFrontUrl}" target="_blank">Лице</a> ${docActionButtons(photoFrontUrl, `${label}-лице${(photoFrontUrl.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `${label} — лице`)}${removeDocPhotoBtn(endpoint, 'front')}`
       : '<span class="hint">няма лице</span>',
     photoBackUrl
-      ? `<a href="${photoBackUrl}" target="_blank">Гръб</a> ${docActionButtons(photoBackUrl, `${label}-гръб${(photoBackUrl.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `${label} — гръб`)}`
+      ? `<a href="${photoBackUrl}" target="_blank">Гръб</a> ${docActionButtons(photoBackUrl, `${label}-гръб${(photoBackUrl.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `${label} — гръб`)}${removeDocPhotoBtn(endpoint, 'back')}`
       : '<span class="hint">няма гръб</span>',
   ].join('<br>');
   return `
@@ -108,12 +117,12 @@ async function loadFile() {
         <div class="table-wrap"><table>
           <thead><tr><th>Документ</th><th>Номер</th><th>Валиден до</th><th>Снимки</th></tr></thead>
           <tbody>
-            ${docFieldRow('Лична карта', profile.id_card_number, profile.id_card_expiry, profile.id_card_photo_url, profile.id_card_photo_back_url)}
-            ${docFieldRow('Шофьорска книжка', profile.driver_license_number, profile.driver_license_expiry, profile.driver_license_photo_url, profile.driver_license_photo_back_url)}
+            ${docFieldRow('Лична карта', profile.id_card_number, profile.id_card_expiry, profile.id_card_photo_url, profile.id_card_photo_back_url, 'id-card-photo')}
+            ${docFieldRow('Шофьорска книжка', profile.driver_license_number, profile.driver_license_expiry, profile.driver_license_photo_url, profile.driver_license_photo_back_url, 'license-photo')}
             <tr>
               <td><strong>Селфи</strong></td>
               <td colspan="2"><span class="hint">—</span></td>
-              <td>${profile.selfie_photo_url ? `<a href="${profile.selfie_photo_url}" target="_blank">Преглед</a>` : '<span class="hint">няма</span>'}</td>
+              <td>${profile.selfie_photo_url ? `<a href="${profile.selfie_photo_url}" target="_blank">Преглед</a>${removeDocPhotoBtn('selfie-photo')}` : '<span class="hint">няма</span>'}</td>
             </tr>
           </tbody>
         </table></div>
@@ -402,6 +411,21 @@ async function loadFile() {
   bindPersonnelPhotoUpload('uploadLicenseFrontBtn', 'licenseFrontFile', 'license-photo', 'front', 'Лицето на книжката е качено.');
   bindPersonnelPhotoUpload('uploadLicenseBackBtn', 'licenseBackFile', 'license-photo', 'back', 'Гърбът на книжката е качен.');
   bindPersonnelPhotoUpload('uploadSelfieBtn', 'selfieFile', 'selfie-photo', null, 'Селфито е качено.');
+
+  // премахване на качена по грешка/сгрешена/разменена снимка (виж
+  // removeDocPhotoBtn по-горе) — потвърждение, DELETE към съответния endpoint,
+  // после презареждаме досието, за да изчезне линкът/бутоните
+  document.querySelectorAll('.doc-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Да премахнем ли тази снимка? Може да качите нова веднага след това.')) return;
+      const side = btn.dataset.side;
+      const url = `/api/hr/personnel/${TARGET_ID}/${btn.dataset.endpoint}${side ? `?side=${side}` : ''}`;
+      try {
+        await Api.del(url);
+        await loadFile();
+      } catch (err) { alert(err.message); }
+    });
+  });
 
   const ecTypeSelect = document.getElementById('ecTypeSelect');
   const ecHoursField = document.getElementById('ecHoursField');
