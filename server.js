@@ -1910,6 +1910,30 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { profile: updated });
     }
 
+    // премахване на качена по грешка/сгрешена/разменена снимка на документ —
+    // просто изчиства полето (URL-а), без да пипа останалите данни на
+    // служителя; ?side=front|back за ЛК/книжка (front по подразбиране)
+    if (personnelIdPhotoMatch && req.method === 'DELETE') {
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
+      if (!user) return;
+      const field = query.side === 'back' ? 'id_card_photo_back_url' : 'id_card_photo_url';
+      const updated = db.updateUser(personnelIdPhotoMatch[1], { [field]: null });
+      return sendJson(res, 200, { profile: updated });
+    }
+    if (personnelLicensePhotoMatch && req.method === 'DELETE') {
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
+      if (!user) return;
+      const field = query.side === 'back' ? 'driver_license_photo_back_url' : 'driver_license_photo_url';
+      const updated = db.updateUser(personnelLicensePhotoMatch[1], { [field]: null });
+      return sendJson(res, 200, { profile: updated });
+    }
+    if (personnelSelfiePhotoMatch && req.method === 'DELETE') {
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
+      if (!user) return;
+      const updated = db.updateUser(personnelSelfiePhotoMatch[1], { selfie_photo_url: null });
+      return sendJson(res, 200, { profile: updated });
+    }
+
     // трудови / граждански договори (седмични удръжки по подразбиране, ръчно променими)
     if (pathname === '/api/hr/deduction-defaults' && req.method === 'GET') {
       const user = requirePermission(req, res, 'payroll', 'view');
