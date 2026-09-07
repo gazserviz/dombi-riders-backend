@@ -24,11 +24,12 @@ function newFormHtml(vehicles, drivers) {
       <div class="panel-head"><h2>Ново зачисляване</h2></div>
       <form id="assignForm">
         <div class="field-row">
-          <div class="field"><label>Кола *</label>
+          <div class="field"><label>Кола (само свободни) *</label>
             <select name="vehicle_id" required>
               <option value="">— избери —</option>
               ${vehicles.map(v => `<option value="${v.id}" ${v.id===preselectedVehicle?'selected':''}>${v.plate_number} — ${v.make} ${v.model}</option>`).join('')}
             </select>
+            ${!vehicles.length ? '<div class="hint">В момента няма свободни коли.</div>' : ''}
           </div>
           <div class="field"><label>Цел на зачисляването *</label>
             <select name="purpose" id="purposeSelect" required>
@@ -38,11 +39,12 @@ function newFormHtml(vehicles, drivers) {
         </div>
 
         <div id="internalDriverField" class="field">
-          <label>Шофьор (от HR модула)</label>
+          <label>Шофьор (от HR модула, само свободни)</label>
           <select name="driver_id">
             <option value="">— избери служител —</option>
             ${drivers.map(d => `<option value="${d.id}">${d.full_name} (${d.phone||'няма тел.'})</option>`).join('')}
           </select>
+          ${!drivers.length ? '<div class="hint">В момента няма свободни шофьори.</div>' : ''}
         </div>
 
         <div id="externalDriverFields" style="display:none;">
@@ -140,6 +142,33 @@ async function loadAssignments(vehiclesById) {
   });
 }
 
+// презарежда само опциите в падащите менюта "Кола"/"Шофьор" на формата за
+// ново зачисляване (запазвайки видимия success/error бокс, за разлика от
+// пълно init()) — ползва се веднага след успешно зачисляване, за да
+// изчезне току-що заетата кола/шофьор от списъците със свободни
+async function refreshAssignOptions() {
+  const [{ vehicles }, { users }, { assignments }] = await Promise.all([
+    Api.get('/api/vehicles'), Api.get('/api/users'), Api.get('/api/assignments'),
+  ]);
+  const vehiclesById = Object.fromEntries(vehicles.map(v => [v.id, v]));
+  const activeAssignments = assignments.filter(a => a.status === 'active');
+  const assignedDriverIds = new Set(activeAssignments.filter(a => a.driver_id).map(a => a.driver_id));
+  const freeDrivers = users.filter(u => u.role === 'driver' && u.status === 'active' && !assignedDriverIds.has(u.id));
+  const availableVehicles = vehicles.filter(v => v.status === 'available');
+
+  const vehicleSelect = document.querySelector('#assignForm select[name="vehicle_id"]');
+  if (vehicleSelect) {
+    vehicleSelect.innerHTML = `<option value="">— избери —</option>` +
+      availableVehicles.map(v => `<option value="${v.id}">${v.plate_number} — ${v.make} ${v.model}</option>`).join('');
+  }
+  const driverSelect = document.querySelector('#assignForm select[name="driver_id"]');
+  if (driverSelect) {
+    driverSelect.innerHTML = `<option value="">— избери служител —</option>` +
+      freeDrivers.map(d => `<option value="${d.id}">${d.full_name} (${d.phone||'няма тел.'})</option>`).join('');
+  }
+  return vehiclesById;
+}
+
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
@@ -150,11 +179,27 @@ async function init() {
   const content = document.getElementById('app-content');
   content.innerHTML = `<div class="loading">Зареждане…</div>`;
 
-  const [{ vehicles }, { users }] = await Promise.all([Api.get('/api/vehicles'), Api.get('/api/users')]);
-  const drivers = users.filter(u => u.role === 'driver' && u.status === 'active');
+  const [{ vehicles }, { users }, { assignments }] = await Promise.all([
+    Api.get('/api/vehicles'), Api.get('/api/users'), Api.get('/api/assignments'),
+  ]);
   const vehiclesById = Object.fromEntries(vehicles.map(v => [v.id, v]));
 
-  content.innerHTML = `${newFormHtml(vehicles, drivers)}<div id="listHost"></div>`;
+  // за формата за ново зачисляване показваме само свободни коли (status
+  // 'available') и свободни шофьори (без активно зачисление в момента) —
+  // за да не се зачисли по грешка кола/шофьор, които вече са заети
+  const activeAssignments = assignments.filter(a => a.status === 'active');
+  const assignedDriverIds = new Set(activeAssignments.filter(a => a.driver_id).map(a => a.driver_id));
+  const allActiveDrivers = users.filter(u => u.role === 'driver' && u.status === 'active');
+  const freeDrivers = allActiveDrivers.filter(d => !assignedDriverIds.has(d.id));
+
+  let availableVehicles = vehicles.filter(v => v.status === 'available');
+  // ако сме дошли от бутон на конкретна кола (напр. "Зачисли с 1 клик" от
+  // vehicle-detail.html), пазим я в списъка дори ако вече не е свободна
+  if (preselectedVehicle && vehiclesById[preselectedVehicle] && !availableVehicles.some(v => v.id === preselectedVehicle)) {
+    availableVehicles = [vehiclesById[preselectedVehicle], ...availableVehicles];
+  }
+
+  content.innerHTML = `${newFormHtml(availableVehicles, freeDrivers)}<div id="listHost"></div>`;
 
   document.getElementById('purposeSelect').addEventListener('change', (e) => {
     const isInternal = e.target.value === 'dombi_courier';
@@ -196,7 +241,10 @@ async function init() {
       successBox.classList.add('show');
       e.target.reset();
       syncAssignFuelFields();
-      loadAssignments(vehiclesById);
+      // презареждаме падащите менюта (кола/шофьор), за да изчезне току-що
+      // заетата двойка от списъците със свободни, плюс таблицата долу
+      const freshVehiclesById = await refreshAssignOptions();
+      loadAssignments(freshVehiclesById);
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.classList.add('show');

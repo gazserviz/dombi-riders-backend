@@ -16,6 +16,16 @@
 let CURRENT_USER = null;
 let ALL_VEHICLES = [];
 let VISIBLE_VEHICLES = [];
+// шофьор/наемател по активно зачисление, за кола със статус "Зачислена"/
+// "Отдадена под наем" (попълва се в init()) — за да не се налага отваряне на
+// всяка кола поотделно само за да се види кой я кара в момента
+let DRIVER_BY_VEHICLE = {};
+
+function vehicleDriverLine(v) {
+  const d = DRIVER_BY_VEHICLE[v.id];
+  if (!d) return '';
+  return `<div class="hint" style="margin-top:2px;font-size:.72rem;">${d.external ? d.name + ' (външен)' : d.name}</div>`;
+}
 const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', hybrid_electric:'Хибрид/Електро', moto:'Мотор', scooter:'Скутер', bike:'Е-колело' };
 const CAT_LABELS_REV = Object.fromEntries(Object.entries(CAT_LABELS).map(([k,v]) => [v.toLowerCase(), k]));
 
@@ -132,7 +142,7 @@ function renderTable(vehicles) {
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${v.make} ${v.model}</td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${v.year || '—'}</td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${CAT_LABELS[v.category] || v.category || '—'}</td>
-              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${vehicleStatusBadge(v.status)}</td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${vehicleStatusBadge(v.status)}${vehicleDriverLine(v)}</td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${fmtMoney(v.purchase_price)}</td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${docExpiryChips(v)}</td>
               ${canDelete ? `<td class="no-print"><button type="button" class="btn btn-ghost btn-sm delete-vehicle-btn" data-id="${v.id}" data-plate="${v.plate_number}" title="Изтрий колата">🗑</button></td>` : ''}
@@ -221,6 +231,24 @@ async function init() {
     const { vehicles } = await Api.get('/api/vehicles');
     ALL_VEHICLES = vehicles;
     VISIBLE_VEHICLES = vehicles;
+
+    // име на шофьора/наемателя за колите със статус "Зачислена"/"Отдадена под
+    // наем" — от активните зачисления (виж vehicleDriverLine по-горе);
+    // best-effort — при грешка просто не се показват имена, статусите пак се
+    // виждат коректно
+    try {
+      const [{ assignments }, { users }] = await Promise.all([
+        Api.get('/api/assignments'), Api.get('/api/wallet/directory'),
+      ]);
+      const nameById = Object.fromEntries(users.map(u => [u.id, u.full_name]));
+      DRIVER_BY_VEHICLE = {};
+      assignments.filter(a => a.status === 'active').forEach(a => {
+        DRIVER_BY_VEHICLE[a.vehicle_id] = a.driver_id
+          ? { name: nameById[a.driver_id] || a.driver_id, external: false }
+          : { name: a.external_name || '—', external: true };
+      });
+    } catch (e) { /* незадължително */ }
+
     document.getElementById('tableHost').innerHTML = renderTable(vehicles);
   } catch (err) {
     document.getElementById('tableHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
