@@ -1284,13 +1284,14 @@ async function handleApi(req, res, pathname, query) {
       return sendBuffer(res, 200, result.buffer, { contentType: result.contentType, filename: result.filename });
     }
 
-    // Депозит по договор за наем — вземане/връщане в брой. Съзнателно САМО
-    // super_admin (както всички други касови действия, виж repair-entry/
-    // bank-movements/adjustments по-горе) — НЕ през конфигурируемата матрица
-    // с права, за да не може по грешка да се отвори на по-нисша роля.
+    // Депозит по договор за наем — вземане/връщане в брой. По изрично искане
+    // на потребителя (2026-09-07) достъпът е разширен от само super_admin и
+    // към admin/manager (твърд списък от роли, а не през конфигурируемата
+    // матрица с права — виж repair-entry/bank-movements/adjustments по-горе
+    // за същия подход при други касови действия).
     const contractDepositTakeMatch = pathname.match(/^\/api\/contracts\/([\w-]+)\/deposit\/take$/);
     if (contractDepositTakeMatch && req.method === 'POST') {
-      const user = requireSuperAdmin(req, res);
+      const user = requireRole(req, res, ['admin', 'manager', 'super_admin']);
       if (!user) return;
       const body = await readJsonBody(req);
       try {
@@ -1304,7 +1305,7 @@ async function handleApi(req, res, pathname, query) {
     }
     const contractDepositReturnMatch = pathname.match(/^\/api\/contracts\/([\w-]+)\/deposit\/return$/);
     if (contractDepositReturnMatch && req.method === 'POST') {
-      const user = requireSuperAdmin(req, res);
+      const user = requireRole(req, res, ['admin', 'manager', 'super_admin']);
       if (!user) return;
       const body = await readJsonBody(req);
       try {
