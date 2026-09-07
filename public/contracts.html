@@ -58,11 +58,11 @@ async function init() {
   const contractsById = Object.fromEntries(contracts.map(c => [c.id, c]));
 
   const canEdit = ['admin','manager','super_admin'].includes(user.role);
-  // депозитните действия (вземане/връщане) са САМО super_admin — сървърът ги
-  // налага строго (виж requireSuperAdmin в server.js), затова тук бутоните се
-  // показват само на super_admin, за да не се показва действие, което ще
-  // получи 403.
-  const canManageDeposit = user.role === 'super_admin';
+  // депозитните действия (вземане/връщане) са достъпни за admin/manager/
+  // super_admin — сървърът налага същото (виж requireRole(..., ['admin',
+  // 'manager', 'super_admin']) за /deposit/take и /deposit/return в
+  // server.js), затова бутоните тук се показват на същите роли.
+  const canManageDeposit = ['admin','manager','super_admin'].includes(user.role);
 
   content.innerHTML = `
     <div class="toolbar no-print"><div class="spacer"></div>
@@ -206,7 +206,7 @@ async function init() {
   });
 
   // ---- вземане/връщане на депозит по договор — виж canManageDeposit по-горе
-  // (само super_admin), сървърът налага същото ограничение строго ----
+  // (admin/manager/super_admin), сървърът налага същото ограничение строго ----
   const depositModal = document.getElementById('depositModal');
   const depositForm = document.getElementById('depositForm');
   const depositError = document.getElementById('depositError');
