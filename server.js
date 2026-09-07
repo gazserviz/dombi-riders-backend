@@ -2153,6 +2153,17 @@ async function handleApi(req, res, pathname, query) {
         if (!weekStart || !weekEnd) {
           return sendJson(res, 400, { error: 'Липсва седмица (начало/край) — Bolt файлът не я съдържа, подайте week_start/week_end.' });
         }
+        // защита срещу разминати/непълни седмици (напр. 15.08–20.08 вместо
+        // 15.08–21.08) — такъв запис "залива" в две съседни календарни седмици
+        // и разваля филтрирането по седмица в статистиката/заплатите надолу по
+        // веригата (виж loadPayrollStats в payroll.html); изисква се точно
+        // 7-дневен период (начало + 6 дни = край)
+        const spanDays = Math.round((new Date(weekEnd) - new Date(weekStart)) / 86400000);
+        if (spanDays !== 6) {
+          return sendJson(res, 400, {
+            error: `Периодът ${weekStart} — ${weekEnd} не е точно 7 дни. За да не се разминат седмиците в статистиката/заплатите, въведете начало и край на седмицата, отстоящи точно на 6 дни (напр. понеделник — неделя).`,
+          });
+        }
         for (const r of wk.records) {
           let profile = matchDriverByPhone(r.phone, driverProfiles);
           if (!profile && createMissing) {
@@ -2184,13 +2195,18 @@ async function handleApi(req, res, pathname, query) {
           const sources = Object.keys(otherPlatform);
           const combinedGross = Math.round(Object.values(otherPlatform).reduce((a, b) => a + Number(b || 0), 0) * 100) / 100;
           const combinedOrders = (existing && existing.source !== r.platform ? Number(existing.order_count || 0) : 0) + Number(r.order_count || 0);
+          // за НОВ седмичен запис попълваме удръжка/наем на кола по подразбиране
+          // от активните договори на служителя (вж. getDefaultPayrollDeductions)
+          // — иначе тези колони остават 0 за всеки импортиран запис, докато
+          // някой не влезе да ги въведе ръчно за всеки служител всяка седмица
+          const defaults = existing ? null : db.getDefaultPayrollDeductions(profile.id);
 
           const rec = db.upsertPayrollEntry({
             profile_id: profile.id, week_start: weekStart, week_end: weekEnd,
             order_count: r.order_count_unknown && existing ? existing.order_count : combinedOrders,
             gross_earnings: combinedGross,
-            deduction_amount: existing ? existing.deduction_amount : undefined,
-            car_rent_amount: existing ? existing.car_rent_amount : undefined,
+            deduction_amount: existing ? existing.deduction_amount : defaults.deduction_amount,
+            car_rent_amount: existing ? existing.car_rent_amount : defaults.car_rent_amount,
             source: sources.length > 1 ? 'bolt+glovo' : r.platform,
             platform_breakdown: otherPlatform,
             needs_review: !!r.needs_review || (existing ? !!existing.needs_review : false),
