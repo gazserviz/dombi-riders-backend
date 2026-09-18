@@ -28,6 +28,27 @@ const Api = {
 
 const ROLE_LABELS = { super_admin: 'Супер администратор', admin: 'Администратор', manager: 'Мениджър', driver: 'Шофьор' };
 
+// ---------------------------------------------------------------------------
+// тъмна/светла тема — data-theme="light" на <html>, запазено в localStorage.
+// Прилагането при зареждане на страницата става МНОГО по-рано, от малък inline
+// скрипт в <head> на всяка вътрешна страница (веднага след /css/app.css), за
+// да няма мигане на грешната тема преди този файл (app.js) изобщо да се
+// зареди — виж същия ключ "dombi_theme" там. Тук само local държим бутона в
+// sidebar-а синхронизиран.
+// ---------------------------------------------------------------------------
+const THEME_KEY = 'dombi_theme';
+function getTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+function applyTheme(theme) {
+  if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* private режим и т.н. */ }
+}
+function themeToggleLabel() {
+  return getTheme() === 'light' ? '🌙 Тъмна тема' : '☀️ Светла тема';
+}
+
 // споделен списък с градове (за падащото меню на служителя и филтъра в
 // „Досиета на служители“) — най-големите градове в България по население
 const BG_CITIES = [
@@ -281,6 +302,7 @@ async function mountShell() {
         <div class="sidebar-user">
           <div class="name">${escapeHtml(user.full_name)}</div>
           <div class="role">${ROLE_LABELS[user.role] || user.role}</div>
+          <button class="btn btn-ghost btn-sm btn-block" id="themeToggleBtn" style="margin-bottom:6px;">${themeToggleLabel()}</button>
           <button class="btn btn-ghost btn-sm btn-block" id="changePasswordBtn" style="margin-bottom:6px;">🔑 Смени парола</button>
           <button class="btn btn-ghost btn-sm btn-block" id="logoutBtn">Изход</button>
         </div>
@@ -321,6 +343,13 @@ async function mountShell() {
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await Api.post('/api/logout');
     window.location.href = '/login.html';
+  });
+
+  // ---- тъмна/светла тема ----
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  themeToggleBtn.addEventListener('click', () => {
+    applyTheme(getTheme() === 'light' ? 'dark' : 'light');
+    themeToggleBtn.textContent = themeToggleLabel();
   });
 
   // ---- смяна на собствена парола (достъпно от всяка страница) -----------
