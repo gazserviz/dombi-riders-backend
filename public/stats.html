@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
 </head>
 <body>
 <div id="app-shell" data-active="/stats.html" data-title="Статистики на автопарка"></div>
@@ -70,7 +71,7 @@ async function init() {
           `${v.plate_number} — ${v.make} ${v.model}`,
           Math.abs(v.net_profit) / maxProfit * 100,
           fmtMoney(v.net_profit),
-          v.net_profit >= 0 ? 'linear-gradient(90deg,#1fae4a,#4dff7a)' : 'linear-gradient(90deg,#ff6b6b,#ff9d6b)'
+          v.net_profit >= 0 ? 'linear-gradient(90deg,var(--green-2),var(--green))' : 'linear-gradient(90deg,var(--danger),#ff9d6b)'
         )).join('') || '<p>Няма данни.</p>'}
       </div>
     </div>

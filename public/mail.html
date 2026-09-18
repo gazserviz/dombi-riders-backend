@@ -7,11 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
 <style>
   .mail-list{max-height:640px;overflow-y:auto;}
   .mail-row{display:block;width:100%;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--line);padding:12px 6px;cursor:pointer;color:inherit;font:inherit;}
   .mail-row:last-child{border-bottom:none;}
-  .mail-row:hover,.mail-row.active{background:#ffffff0a;}
+  .mail-row:hover,.mail-row.active{background:var(--row-hover);}
   .mail-row .mr-top{display:flex;justify-content:space-between;gap:8px;font-size:.82rem;}
   .mail-row .mr-from{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .mail-row.unread .mr-from,.mail-row.unread .mr-subject{font-weight:800;}
@@ -19,12 +20,12 @@
   .mail-row .mr-subject{font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;}
   .mail-tabs{display:flex;gap:6px;margin-bottom:10px;}
   .mail-tabs button{background:transparent;border:1px solid var(--line);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;}
-  .mail-tabs button.active{background:#ffffff12;color:#fff;border-color:#ffffff33;}
+  .mail-tabs button.active{background:var(--panel-2);color:var(--text);border-color:var(--line);}
   .mail-detail-head{margin-bottom:14px;}
   .mail-detail-head .subj{font-size:1.05rem;font-weight:800;margin-bottom:6px;}
   .mail-detail-head .meta{font-size:.8rem;color:var(--muted);line-height:1.6;}
   .mail-body-frame{width:100%;height:480px;border:1px solid var(--line);border-radius:10px;background:#fff;}
-  .mail-body-text{white-space:pre-wrap;word-break:break-word;font-size:.88rem;line-height:1.6;max-height:480px;overflow-y:auto;padding:14px;background:#ffffff08;border-radius:10px;border:1px solid var(--line);}
+  .mail-body-text{white-space:pre-wrap;word-break:break-word;font-size:.88rem;line-height:1.6;max-height:480px;overflow-y:auto;padding:14px;background:var(--input-bg);border-radius:10px;border:1px solid var(--line);}
   .attach-list{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;}
   .compose-panel{display:none;}
   .compose-panel.show{display:block;}

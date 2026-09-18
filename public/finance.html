@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
 </head>
 <body>
 <div id="app-shell" data-active="/finance.html" data-title="Счетоводство"></div>
@@ -107,7 +108,7 @@ function renderByCategory(byCategory) {
             <td>${c.category}</td>
             <td><span class="badge ${c.direction === 'income' ? 'badge-green' : 'badge-danger'}">${c.direction === 'income' ? 'Приход' : 'Разход'}</span></td>
             <td>${fmtMoney(c.amount)}</td>
-            <td style="width:35%;"><div class="progress-bar"><div class="fill" style="width:${Math.max(2, c.amount / maxAmount * 100)}%;background:${c.direction === 'income' ? 'linear-gradient(90deg,#1fae4a,#4dff7a)' : 'linear-gradient(90deg,#ff6b6b,#ff9d6b)'}"></div></div></td>
+            <td style="width:35%;"><div class="progress-bar"><div class="fill" style="width:${Math.max(2, c.amount / maxAmount * 100)}%;background:${c.direction === 'income' ? 'linear-gradient(90deg,var(--green-2),var(--green))' : 'linear-gradient(90deg,var(--danger),#ff9d6b)'}"></div></div></td>
           </tr>`).join('')}
       </tbody>
     </table></div>`;
