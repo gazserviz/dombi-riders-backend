@@ -2656,24 +2656,45 @@ async function handleApi(req, res, pathname, query) {
     }
 
     // ---- ПАРТНЬОРСКИ КОМИСИОННИ (реферални/посреднически партньори) ------
-    // Партньорите/посредниците се моделират като профили с роля 'manager'
-    // (могат едновременно да работят и като шофьори), с шофьори, зачислени
-    // към тях (виж profiles.manager_id). Компенсацията е % или фиксирана
-    // сума на период. Статистиката за "пари, донесени на компанията" засега
-    // се изчислява от заработката (gross_earnings) в модул Заплати на екипа
-    // им — приблизителна демонстрационна база, докато не бъде готов реалният
-    // импорт на таблиците с поръчки/приходи (виж db.getPartnerStats).
+    // Партньор/посредник = ВСЕКИ служител (без значение от ролята му в
+    // системата — директор, админ, мениджър, дори шофьор), на когото е
+    // зададен комисионен профил тук, с шофьори зачислени към него (виж
+    // profiles.manager_id). Преди тази версия списъкът беше ограничен до
+    // роля 'manager' и изискваше администраторът първо да сменя ролята на
+    // човека в "Потребители и роли" — премахнато по изрична обратна връзка:
+    // добавянето на партньор става директно оттук, през търсачка по
+    // име/имейл (виж /search по-долу), без допир до ролите. Компенсацията е
+    // % или фиксирана сума на период. Статистиката за "пари, донесени на
+    // компанията" засега се изчислява от заработката (gross_earnings) в
+    // модул Заплати на екипа им — приблизителна демонстрационна база,
+    // докато не бъде готов реалният импорт на таблиците с поръчки/приходи
+    // (виж db.getPartnerStats).
     if (pathname === '/api/hr/partners' && req.method === 'GET') {
       const user = requirePermission(req, res, 'partners', 'view');
       if (!user) return;
+      const configuredIds = new Set(db.listPartnerCommissionProfiles().map(p => p.profile_id));
       const partners = db.listUsers()
-        .filter(u => u.role === 'manager')
+        .filter(u => configuredIds.has(u.id))
         .map(u => ({
-          id: u.id, full_name: u.full_name, email: u.email, status: u.status,
+          id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status,
           commission: db.getPartnerCommissionProfile(u.id),
           team_size: db.listTeamProfiles(u.id).length,
         }));
       return sendJson(res, 200, { partners });
+    }
+    // търсене на служител за добавяне на нов партньор/комисионна (всеки, не
+    // само текущо конфигурираните, и без значение от ролята) — лек списък,
+    // без пароли/лични данни. Трябва да е ПРЕДИ /:id регекса по-долу, иначе
+    // "search" се прихваща като id.
+    if (pathname === '/api/hr/partners/search' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'partners', 'view');
+      if (!user) return;
+      const q = (query.q || '').toLowerCase();
+      const results = db.listUsers()
+        .filter(u => !q || `${u.full_name} ${u.email}`.toLowerCase().includes(q))
+        .slice(0, 20)
+        .map(u => ({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, has_commission: !!db.getPartnerCommissionProfile(u.id) }));
+      return sendJson(res, 200, { results });
     }
 
     const partnerMatch = pathname.match(/^\/api\/hr\/partners\/([\w-]+)$/);
@@ -2685,7 +2706,7 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       const profile = db.findUserById(targetId);
-      if (!profile || profile.role !== 'manager') return sendJson(res, 404, { error: 'Партньорът не е намерен' });
+      if (!profile) return sendJson(res, 404, { error: 'Служителят не е намерен' });
       const { password: _pw, ...safeProfile } = profile;
       return sendJson(res, 200, {
         profile: safeProfile,
@@ -2698,7 +2719,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const targetId = partnerMatch[1];
       const profile = db.findUserById(targetId);
-      if (!profile || profile.role !== 'manager') return sendJson(res, 404, { error: 'Партньорът не е намерен' });
+      if (!profile) return sendJson(res, 404, { error: 'Служителят не е намерен' });
       const body = await readJsonBody(req);
       const allowed = ['comp_type', 'percentage', 'fixed_amount', 'fixed_period', 'comp_base', 'per_driver_amount', 'qualifying_threshold', 'team_qualifying_goal', 'tiers', 'active', 'notes'];
       const patch = {};
