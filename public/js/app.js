@@ -89,7 +89,7 @@ const NAV = [
     { href: '/wallet.html', icon: '👛', label: 'Портфейл', roles: ['admin','manager','driver'] },
     { href: '/personnel.html', icon: '🗂️', label: 'Досиета на служители', roles: ['admin','manager'] },
     { href: '/personnel-detail.html', icon: '🪪', label: 'Моето досие', roles: ['driver'] },
-    { href: '/applications.html', icon: '📥', label: 'Кандидатури', roles: ['admin','manager'] },
+    { href: '/applications.html', icon: '📥', label: 'Кандидатури', roles: ['admin','manager'], badgeKey: 'applications' },
     { href: '/payroll.html', icon: '💶', label: 'Заплати', roles: ['admin','manager','driver'] },
     { href: '/leave.html', icon: '🏖️', label: 'Отпуски', roles: ['admin','manager','driver'] },
     { href: '/partners.html', icon: '🤝', label: 'Партньорски комисионни', roles: ['admin'] },
@@ -100,7 +100,7 @@ const NAV = [
     { href: '/cashier.html', icon: '🏦', label: 'Обща каса', roles: ['admin','manager'] },
   ]},
   { group: 'Поща', items: [
-    { href: '/mail.html', icon: '📧', label: 'Пощенска кутия', roles: ['admin'] },
+    { href: '/mail.html', icon: '📧', label: 'Пощенска кутия', roles: ['admin'], badgeKey: 'mail' },
     { href: 'https://mail.zoho.eu', icon: '↗️', label: 'Zoho Webmail', roles: ['admin'] },
   ]},
   { group: 'Администрация', items: [
@@ -288,7 +288,7 @@ async function mountShell() {
           const extraAttrs = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
           return `
           <a class="nav-link ${i.href === activeHref ? 'active' : ''}" href="${i.href}"${extraAttrs}>
-            <span class="ic">${i.icon}</span>${escapeHtml(i.label)}
+            <span class="ic">${i.icon}</span><span class="nav-link-text">${escapeHtml(i.label)}</span>${i.badgeKey ? `<span class="nav-badge" data-badge="${i.badgeKey}"></span>` : ''}
           </a>`;
         }).join('')}
       </div>`;
@@ -424,7 +424,47 @@ async function mountShell() {
     return null;
   }
 
+  startNotificationBadges();
+
   return user;
+}
+
+// ---------------------------------------------------------------------------
+// индикатори в менюто ("нещо ново") за елементите с badgeKey (виж NAV по-
+// горе) — поща (непрочетени писма) и кандидатури (чакащи преглед). Проверява
+// само badge-овете, които реално са render-нати в sidebar-а (т.е. ролята има
+// достъп до тази страница — виж hrefAllowed по-горе), за да не хвърля излишни
+// заявки/грешки за елементи, които потребителят така или иначе не вижда.
+// Периодично опресняване, за да не се налага ръчно "Обнови" — виж и
+// автоматичното опресняване на самия списък с писма в mail.html.
+// ---------------------------------------------------------------------------
+const NOTIFICATION_BADGE_POLL_MS = 60000;
+const NOTIFICATION_BADGE_CHECKS = {
+  mail: async () => {
+    const { unread } = await Api.get('/api/mail/unread-count');
+    return unread || 0;
+  },
+  applications: async () => {
+    const { applications } = await Api.get('/api/hr/applications?status=pending');
+    return (applications || []).length;
+  },
+};
+let notificationBadgeTimer = null;
+async function refreshNotificationBadges() {
+  for (const key of Object.keys(NOTIFICATION_BADGE_CHECKS)) {
+    const el = document.querySelector(`.nav-badge[data-badge="${key}"]`);
+    if (!el) continue; // тази страница не е видима за текущата роля — пропускаме
+    try {
+      const n = await NOTIFICATION_BADGE_CHECKS[key]();
+      el.textContent = n > 99 ? '99+' : String(n);
+      el.style.display = n > 0 ? 'inline-flex' : 'none';
+    } catch (e) { /* тих провал (напр. пощата не е конфигурирана) — не чупим менюто */ }
+  }
+}
+function startNotificationBadges() {
+  if (notificationBadgeTimer) clearInterval(notificationBadgeTimer);
+  refreshNotificationBadges();
+  notificationBadgeTimer = setInterval(refreshNotificationBadges, NOTIFICATION_BADGE_POLL_MS);
 }
 
 // ---------------------------------------------------------------------------
