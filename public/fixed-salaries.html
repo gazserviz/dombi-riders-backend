@@ -55,10 +55,13 @@ async function loadSalaried() {
 
 async function runSearch(q) {
   const host = document.getElementById('searchResults');
-  if (!q) { host.innerHTML = ''; return; }
-  const { results } = await Api.get(`/api/hr/fixed-salaries/search?q=${encodeURIComponent(q)}`);
+  // без въведен текст показваме първите служители (вместо празно поле) —
+  // иначе бутонът "+ Задай заплата" изобщо не се вижда, докато не се въведе
+  // нещо в търсачката, което обърква при първо отваряне на страницата.
+  const { results } = await Api.get(`/api/hr/fixed-salaries/search?q=${encodeURIComponent(q || '')}`);
   if (!results.length) { host.innerHTML = '<p class="hint">Няма съвпадения.</p>'; return; }
   host.innerHTML = `
+    ${!q ? '<p class="hint">Първите служители — потърсете по-горе за по-точен резултат.</p>' : ''}
     <div class="table-wrap"><table>
       <tbody>
         ${results.map(r => `
@@ -217,6 +220,7 @@ async function init() {
     const q = e.target.value.trim();
     searchTimer = setTimeout(() => runSearch(q), 250);
   });
+  runSearch(''); // показва първите служители веднага, без да чака въвеждане
 
   document.getElementById('fsStatsRefreshBtn').addEventListener('click', async () => { await loadStats(); prefillPaymentForm(); });
 

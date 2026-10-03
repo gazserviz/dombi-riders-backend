@@ -101,6 +101,7 @@ function overviewTab(v) {
           <div id="docsView">
             <table>
               <tr><td>Добавена в системата на</td><td>${fmtDate(v.created_at)}</td></tr>
+              <tr><td>Годна регистрация</td><td>${fmtDate(v.registration_expiry)}</td></tr>
               <tr><td>Винетка</td><td>${fmtDate(v.vignette_expiry)}</td></tr>
               <tr><td>Технически преглед</td><td>${fmtDate(v.inspection_expiry)}</td></tr>
               <tr><td>№ на талона (СРМПС)</td><td>${v.talon_number||'—'}</td></tr>
@@ -120,7 +121,9 @@ function overviewTab(v) {
           </div>
           ${canEdit() ? `
           <form id="docsForm" style="display:none;margin-top:6px;">
+            <p class="hint">„Годна регистрация“ захранва алармата „Изтичащи документи“ на началния екран — тук се показва/редактира/изчиства ръчно (вкл. ако е грешно въведена при CSV импорт или по-стара версия на системата), а не през разчитането на талона, което е ненадеждно за тази дата.</p>
             <div class="field-row">
+              <div class="field"><label>Годна регистрация до</label><input name="registration_expiry" type="date" value="${v.registration_expiry||''}"></div>
               <div class="field"><label>Винетка до</label><input name="vignette_expiry" type="date" value="${v.vignette_expiry||''}"></div>
             </div>
             <div class="field-row">

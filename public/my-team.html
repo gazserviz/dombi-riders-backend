@@ -97,7 +97,11 @@ async function loadMyTeam(targetId) {
   TEAM = data.team;
 
   document.getElementById('teamCount').textContent = data.team.length;
-  const cities = [...new Set(data.team.map(d => d.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg'));
+  // пълният списък с градове (BG_CITIES от app.js), не само градовете на
+  // ВЕЧЕ зачислените шофьори — иначе Пловдив/Варна/Бургас и т.н. изобщо не
+  // се виждат във филтъра, докато екипът няма шофьор точно от там
+  const teamCities = data.team.map(d => d.city).filter(Boolean);
+  const cities = [...new Set([...BG_CITIES, ...teamCities])].sort((a, b) => a.localeCompare(b, 'bg'));
   document.getElementById('teamCityFilter').innerHTML = `<option value="">Всички градове</option>` + cities.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
   document.getElementById('teamTableHost').innerHTML = teamTable(data.team);
 

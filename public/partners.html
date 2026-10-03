@@ -21,6 +21,8 @@ let CURRENT_USER = null;
 let PARTNERS = [];
 let selectedId = null;
 let LAST_STATS = null;
+let searchTimer = null;
+let lastSearchQuery = '';
 
 function compSummary(c) {
   if (!c || !c.active) return '<span class="badge badge-muted">Не е зададена</span>';
@@ -44,24 +46,50 @@ async function loadPartners() {
   const { partners } = await Api.get('/api/hr/partners');
   PARTNERS = partners;
   if (!partners.length) {
-    host.innerHTML = `<p class="hint">Няма потребители с роля „Мениджър“. Партньорите/посредниците се задават като мениджърски профили в „Потребители и роли“.</p>`;
+    host.innerHTML = `<p class="hint">Няма зададени партньори все още — потърсете служител по-долу и задайте му комисионна. Може да е всеки, без значение от ролята му в системата.</p>`;
     return;
   }
   host.innerHTML = `
     <div class="table-wrap"><table>
-      <thead><tr><th>Партньор</th><th>Екип (шофьори)</th><th>Комисионна</th><th></th></tr></thead>
+      <thead><tr><th>Партньор</th><th>Роля</th><th>Екип (шофьори)</th><th>Комисионна</th><th></th></tr></thead>
       <tbody>
         ${partners.map(p => `
           <tr>
-            <td><div class="stack"><strong>${p.full_name}</strong><small>${p.email}</small></div></td>
+            <td><div class="stack"><strong>${escapeHtml(p.full_name)}</strong><small>${escapeHtml(p.email)}</small></div></td>
+            <td>${ROLE_LABELS[p.role] || p.role}</td>
             <td>${p.team_size}</td>
             <td>${compSummary(p.commission)}</td>
-            <td><button type="button" class="btn btn-ghost btn-sm select-partner-btn" data-id="${p.id}">Настрой →</button></td>
+            <td><button type="button" class="btn btn-ghost btn-sm select-partner-btn" data-id="${p.id}" data-name="${escapeHtml(p.full_name)}">Настрой →</button></td>
           </tr>`).join('')}
       </tbody>
     </table></div>`;
   host.querySelectorAll('.select-partner-btn').forEach(btn => {
-    btn.addEventListener('click', () => selectPartner(btn.dataset.id));
+    btn.addEventListener('click', () => selectPartner(btn.dataset.id, btn.dataset.name));
+  });
+}
+
+// търсене/добавяне на НОВ партньор — всеки служител, без значение от ролята
+// му; показва първите, ако полето е празно, за да не остава страницата без
+// видим бутон "Добави", преди да е въведено нещо (виж аналогичната логика
+// в fixed-salaries.html)
+async function runSearch(q) {
+  lastSearchQuery = q || '';
+  const host = document.getElementById('searchResults');
+  const { results } = await Api.get(`/api/hr/partners/search?q=${encodeURIComponent(q || '')}`);
+  if (!results.length) { host.innerHTML = '<p class="hint">Няма съвпадения.</p>'; return; }
+  host.innerHTML = `
+    ${!q ? '<p class="hint">Първите служители — потърсете по-горе за по-точен резултат.</p>' : ''}
+    <div class="table-wrap"><table>
+      <tbody>
+        ${results.map(r => `
+          <tr>
+            <td><div class="stack"><strong>${escapeHtml(r.full_name)}</strong><small>${escapeHtml(r.email)} · ${ROLE_LABELS[r.role] || r.role}</small></div></td>
+            <td style="text-align:right;"><button type="button" class="btn btn-ghost btn-sm search-pick-btn" data-id="${r.id}" data-name="${escapeHtml(r.full_name)}">${r.has_commission ? 'Отвори →' : '+ Добави партньор'}</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  host.querySelectorAll('.search-pick-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectPartner(btn.dataset.id, btn.dataset.name));
   });
 }
 
@@ -203,12 +231,20 @@ function prefillPaymentForm() {
   if (LAST_STATS && LAST_STATS.commission_owed != null) form.amount.value = LAST_STATS.commission_owed;
 }
 
-async function selectPartner(id) {
+// приема и id, и (незадължително) вече известно име — за мигновен loading
+// текст, докато заявката върви; работи еднакво за ред от таблицата
+// "Партньори" и за резултат от търсачката (вкл. служител без комисионна
+// все още) — винаги взима пресни данни от /api/hr/partners/:id.
+async function selectPartner(id, name) {
   selectedId = id;
-  const partner = PARTNERS.find(p => p.id === id);
   document.getElementById('detailHost').style.display = '';
-  document.getElementById('detailTitle').textContent = `Партньор: ${partner.full_name}`;
-  fillCommissionForm(partner.commission);
+  document.getElementById('detailTitle').textContent = `Партньор: ${name || '…'}`;
+  const { profile, commission, team } = await Api.get(`/api/hr/partners/${id}`);
+  document.getElementById('detailTitle').textContent = `Партньор: ${profile.full_name}`;
+  document.getElementById('teamSizeHint').textContent = team.length
+    ? `Текущ екип: ${team.length} зачислен(и) шофьор(и).`
+    : 'Все още няма зачислени шофьори към този профил (виж „Досиета на служители“ → „Зачисли към мениджър“).';
+  fillCommissionForm(commission);
   await loadStats();
   prefillPaymentForm();
   await loadPayments();
@@ -223,14 +259,21 @@ async function init() {
   }
 
   document.getElementById('app-content').innerHTML = `
-    <p class="hint">Реферални/посреднически партньори — профили с роля „Мениджър“ (могат едновременно да работят и като шофьори). Компенсацията им е процент или фиксирана сума на период, изчислена от екипа шофьори, зачислени към тях.</p>
+    <p class="hint">Реферални/посреднически партньори — може да е всеки служител, без значение от ролята му в системата (включително шофьор или администратор). Компенсацията им е процент, фиксирана сума или стъпаловиден процент на период, изчислена от екипа шофьори, зачислени към тях (виж „Досиета на служители“ → „Зачисли към мениджър“).</p>
     <div class="panel">
       <div class="panel-head"><h2>Партньори</h2></div>
       <div id="partnersHost" class="loading">Зареждане…</div>
     </div>
 
+    <div class="panel">
+      <div class="panel-head"><h2>Добави / намери партньор</h2></div>
+      <div class="field"><label>Търсене (име или имейл)</label><input type="text" id="partnerSearchInput" placeholder="напр. Цветелина или Виктор"></div>
+      <div id="searchResults"></div>
+    </div>
+
     <div class="panel" id="detailHost" style="display:none;">
       <div class="panel-head"><h2 id="detailTitle">Партньор</h2></div>
+      <p class="hint" id="teamSizeHint"></p>
       <div class="error-box" id="commissionError"></div>
       <div class="success-box" id="commissionSuccess"></div>
       <form id="commissionForm">
@@ -311,6 +354,13 @@ async function init() {
   }
   document.getElementById('statsRefreshBtn').addEventListener('click', async () => { await loadStats(); prefillPaymentForm(); });
 
+  document.getElementById('partnerSearchInput').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    const q = e.target.value.trim();
+    searchTimer = setTimeout(() => runSearch(q), 250);
+  });
+  runSearch(''); // показва първите служители веднага, без да чака въвеждане
+
   const statsFrom = document.getElementById('statsFrom');
   const statsTo = document.getElementById('statsTo');
   mountPeriodPicker(document.getElementById('statsPeriodPicker'), statsFrom, statsTo, {
@@ -346,6 +396,7 @@ async function init() {
       successBox.textContent = 'Комисионната е запазена.';
       successBox.classList.add('show');
       await loadPartners();
+      await runSearch(lastSearchQuery);
       await loadStats();
     } catch (err) {
       errorBox.textContent = err.message;
