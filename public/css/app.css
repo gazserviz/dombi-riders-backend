@@ -128,6 +128,15 @@ button,input,select,textarea{font-family:inherit;font-size:.92rem;}
 .nav-link:hover{background:var(--panel-2);color:var(--text);}
 .nav-link.active{background:var(--green-dim);color:var(--green);}
 .nav-link .ic{width:18px;text-align:center;opacity:.85;}
+.nav-link-text{flex:1;}
+/* брояч за "има нещо ново" до линк в менюто (поща/кандидатури — виж
+   startNotificationBadges в app.js); скрит по подразбиране, JS-ът го показва
+   само когато броят е >0, и го крие обратно щом падне до 0 */
+.nav-badge{
+  display:none;min-width:18px;height:18px;padding:0 5px;border-radius:999px;
+  background:var(--danger);color:#fff;font-size:.66rem;font-weight:800;
+  align-items:center;justify-content:center;line-height:1;flex-shrink:0;
+}
 .sidebar-user{margin-top:auto;padding:14px 12px;border-top:1px solid var(--line);}
 .sidebar-user .name{font-weight:700;font-size:.86rem;}
 .sidebar-user .role{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
