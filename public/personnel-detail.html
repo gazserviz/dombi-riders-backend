@@ -48,6 +48,11 @@ let TARGET_ID = null;
 let IS_SELF = false;
 let CAN_EDIT = false;
 let MANAGERS = [];
+// запазени тук (от loadFile), за да могат initEarningsPanel/loadEarnings да
+// покажат "на какъв договор е" служителят в компактния обобщен изглед, без
+// да правят отделна заявка само за това
+let CURRENT_EMPLOYMENT_CONTRACTS = [];
+let CURRENT_RENTAL_CONTRACTS = [];
 
 // бутон "✕" за премахване на качена снимка на документ (напр. качена по
 // грешка/сгрешена/разменена лице↔гръб) — вика DELETE към съответния endpoint
@@ -86,6 +91,8 @@ function docFieldRow(label, value, expiry, photoFrontUrl, photoBackUrl, endpoint
 async function loadFile() {
   const host = document.getElementById('fileHost');
   const { profile, manager, employment_contracts, rental_contracts, protocols, assignments } = await Api.get(`/api/hr/personnel/${TARGET_ID}`);
+  CURRENT_EMPLOYMENT_CONTRACTS = employment_contracts;
+  CURRENT_RENTAL_CONTRACTS = rental_contracts;
 
   document.getElementById('pageTitle') && (document.getElementById('pageTitle').textContent = profile.full_name);
 
@@ -222,20 +229,24 @@ async function loadFile() {
 
     ${(IS_SELF || CAN_EDIT) ? `
     <div class="panel">
-      <div class="panel-head"><h2>Портфейл</h2></div>
+      <div class="panel-head">
+        <h2>Портфейл</h2>
+        ${['admin', 'super_admin'].includes(CURRENT_USER.role) ? `<button type="button" class="btn btn-ghost btn-sm" id="walletAdjToggleBtn">± Корекция</button>` : ''}
+      </div>
       <div id="walletHost" class="loading">Зареждане…</div>
       ${['admin', 'super_admin'].includes(CURRENT_USER.role) ? `
-      <h3 style="margin-top:20px;">Ръчна корекция на баланс</h3>
-      <p class="hint">За начални салда, бонуси или корекции — не е истински банков превод, само вътрешна счетоводна корекция.</p>
-      <div class="error-box" id="walletAdjError"></div>
-      <div class="success-box" id="walletAdjSuccess"></div>
-      <form id="walletAdjForm">
-        <div class="field-row">
-          <div class="field"><label>Сума (€) — може да е отрицателна за тегление *</label><input name="amount" type="number" step="0.01" required></div>
-          <div class="field"><label>Бележка</label><input name="note" placeholder="напр. Начално салдо"></div>
-        </div>
-        <button type="submit" class="btn btn-primary btn-sm">Приложи корекция</button>
-      </form>` : ''}
+      <div id="walletAdjPanel" style="display:none;margin-top:12px;">
+        <p class="hint">За начални салда, бонуси или корекции — не е истински банков превод, само вътрешна счетоводна корекция.</p>
+        <div class="error-box" id="walletAdjError"></div>
+        <div class="success-box" id="walletAdjSuccess"></div>
+        <form id="walletAdjForm">
+          <div class="field-row">
+            <div class="field"><label>Сума (€) — може да е отрицателна за тегление *</label><input name="amount" type="number" step="0.01" required></div>
+            <div class="field"><label>Бележка</label><input name="note" placeholder="напр. Начално салдо"></div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Приложи корекция</button>
+        </form>
+      </div>` : ''}
     </div>` : ''}
 
     ${profile.role === 'driver' || profile.role === 'manager' ? `
@@ -665,6 +676,12 @@ async function loadFile() {
     } catch (err) { alert(err.message); }
   });
 
+  const walletAdjToggleBtn = document.getElementById('walletAdjToggleBtn');
+  if (walletAdjToggleBtn) walletAdjToggleBtn.addEventListener('click', () => {
+    const p = document.getElementById('walletAdjPanel');
+    p.style.display = p.style.display === 'none' ? '' : 'none';
+  });
+
   if (IS_SELF || CAN_EDIT) loadWallet();
   if (document.getElementById('earningsHost')) initEarningsPanel();
   if (document.getElementById('commissionForm')) initCommissionPanel();
@@ -690,25 +707,43 @@ function platformBreakdownLine(e) {
   return `<small>${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</small>`;
 }
 
+// активният трудов/граждански договор (ако има) — за компактния изглед
+// "на какъв договор е служителят" + часове/ден (виж заявка на клиента);
+// НЕ е реално отчетено работно време (системата няма модул за това), а
+// договореният график по действащия договор.
+function activeEmploymentContractLabel() {
+  const active = (CURRENT_EMPLOYMENT_CONTRACTS || []).find(c => c.status === 'active');
+  if (!active) return { contract: '—', hours: '—' };
+  const type = EC_TYPE_LABELS[active.contract_type] || active.contract_type;
+  return { contract: type, hours: active.hours_per_day ? `${active.hours_per_day} ч./ден` : '—' };
+}
+
 async function loadEarnings() {
   const host = document.getElementById('earningsHost');
   host.innerHTML = `<div class="loading">Зареждане…</div>`;
   const from = document.getElementById('earnFrom').value;
   const to = document.getElementById('earnTo').value;
+  const { contract, hours } = activeEmploymentContractLabel();
   try {
-    const { entries, earnings_visible } = await Api.get(`/api/hr/payroll?profile_id=${TARGET_ID}`);
+    const [{ entries, earnings_visible }, walletRes] = await Promise.all([
+      Api.get(`/api/hr/payroll?profile_id=${TARGET_ID}`),
+      (IS_SELF || CAN_EDIT) ? Api.get(`/api/wallet/users/${TARGET_ID}`).catch(() => null) : Promise.resolve(null),
+    ]);
+    const balance = walletRes ? walletRes.balance : null;
     const periodEntries = entries.filter(e => (!from || e.week_start >= from) && (!to || e.week_start <= to));
     const totalOrders = periodEntries.reduce((s, e) => s + Number(e.order_count || 0), 0);
     if (!earnings_visible) {
       host.innerHTML = `
         <div class="stat-grid">
           <div class="stat-card"><div class="label">Поръчки за периода</div><div class="value">${totalOrders}</div></div>
+          <div class="stat-card"><div class="label">Договор / график</div><div class="value" style="font-size:1rem;">${contract} · ${hours}</div></div>
         </div>
         <p class="hint">Сумите не са видими за вас за този профил.</p>`;
       return;
     }
     const totalGross = periodEntries.reduce((s, e) => s + Number(e.gross_earnings || 0), 0);
     const totalDeduction = periodEntries.reduce((s, e) => s + Number(e.deduction_amount || 0), 0);
+    const totalCarRent = periodEntries.reduce((s, e) => s + Number(e.car_rent_amount || 0), 0);
     const totalNet = periodEntries.reduce((s, e) => s + Number(e.net_amount || 0), 0);
     const totalPaid = periodEntries.filter(e => e.paid).reduce((s, e) => s + Number(e.net_amount || 0), 0);
     const totalUnpaid = totalNet - totalPaid;
@@ -725,18 +760,21 @@ async function loadEarnings() {
       ? `<p class="hint" style="margin-top:-14px;margin-bottom:10px;">По платформа: ${Object.entries(platformTotals).map(([k, v]) => `<strong>${PLATFORM_LABELS[k] || k}</strong>: ${fmtMoney(v)}`).join(' · ')}</p>` : '';
     host.innerHTML = `
       <div class="stat-grid">
+        ${balance !== null ? `<div class="stat-card"><div class="label">Текущо салдо</div><div class="value">${fmtMoney(balance)}</div></div>` : ''}
         <div class="stat-card"><div class="label">Поръчки за периода</div><div class="value">${totalOrders}</div></div>
+        <div class="stat-card"><div class="label">Договор / график</div><div class="value" style="font-size:1rem;">${contract} · ${hours}</div></div>
         <div class="stat-card"><div class="label">Изкарани пари (от платформата)</div><div class="value">${fmtMoney(totalGross)}</div></div>
         <div class="stat-card"><div class="label">Приход за фирмата (седмични такси)</div><div class="value green">${fmtMoney(totalDeduction)}</div></div>
+        ${totalCarRent ? `<div class="stat-card"><div class="label">Наем на кола (удържан)</div><div class="value">${fmtMoney(totalCarRent)}</div></div>` : ''}
         <div class="stat-card"><div class="label">За изплащане на служителя общо</div><div class="value">${fmtMoney(totalNet)}</div></div>
         <div class="stat-card"><div class="label">Изплатено вече</div><div class="value green">${fmtMoney(totalPaid)}</div></div>
         <div class="stat-card"><div class="label">Остава да се плати</div><div class="value ${totalUnpaid > 0 ? 'warn' : ''}">${fmtMoney(totalUnpaid)}</div></div>
       </div>
       ${platformTotalsLine}
-      <p class="hint" style="margin-top:8px;">„Приход за фирмата“ е сборът от седмичните такси/удръжки, събрани от служителя — реалният паричен приход на фирмата от него. Удръжката е една обща седмична такса по договора, не се разделя по платформа. Не изважда споделени разходи (кола, сервиз и др.), затова не е чиста печалба — пълният отчет с разходи е на страница „Счетоводство“.</p>
+      <p class="hint" style="margin-top:8px;">„Приход за фирмата“ е сборът от седмичните такси/удръжки по договора — реалният паричен приход на фирмата от служителя. Наемът на кола е отделна удръжка (вижда се като отделен ред по-долу и по-горе, ако е приложим) — заедно двете намаляват „Изкарани пари“ до „За изплащане“. Не изважда споделени разходи (сервиз и др.), затова не е чиста печалба — пълният отчет е на страница „Счетоводство“.</p>
       ${periodEntries.length ? `
       <div class="table-wrap" style="margin-top:10px;"><table>
-        <thead><tr><th>Седмица</th><th>Поръчки</th><th>Заработка</th><th>Удръжка</th><th>За изплащане</th><th>Платено</th><th></th></tr></thead>
+        <thead><tr><th>Седмица</th><th>Поръчки</th><th>Заработка</th><th>Удръжка</th><th>Наем кола</th><th>За изплащане</th><th>Платено</th><th></th></tr></thead>
         <tbody>
           ${periodEntries.sort((a, b) => (a.week_start < b.week_start ? 1 : -1)).map(e => `
             <tr>
@@ -744,6 +782,7 @@ async function loadEarnings() {
               <td>${e.order_count || 0}</td>
               <td><div class="stack">${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</div></td>
               <td>${fmtMoney(e.deduction_amount)}</td>
+              <td>${fmtMoney(e.car_rent_amount)}</td>
               <td><strong>${fmtMoney(e.net_amount)}</strong></td>
               <td>${e.paid ? '<span class="badge badge-green">Платено</span>' : '<span class="badge badge-warn">Дължимо</span>'}</td>
               <td>${(['admin', 'super_admin'].includes(CURRENT_USER.role) && !e.paid) ? `<button type="button" class="btn btn-ghost btn-sm earn-mark-paid-btn" data-id="${e.id}" style="padding:2px 8px;font-size:.68rem;">Маркирай платено</button>` : ''}</td>
@@ -871,16 +910,16 @@ function walletTxBadge(t) {
   return `<span class="badge ${positive ? 'badge-green' : 'badge-danger'}">${positive ? '+' : ''}${fmtMoney(t.amount)}</span>`;
 }
 
+let CURRENT_WALLET_BALANCE = null;
+
 async function loadWallet() {
   const host = document.getElementById('walletHost');
   if (!host) return;
   try {
     const { balance, transactions } = await Api.get(`/api/wallet/users/${TARGET_ID}`);
+    CURRENT_WALLET_BALANCE = balance;
     host.innerHTML = `
-      <div class="stat-card" style="margin-bottom:16px;">
-        <div class="label">Текущо салдо</div>
-        <div class="value">${fmtMoney(balance)}</div>
-      </div>
+      <p style="margin:0 0 10px;font-size:.9rem;">Текущо салдо: <strong style="font-size:1.1rem;">${fmtMoney(balance)}</strong></p>
       ${transactions.length ? `
       <div class="table-wrap"><table>
         <thead><tr><th>Кога</th><th>Вид</th><th>Сума</th><th>Бележка</th></tr></thead>
