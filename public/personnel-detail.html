@@ -22,6 +22,19 @@ const EC_STATUS = {
 };
 function ecStatusBadge(s) { const [label, cls] = EC_STATUS[s] || [s, 'badge-muted']; return `<span class="badge ${cls}">${label}</span>`; }
 const EC_TYPE_LABELS = { labor: 'Трудов', civil: 'Граждански' };
+// обобщение на удръжката за реда в таблицата с договори — процентна (с
+// опционален втори праг) или фиксирана сума, вж. computeContractDeduction в
+// lib/db.js за точната формула, която стои зад тези числа.
+function deductionSummary(c) {
+  if (c.deduction_type === 'percentage') {
+    const base = `${c.deduction_percentage ?? 0}%`;
+    if (c.deduction_threshold_amount != null && c.deduction_percentage_above_threshold != null) {
+      return `${base} <span class="hint">до ${fmtMoney(c.deduction_threshold_amount)}, ${c.deduction_percentage_above_threshold}% над това</span>`;
+    }
+    return `${base} <span class="hint">от заработката</span>`;
+  }
+  return fmtMoney(c.weekly_deduction_amount);
+}
 
 function qs(name) { return new URLSearchParams(location.search).get(name); }
 function daysLeftLabel(n) {
@@ -280,7 +293,7 @@ async function loadFile() {
       <div class="panel-head"><h2>Трудови / граждански договори</h2></div>
       ${employment_contracts.length ? `
       <div class="table-wrap"><table>
-        <thead><tr><th>Номер</th><th>Вид</th><th>Часове/ден</th><th>От</th><th>До</th><th>Седмична удръжка</th><th>Разписване</th><th>Скенер</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>Номер</th><th>Вид</th><th>Часове/ден</th><th>От</th><th>До</th><th>Удръжка</th><th>Разписване</th><th>Скенер</th><th>Статус</th><th></th></tr></thead>
         <tbody>
           ${employment_contracts.map(c => `
             <tr>
@@ -289,7 +302,9 @@ async function loadFile() {
               <td>${c.hours_per_day || '—'}</td>
               <td>${fmtDate(c.start_date)}</td>
               <td>${c.end_date ? fmtDate(c.end_date) : '—'}</td>
-              <td>${fmtMoney(c.weekly_deduction_amount)}</td>
+              <td><div class="stack">${deductionSummary(c)}
+                ${CAN_EDIT ? `<button type="button" class="btn btn-ghost btn-sm ec-deduction-toggle" data-id="${c.id}" style="padding:1px 6px;font-size:.65rem;align-self:flex-start;">Редакция</button>` : ''}</div>
+              </td>
               <td>${esignStatusBadge(c.signature_status)}</td>
               <td>
                 ${c.scan_url ? `<a href="${c.scan_url}" target="_blank">Преглед</a><br>${docActionButtons(c.scan_url, `договор-${c.contract_number}${(c.scan_url.match(/\.[a-zA-Z0-9]+$/)||['.jpg'])[0]}`, `Договор ${c.contract_number}`)}` : '<span class="hint">няма</span>'}
@@ -303,7 +318,33 @@ async function loadFile() {
                   <option value="terminated" ${c.status==='terminated'?'selected':''}>Прекратен</option>
                 </select>` : ecStatusBadge(c.status)}</td>
               <td><a class="btn btn-ghost btn-sm" href="/employment-contract-print.html?id=${c.id}&profile_id=${TARGET_ID}">Отвори →</a></td>
-            </tr>`).join('')}
+            </tr>
+            ${CAN_EDIT ? `
+            <tr class="ec-deduction-row" data-id="${c.id}" style="display:none;">
+              <td colspan="10" style="background:var(--panel-2,rgba(255,255,255,.02));">
+                <form class="ec-deduction-form" data-id="${c.id}" style="padding:10px 4px;">
+                  <div class="field"><label>Вид удръжка</label>
+                    <select name="deduction_type" class="ec-deduction-type-select">
+                      <option value="fixed" ${c.deduction_type !== 'percentage' ? 'selected' : ''}>Фиксирана сума</option>
+                      <option value="percentage" ${c.deduction_type === 'percentage' ? 'selected' : ''}>Процент от заработката (от качен седмичен отчет)</option>
+                    </select>
+                  </div>
+                  <div class="field-row ec-fixed-field" style="display:${c.deduction_type === 'percentage' ? 'none' : ''}">
+                    <div class="field"><label>Седмична удръжка (€)</label><input name="weekly_deduction_amount" type="number" step="0.01" min="0" value="${c.weekly_deduction_amount ?? ''}"></div>
+                  </div>
+                  <div class="field-row ec-percentage-fields" style="display:${c.deduction_type === 'percentage' ? '' : 'none'}">
+                    <div class="field"><label>Процент от заработката (%)</label><input name="deduction_percentage" type="number" step="0.01" min="0" max="100" value="${c.deduction_percentage ?? ''}"></div>
+                  </div>
+                  <p class="hint ec-percentage-fields" style="display:${c.deduction_type === 'percentage' ? '' : 'none'}">По избор — втора степен над определена седмична заработка: по-нисък процент = бонус за добре изработени седмици, по-висок процент = такса за слабо изработени. Оставете празно, ако искате един и същ процент винаги.</p>
+                  <div class="field-row ec-percentage-fields" style="display:${c.deduction_type === 'percentage' ? '' : 'none'}">
+                    <div class="field"><label>Праг на седмичната заработка (€)</label><input name="deduction_threshold_amount" type="number" step="0.01" min="0" value="${c.deduction_threshold_amount ?? ''}"></div>
+                    <div class="field"><label>Процент при/над прага (%)</label><input name="deduction_percentage_above_threshold" type="number" step="0.01" min="0" max="100" value="${c.deduction_percentage_above_threshold ?? ''}"></div>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-sm">Запази удръжката</button>
+                  <button type="button" class="btn btn-ghost btn-sm ec-deduction-cancel" data-id="${c.id}">Отказ</button>
+                </form>
+              </td>
+            </tr>` : ''}`).join('')}
         </tbody>
       </table></div>` : `<p class="hint">Няма договори все още.</p>`}
 
@@ -332,7 +373,22 @@ async function loadFile() {
           <div class="field"><label>Начална дата *</label><input name="start_date" type="date" required></div>
           <div class="field"><label>Крайна дата</label><input name="end_date" type="date"></div>
         </div>
-        <div class="field"><label>Седмична удръжка (€) — по подразбиране от вида, може да се промени ръчно</label><input name="weekly_deduction_amount" type="number" step="0.01" placeholder="оставете празно за стойността по подразбиране"></div>
+        <div class="field"><label>Вид удръжка</label>
+          <select name="deduction_type" id="ecDeductionTypeSelect">
+            <option value="fixed">Фиксирана сума</option>
+            <option value="percentage">Процент от заработката (от качен седмичен отчет)</option>
+          </select>
+        </div>
+        <div class="field-row" id="ecFixedField">
+          <div class="field"><label>Седмична удръжка (€) — по подразбиране от вида, може да се промени ръчно</label><input name="weekly_deduction_amount" type="number" step="0.01" placeholder="оставете празно за стойността по подразбиране"></div>
+        </div>
+        <div class="field-row" id="ecPercentageFields" style="display:none;">
+          <div class="field"><label>Процент от заработката (%)</label><input name="deduction_percentage" type="number" step="0.01" min="0" max="100"></div>
+        </div>
+        <div class="field-row" id="ecPercentageThresholdFields" style="display:none;">
+          <div class="field"><label>Праг на седмичната заработка (€, по избор)</label><input name="deduction_threshold_amount" type="number" step="0.01" min="0"></div>
+          <div class="field"><label>Процент при/над прага (%, по избор)</label><input name="deduction_percentage_above_threshold" type="number" step="0.01" min="0" max="100"></div>
+        </div>
         <div class="field"><label>Скенер на подписан договор (по избор)</label><input type="file" id="ecScanFile" accept="image/*,application/pdf"></div>
         <div class="hint" id="ecScanMsg"></div>
         <button type="submit" class="btn btn-primary btn-sm">Създай договор</button>
@@ -433,6 +489,62 @@ async function loadFile() {
   function syncHoursField() { if (ecHoursField) ecHoursField.style.display = ecTypeSelect.value === 'labor' ? '' : 'none'; }
   if (ecTypeSelect) { ecTypeSelect.addEventListener('change', syncHoursField); syncHoursField(); }
 
+  const ecDeductionTypeSelect = document.getElementById('ecDeductionTypeSelect');
+  function syncEcDeductionFields() {
+    if (!ecDeductionTypeSelect) return;
+    const isPct = ecDeductionTypeSelect.value === 'percentage';
+    document.getElementById('ecFixedField').style.display = isPct ? 'none' : '';
+    document.getElementById('ecPercentageFields').style.display = isPct ? '' : 'none';
+    document.getElementById('ecPercentageThresholdFields').style.display = isPct ? '' : 'none';
+  }
+  if (ecDeductionTypeSelect) { ecDeductionTypeSelect.addEventListener('change', syncEcDeductionFields); syncEcDeductionFields(); }
+
+  // редакция на удръжка на вече съществуващ договор — разгъващ се ред под
+  // съответния запис в таблицата (виж deductionSummary/ec-deduction-row по-горе)
+  document.querySelectorAll('.ec-deduction-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = document.querySelector(`.ec-deduction-row[data-id="${btn.dataset.id}"]`);
+      if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+    });
+  });
+  document.querySelectorAll('.ec-deduction-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = document.querySelector(`.ec-deduction-row[data-id="${btn.dataset.id}"]`);
+      if (row) row.style.display = 'none';
+    });
+  });
+  document.querySelectorAll('.ec-deduction-type-select').forEach(sel => {
+    function syncRow() {
+      const form = sel.closest('form');
+      const isPct = sel.value === 'percentage';
+      form.querySelectorAll('.ec-fixed-field').forEach(el => el.style.display = isPct ? 'none' : '');
+      form.querySelectorAll('.ec-percentage-fields').forEach(el => el.style.display = isPct ? '' : 'none');
+    }
+    sel.addEventListener('change', syncRow);
+  });
+  document.querySelectorAll('.ec-deduction-form').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = form.dataset.id;
+      const data = Object.fromEntries(new FormData(form).entries());
+      const patch = { deduction_type: data.deduction_type };
+      if (data.deduction_type === 'percentage') {
+        patch.deduction_percentage = data.deduction_percentage ? Number(data.deduction_percentage) : 0;
+        patch.deduction_threshold_amount = data.deduction_threshold_amount ? Number(data.deduction_threshold_amount) : null;
+        patch.deduction_percentage_above_threshold = data.deduction_percentage_above_threshold ? Number(data.deduction_percentage_above_threshold) : null;
+      } else {
+        patch.weekly_deduction_amount = data.weekly_deduction_amount ? Number(data.weekly_deduction_amount) : 0;
+        patch.deduction_percentage = null;
+        patch.deduction_threshold_amount = null;
+        patch.deduction_percentage_above_threshold = null;
+      }
+      try {
+        await Api.put(`/api/hr/employment-contracts/${id}`, patch);
+        await loadFile();
+      } catch (err) { alert('Грешка: ' + err.message); }
+    });
+  });
+
   const ecForm = document.getElementById('ecForm');
   if (ecForm) ecForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -444,8 +556,20 @@ async function loadFile() {
     if (data.contract_type !== 'labor') delete data.hours_per_day;
     else data.hours_per_day = Number(data.hours_per_day);
     if (!data.end_date) delete data.end_date;
-    if (!data.weekly_deduction_amount) delete data.weekly_deduction_amount;
-    else data.weekly_deduction_amount = Number(data.weekly_deduction_amount);
+    if (data.deduction_type === 'percentage') {
+      delete data.weekly_deduction_amount;
+      data.deduction_percentage = data.deduction_percentage ? Number(data.deduction_percentage) : 0;
+      if (!data.deduction_threshold_amount) delete data.deduction_threshold_amount;
+      else data.deduction_threshold_amount = Number(data.deduction_threshold_amount);
+      if (!data.deduction_percentage_above_threshold) delete data.deduction_percentage_above_threshold;
+      else data.deduction_percentage_above_threshold = Number(data.deduction_percentage_above_threshold);
+    } else {
+      delete data.deduction_percentage;
+      delete data.deduction_threshold_amount;
+      delete data.deduction_percentage_above_threshold;
+      if (!data.weekly_deduction_amount) delete data.weekly_deduction_amount;
+      else data.weekly_deduction_amount = Number(data.weekly_deduction_amount);
+    }
     try {
       const { contract } = await Api.post('/api/hr/employment-contracts', data);
       const scanFile = document.getElementById('ecScanFile').files[0];

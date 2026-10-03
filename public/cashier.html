@@ -64,20 +64,100 @@ function transactionsHtml(transactions) {
     </table></div>`;
 }
 
+// как е съпоставен ред от качено банково извлечение (вж. suggestBankMatch в
+// lib/db.js) — чисто информативно за прозрачност на автоматиката
+const MATCH_TYPE_LABELS = {
+  payroll_wage_payout: 'Изплатена заплата', rental_income: 'Наем на кола',
+  repair_expense: 'Ремонт/сервиз', commission_payout: 'Комисионна',
+  finance_entry: 'Счетоводен запис', unmatched: 'Несъпоставено', manual_category: 'Ръчна категория',
+};
 function bankMovementsHtml(movements) {
   if (!movements.length) return '<p class="hint">Няма движения по банкова сметка за периода.</p>';
   return `
     <div class="table-wrap"><table>
-      <thead><tr><th>Дата</th><th>Описание</th><th>Сума</th></tr></thead>
+      <thead><tr><th>Дата</th><th>Описание</th><th>Произход</th><th>Сума</th></tr></thead>
       <tbody>
         ${movements.map(m => `
           <tr>
             <td>${fmtDate(m.movement_date)}</td>
             <td>${m.description}</td>
+            <td><div class="stack">${m.source === 'import' ? '<span class="badge badge-muted">От извлечение</span>' : '<span class="badge badge-muted">Ръчно</span>'}${m.matched_type ? `<small>${MATCH_TYPE_LABELS[m.matched_type] || m.matched_type}${m.category ? ': ' + m.category : ''}</small>` : ''}</div></td>
             <td style="color:${m.direction === 'income' ? 'var(--green)' : 'var(--danger)'};font-weight:700;">${m.direction === 'income' ? '+' : '-'}${fmtMoney(m.amount)}</td>
           </tr>`).join('')}
       </tbody>
     </table></div>`;
+}
+
+// ---- Качване на банково извлечение (само супер администратор) -----------
+function bankImportPanelHtml() {
+  return `
+    <div class="panel" id="bankImportPanel">
+      <div class="panel-head"><h2>Качи банково извлечение</h2></div>
+      <p class="hint">Качете извлечение от банковата сметка (CSV или Excel) — системата ще разпознае колоните автоматично и ще предложи съпоставки, преди да запише нещо. Поддържа се и повторно качване на един и същ файл без задвояване (по референция на транзакцията от банката).</p>
+      <div class="error-box" id="bankImportError"></div>
+      <div class="field-row">
+        <div class="field"><label>Банка</label><input id="bankImportBankName" value="Пощенска банка"></div>
+        <div class="field"><label>Крайно салдо по извлечението (€, по избор — за равнение)</label><input id="bankImportClosingBalance" type="number" step="0.01"></div>
+      </div>
+      <div class="field"><label>Файл (.csv / .xlsx) *</label><input id="bankImportFile" type="file" accept=".csv,.xlsx,.xls"></div>
+      <button type="button" class="btn btn-primary btn-sm" id="bankImportPreviewBtn">Прегледай файла</button>
+      <div id="bankImportPreviewHost" style="margin-top:14px;"></div>
+    </div>
+    <div class="panel" id="bankImportHistoryPanel">
+      <div class="panel-head"><h2>История на качванията</h2></div>
+      <div id="bankImportHistoryHost" class="loading">Зареждане…</div>
+    </div>`;
+}
+
+function bankImportHistoryHtml(imports) {
+  if (!imports.length) return '<p class="hint">Няма качени извлечения все още.</p>';
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Качено на</th><th>Банка</th><th>Период</th><th>Редове</th><th>Съпоставени</th><th>Салдо по извлечение</th></tr></thead>
+      <tbody>
+        ${imports.map(i => `
+          <tr>
+            <td>${fmtDateTime(i.created_at)}</td>
+            <td>${i.bank_name || '—'}</td>
+            <td>${i.period_from ? `${fmtDate(i.period_from)} — ${fmtDate(i.period_to)}` : '—'}</td>
+            <td>${i.row_count}</td>
+            <td>${i.matched_count} / ${i.row_count}</td>
+            <td>${i.statement_closing_balance != null ? fmtMoney(i.statement_closing_balance) : '—'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function bankStatementPreviewHtml(result) {
+  const { headers, detected, errors, rows, reconciliation } = result;
+  const goodRows = rows.filter(r => !r.error);
+  const badRows = rows.filter(r => r.error);
+  return `
+    ${errors.length ? `<div class="error-box show">${errors.join('<br>')} <br><span class="hint">Разпознати заглавия в файла: ${headers.join(', ')}</span></div>` : ''}
+    ${reconciliation ? `<div class="stat-grid" style="margin-bottom:14px;">
+      <div class="stat-card"><div class="label">Изчислено салдо (след това качване)</div><div class="value">${fmtMoney(reconciliation.computed_balance)}</div></div>
+      <div class="stat-card"><div class="label">Салдо по извлечението</div><div class="value">${fmtMoney(reconciliation.statement_closing_balance)}</div></div>
+      <div class="stat-card"><div class="label">Разлика</div><div class="value ${reconciliation.matches ? 'green' : 'warn'}">${fmtMoney(reconciliation.difference)}${reconciliation.matches ? ' ✓' : ' ⚠'}</div></div>
+    </div>` : ''}
+    <p class="hint">Намерени ${goodRows.length} валидни реда${badRows.length ? ` (${badRows.length} не могат да се разчетат и ще се пропуснат)` : ''}. Прегледайте предложените съпоставки по-долу, по избор сменете категорията на несъпоставените редове или махнете отметката "Запиши", ако искате ред да се пропусне, после натиснете "Запиши в банковите движения".</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Запиши</th><th>Дата</th><th>Описание</th><th>Сума</th><th>Съпоставка / категория</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr data-row-index="${r.row_index}">
+            <td><input type="checkbox" class="bank-row-include" data-row-index="${r.row_index}" ${r.error || r.duplicate ? 'disabled' : 'checked'}></td>
+            <td>${r.date || '<span class="hint">?</span>'}</td>
+            <td>${r.description || ''}${r.duplicate ? ' <span class="badge badge-muted">вече качено</span>' : ''}${r.error ? ` <span class="hint">${r.error}</span>` : ''}</td>
+            <td style="color:${r.direction === 'income' ? 'var(--green)' : 'var(--danger)'};font-weight:700;">${r.amount != null ? (r.direction === 'income' ? '+' : '-') + fmtMoney(r.amount) : '—'}</td>
+            <td>${r.suggested_match
+              ? `<span class="badge badge-green">${MATCH_TYPE_LABELS[r.suggested_match.matched_type] || r.suggested_match.matched_type}</span> <small>${r.suggested_match.label}</small>`
+              : (r.error || r.duplicate ? '—' : `<input class="bank-row-category" data-row-index="${r.row_index}" placeholder="категория (по избор)" style="width:160px;">`)}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>
+    <button type="button" class="btn btn-primary btn-sm" id="bankImportApplyBtn" style="margin-top:12px;">Запиши в банковите движения</button>
+    <div class="success-box" id="bankImportApplySuccess"></div>`;
 }
 
 // формата за корекция по касата — полетата се сменят според избрания тип
@@ -308,6 +388,73 @@ async function loadSettings() {
   }
 }
 
+let lastBankImportFileBase64 = null;
+let lastBankImportPreview = null;
+
+async function loadBankImportHistory() {
+  const host = document.getElementById('bankImportHistoryHost');
+  if (!host) return;
+  try {
+    const { imports } = await Api.get('/api/cashier/bank-statement/imports');
+    host.innerHTML = bankImportHistoryHtml(imports);
+  } catch (err) { host.innerHTML = `<p class="hint">${err.message}</p>`; }
+}
+
+function initBankImportPanel() {
+  const previewBtn = document.getElementById('bankImportPreviewBtn');
+  if (!previewBtn) return;
+  previewBtn.addEventListener('click', async () => {
+    const errorBox = document.getElementById('bankImportError');
+    errorBox.classList.remove('show');
+    const fileInput = document.getElementById('bankImportFile');
+    const file = fileInput.files[0];
+    if (!file) { errorBox.textContent = 'Изберете файл.'; errorBox.classList.add('show'); return; }
+    const closingBalanceRaw = document.getElementById('bankImportClosingBalance').value;
+    try {
+      lastBankImportFileBase64 = await readFileAsDataUrl(file);
+      const body = { file_base64: lastBankImportFileBase64 };
+      if (closingBalanceRaw) body.statement_closing_balance = Number(closingBalanceRaw);
+      const result = await Api.post('/api/cashier/bank-statement/preview', body);
+      lastBankImportPreview = result;
+      document.getElementById('bankImportPreviewHost').innerHTML = bankStatementPreviewHtml(result);
+      const applyBtn = document.getElementById('bankImportApplyBtn');
+      if (applyBtn) applyBtn.addEventListener('click', async () => {
+        const rowOverrides = {};
+        document.querySelectorAll('.bank-row-include').forEach((cb) => {
+          if (!cb.checked) rowOverrides[cb.dataset.rowIndex] = { ...(rowOverrides[cb.dataset.rowIndex] || {}), skip: true };
+        });
+        document.querySelectorAll('.bank-row-category').forEach((inp) => {
+          if (inp.value.trim()) rowOverrides[inp.dataset.rowIndex] = { ...(rowOverrides[inp.dataset.rowIndex] || {}), category: inp.value.trim(), matched_type: 'manual_category' };
+        });
+        try {
+          const applyBody = {
+            file_base64: lastBankImportFileBase64, row_overrides: rowOverrides,
+            bank_name: document.getElementById('bankImportBankName').value || null,
+          };
+          if (closingBalanceRaw) applyBody.statement_closing_balance = Number(closingBalanceRaw);
+          const applyResult = await Api.post('/api/cashier/bank-statement/apply', applyBody);
+          const successBox = document.getElementById('bankImportApplySuccess');
+          successBox.textContent = `Записани ${applyResult.written} реда` +
+            (applyResult.skipped_duplicates ? `, пропуснати ${applyResult.skipped_duplicates} вече качени` : '') +
+            (applyResult.skipped_errors ? `, пропуснати ${applyResult.skipped_errors} с грешка` : '') + '.';
+          successBox.classList.add('show');
+          document.getElementById('bankImportPreviewHost').innerHTML = '';
+          fileInput.value = '';
+          await loadBankMovements();
+          await loadBankImportHistory();
+          await loadSummary();
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.classList.add('show');
+        }
+      });
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+
 async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
@@ -322,12 +469,17 @@ async function init() {
     <div id="settingsHost"></div>
     <div id="summaryHost" class="loading">Зареждане…</div>
     <div id="cashierHost" class="loading">Зареждане…</div>
+    ${CURRENT_USER.role === 'super_admin' ? bankImportPanelHtml() : ''}
     <div class="panel">
       <div class="panel-head"><h2>Движения по банкова сметка</h2></div>
       <div id="bankMovementsHost" class="loading">Зареждане…</div>
     </div>
   `;
-  if (CURRENT_USER.role === 'super_admin') await loadSettings();
+  if (CURRENT_USER.role === 'super_admin') {
+    await loadSettings();
+    initBankImportPanel();
+    await loadBankImportHistory();
+  }
   await loadSummary();
   await loadCashier();
   await loadBankMovements();

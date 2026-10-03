@@ -22,6 +22,13 @@ function platformBreakdownLine(e) {
   if (!pb || !Object.keys(pb).length) return '';
   return `<small>${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</small>`;
 }
+// за прозрачност показваме как точно е смятана процентната удръжка (вж.
+// computeContractDeduction в lib/db.js) — "10% от 559.39 € = 55.94 €" вместо
+// гола сума, за да може шофьорът да я провери сам при подписване
+function deductionRateLine(e) {
+  if (e.deduction_source !== 'percentage' || e.deduction_rate == null) return '';
+  return `<small>${e.deduction_rate}% от ${fmtMoney(e.gross_earnings)}</small>`;
+}
 function signBadge(status) {
   if (status === 'signed_in_person' || status === 'signed_remote') return '<span class="badge badge-green">Потвърдено</span>';
   return '<span class="badge badge-muted">Непотвърдено</span>';
@@ -39,6 +46,21 @@ let ALL_NAMES_BY_ID = {};
 let ALL_PROFILES_BY_ID = {};
 let selectedProfileId = null;
 let earningsVisible = true;
+// активният трудов договор на избрания служител в ръчната форма "Въведи
+// седмица" — пазим го, за да преизчисляваме предложената удръжка на живо
+// при промяна на заработката, ако договорът е процентен (вж.
+// suggestDeductionFromGross по-долу и computeContractDeduction в lib/db.js)
+let activeContractForEntryForm = null;
+function suggestedDeductionFor(contract, gross) {
+  if (!contract) return 0;
+  if (contract.deduction_type !== 'percentage') return Number(contract.weekly_deduction_amount || 0);
+  let rate = Number(contract.deduction_percentage || 0);
+  if (contract.deduction_threshold_amount != null && contract.deduction_percentage_above_threshold != null
+      && Number(gross || 0) >= Number(contract.deduction_threshold_amount)) {
+    rate = Number(contract.deduction_percentage_above_threshold);
+  }
+  return Math.round(Number(gross || 0) * (rate / 100) * 100) / 100;
+}
 
 async function loadEntries() {
   const host = document.getElementById('entriesHost');
@@ -65,7 +87,7 @@ async function loadEntries() {
             <td><strong>${e.order_count}</strong></td>
             ${earningsVisible ? `
             <td><div class="stack">${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</div></td>
-            <td>${fmtMoney(e.deduction_amount)}</td>
+            <td><div class="stack">${fmtMoney(e.deduction_amount)}${deductionRateLine(e)}</div></td>
             <td>${fmtMoney(e.car_rent_amount)}</td>
             <td><strong>${fmtMoney(e.net_amount)}</strong></td>` : ''}
             <td><div class="stack">${signBadge(e.signature_status)}${e.signed_by_name ? `<small>${e.signed_by_name} · ${fmtDate(e.signed_at)}</small>` : ''}</div></td>
@@ -460,8 +482,13 @@ async function init() {
       try {
         const { employment_contracts, rental_contracts } = await Api.get(`/api/hr/personnel/${selectedProfileId}`);
         const active = employment_contracts.find(c => c.status === 'active') || employment_contracts[0];
+        activeContractForEntryForm = active || null;
         const deductionField = document.querySelector('#entryForm input[name="deduction_amount"]');
-        if (active && deductionField && !deductionField.value) deductionField.value = active.weekly_deduction_amount || 0;
+        const grossField = document.querySelector('#entryForm input[name="gross_earnings"]');
+        if (deductionField) deductionField.dataset.auto = '1';
+        if (active && deductionField && !deductionField.value) {
+          deductionField.value = suggestedDeductionFor(active, grossField ? grossField.value : 0);
+        }
         const activeRental = (rental_contracts || []).find(c => c.status === 'active');
         const rentField = document.querySelector('#entryForm input[name="car_rent_amount"]');
         // договорът за наем на кола може да е на седмица, месец или ден
@@ -486,6 +513,20 @@ async function init() {
     // въвежданата — за по-бързо навигиране, вместо да се тръгва от празно
     startField.value = previousWeekStart();
     endField.value = addDaysStr(startField.value, 6);
+
+    // при процентна удръжка заработката се въвежда в СЪЩАТА форма, затова
+    // предложената удръжка трябва да се преизчислява на живо докато пишете
+    // заработката — само докато полето за удръжка остава недокоснато
+    // ("автоматично"); щом администраторът го редактира ръчно, спираме да го
+    // пипаме (вж. deductionField.dataset.auto).
+    const grossField = document.querySelector('#entryForm input[name="gross_earnings"]');
+    const deductionField = document.querySelector('#entryForm input[name="deduction_amount"]');
+    if (deductionField) deductionField.addEventListener('input', () => { deductionField.dataset.auto = '0'; });
+    if (grossField) grossField.addEventListener('input', () => {
+      if (deductionField && deductionField.dataset.auto === '1' && activeContractForEntryForm) {
+        deductionField.value = suggestedDeductionFor(activeContractForEntryForm, grossField.value);
+      }
+    });
 
     document.getElementById('entryForm').addEventListener('submit', async (e) => {
       e.preventDefault();

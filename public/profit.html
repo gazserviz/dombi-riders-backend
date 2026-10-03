@@ -77,6 +77,29 @@ async function loadPeriod(from, to) {
   };
 }
 
+// формат на реда в историята на седмичните отчети — всеки има СНИМКА на
+// числата към момента на генерирането (вж. ensureLastCompletedWeeklyReport в
+// lib/db.js); не се преизчислява по-късно, дори данните да се коригират
+function weeklyReportsHistoryHtml(reports) {
+  if (!reports.length) return '<p class="hint">Все още няма запазени седмични отчети — първият ще се генерира автоматично, щом отворите това табло след края на седмицата.</p>';
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Седмица</th><th>Нетна печалба (каса+банка)</th><th>Брутна заработка</th><th>Удръжки+наем</th><th>Ремонти</th><th>Комисионни</th><th>Счетоводна печалба</th></tr></thead>
+      <tbody>
+        ${reports.map(r => `
+          <tr>
+            <td>${fmtDate(r.week_start)} — ${fmtDate(r.week_end)}</td>
+            <td><strong>${fmtMoney(r.snapshot.total_profit)}</strong></td>
+            <td>${fmtMoney(r.snapshot.gross_earnings_total)}</td>
+            <td>${fmtMoney((r.snapshot.deductions_total || 0) + (r.snapshot.car_rent_total || 0))}</td>
+            <td>${fmtMoney(r.snapshot.repairs_total)}</td>
+            <td>${fmtMoney(r.snapshot.commissions_total)}</td>
+            <td>${fmtMoney(r.snapshot.accrual_profit)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
 async function init() {
   const user = await mountShell();
   if (!user) return;
@@ -84,10 +107,26 @@ async function init() {
     document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате печалбата.</div>`;
     return;
   }
+  // генерира (best-effort, не блокира таблото) отчета за последната
+  // завършена седмица, ако още няма запазен — вж. коментара над
+  // ensureLastCompletedWeeklyReport в lib/db.js
+  Api.post('/api/reports/weekly/ensure-latest', {}).catch(() => {});
   const content = document.getElementById('app-content');
   content.innerHTML = `
     <div id="periodPickerHost"></div>
-    <div id="profitHost" class="loading">Зареждане…</div>`;
+    <div id="profitHost" class="loading">Зареждане…</div>
+    <div class="panel" style="margin-top:20px;">
+      <div class="panel-head"><h2>Седмични отчети (история)</h2></div>
+      <div id="weeklyReportsHost" class="loading">Зареждане…</div>
+    </div>`;
+  (async () => {
+    try {
+      const { reports } = await Api.get('/api/reports/weekly');
+      document.getElementById('weeklyReportsHost').innerHTML = weeklyReportsHistoryHtml(reports);
+    } catch (e) {
+      document.getElementById('weeklyReportsHost').innerHTML = `<p class="hint">${e.message}</p>`;
+    }
+  })();
 
   const fromInput = { value: currentWeekStart() };
   const toInput = { value: addDaysStr(currentWeekStart(), 6) };
