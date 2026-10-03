@@ -2295,6 +2295,42 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { entry: rec });
     }
 
+    // еднократно/при нужда преизчисляване на удръжка по договор + наем на
+    // кола за СЪЩЕСТВУВАЩИ седмични записи, по ТЕКУЩО зададените параметри
+    // (активни трудови/граждански договори + активни договори за наем на
+    // коли) — нужно напр. след бекфил на история, направен преди тези
+    // параметри да са били зададени, или след промяна на такса/процент,
+    // за да се види реалният ефект върху вече качени седмици без да се
+    // качва отново самият Excel файл. Не пипа gross_earnings/order_count,
+    // само deduction_amount/car_rent_amount(+net).
+    if (pathname === '/api/hr/payroll/recalc-deductions' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'payroll', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      let entries = db.listPayrollEntries({});
+      if (body.week_start) entries = entries.filter(e => e.week_start >= body.week_start);
+      if (body.week_end) entries = entries.filter(e => e.week_start <= body.week_end);
+      const updated = [];
+      for (const e of entries) {
+        const defaults = db.getDefaultPayrollDeductions(e.profile_id, e.gross_earnings);
+        const rec = db.upsertPayrollEntry({
+          profile_id: e.profile_id, week_start: e.week_start, week_end: e.week_end,
+          order_count: e.order_count, gross_earnings: e.gross_earnings,
+          deduction_amount: defaults.deduction_amount,
+          deduction_source: defaults.deduction_source,
+          deduction_rate: defaults.deduction_rate,
+          car_rent_amount: defaults.car_rent_amount,
+          source: e.source,
+          created_by: user.id,
+        });
+        updated.push({
+          id: rec.id, profile_id: rec.profile_id, week_start: rec.week_start,
+          deduction_amount: rec.deduction_amount, car_rent_amount: rec.car_rent_amount, net_amount: rec.net_amount,
+        });
+      }
+      return sendJson(res, 200, { updated_count: updated.length, updated });
+    }
+
     // ---- Импорт на реални седмични заработки от Bolt/Glovo Excel файл -----
     // Двустъпков поток от UI-то на "Заплати":
     //  1) POST .../import/preview  -> само разчита файла, съпоставя по телефон
