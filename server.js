@@ -1793,6 +1793,27 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---- READ RECEIPT PIXEL (виж sendMail/trackingPixelUrl в lib/mail.js) --
+    // НАРОЧНО БЕЗ requirePermission — браузърът/пощенският клиент на ПОЛУЧАТЕЛЯ
+    // е този, който зарежда тази картинка (няма наша сесийна бисквитка), затова
+    // route-ът трябва да е публичен. Винаги връща валидно изображение, дори
+    // при непознат токен — за да не издава на подателя на случаен имейл дали
+    // дадена стойност е истински токен (виж markMailOpened в lib/db.js).
+    const mailTrackMatch = pathname.match(/^\/api\/mail\/track\/([\w-]+)\.png$/);
+    if (mailTrackMatch && req.method === 'GET') {
+      try { db.markMailOpened(mailTrackMatch[1]); } catch (e) { /* тихо — пикселът трябва да се върне във всеки случай */ }
+      // прозрачен 1x1 GIF (43 байта) — най-малкият валиден "pixel", стандартна
+      // практика при read-receipt тракери (виж research бележката в mail.html)
+      const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7', 'base64');
+      res.writeHead(200, {
+        'content-type': 'image/gif',
+        'content-length': pixel.length,
+        'cache-control': 'no-store, no-cache, must-revalidate, max-age=0',
+        pragma: 'no-cache',
+      });
+      return res.end(pixel);
+    }
+
     // ---- ПОЩЕНСКА КУТИЯ (office@dombi.bg през Zoho Mail, виж lib/mail.js) -
     if (pathname === '/api/mail/inbox' && req.method === 'GET') {
       const user = requirePermission(req, res, 'mail', 'view');
@@ -1826,7 +1847,16 @@ async function handleApi(req, res, pathname, query) {
       try {
         const limit = Math.min(Math.max(parseInt(query.limit, 10) || 30, 1), 100);
         const messages = await mail.listSent({ limit });
-        return sendJson(res, 200, { messages });
+        // "прочетено от получателя" — съпоставяме по Message-ID с нашите
+        // read-receipt записи (виж recordMailSent в lib/mail.js sendMail());
+        // писма, изпратени преди тази функция (или през самия Zoho Webmail),
+        // просто нямат запис — read: null означава "няма данни", не "непрочетено"
+        const tracking = db.getMailTrackingByMessageIds(messages.map(m => m.messageId));
+        const enriched = messages.map(m => {
+          const t = m.messageId ? tracking[m.messageId] : null;
+          return { ...m, read: t ? { opened: t.opened, openedAt: t.opened_at, openCount: t.open_count } : null };
+        });
+        return sendJson(res, 200, { messages: enriched });
       } catch (err) {
         return sendJson(res, err.code === 'MAIL_NOT_CONFIGURED' ? 503 : 502, { error: err.message });
       }
@@ -1901,6 +1931,14 @@ async function handleApi(req, res, pathname, query) {
           content: String(a.content || ''),
         })).filter(a => a.content);
       }
+      // read-receipt токен за тази заявка — вграждаме го като невидим pixel
+      // в HTML версията на писмото (виж trackingPixelUrl в lib/mail.js); ако
+      // изпращането успее, пазим токена в lib/db.js, за да можем после да
+      // съпоставим "Изпратени" (по Message-ID) с "отворено ли е"
+      const trackingToken = crypto.randomBytes(16).toString('hex');
+      const proto = req.headers['x-forwarded-proto'] || 'https';
+      const host = req.headers.host;
+      const trackingPixelUrl = `${proto}://${host}/api/mail/track/${trackingToken}.png`;
       try {
         const result = await mail.sendMail({
           to,
@@ -1912,7 +1950,11 @@ async function handleApi(req, res, pathname, query) {
           attachments,
           replyToUid: body.replyToUid || undefined,
           replyToFolder: body.replyToFolder || undefined,
+          trackingPixelUrl,
         });
+        try {
+          db.recordMailSent({ token: trackingToken, messageId: result.messageId, to, subject: body.subject });
+        } catch (e) { /* писмото вече е изпратено успешно — не проваляме отговора заради това */ }
         return sendJson(res, 200, { ok: true, messageId: result.messageId });
       } catch (err) {
         return sendJson(res, err.code === 'MAIL_NOT_CONFIGURED' ? 503 : 502, { error: err.message });
