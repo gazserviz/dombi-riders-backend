@@ -2002,6 +2002,25 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { employees });
     }
 
+    // ---- "ВСЕКИ ШОФЬОР ДА Е ЗАЧИСЛЕН КЪМ НЯКОЙ" — незачислени шофьори + ---
+    // масово зачисляване наведнъж (вместо отделна редакция на всяко досие)
+    if (pathname === '/api/hr/personnel/unassigned-drivers' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'hr_personnel', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { drivers: db.listUnassignedDrivers() });
+    }
+    if (pathname === '/api/hr/personnel/bulk-assign-manager' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'hr_personnel', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const result = db.bulkAssignManager(body.driver_ids, body.manager_id);
+        return sendJson(res, 200, result);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     const personnelMatch = pathname.match(/^\/api\/hr\/personnel\/([\w-]+)$/);
     if (personnelMatch && req.method === 'GET') {
       const user = requireAuth(req, res);
@@ -2608,6 +2627,34 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---- "МОЯТ ЕКИП" — самообслужващ изглед за мениджър при логване -------
+    // За разлика от /api/hr/partners/:id (ограничено до role==='manager',
+    // списъкът с "партньори" в partners.html), това е по-широк ендпойнт:
+    // работи за всеки логнат потребител, показва собствения му екип (виж
+    // profiles.manager_id) + собствената му комисионна/твърда заплата, ако
+    // има такива — read-only тук нарочно (редакцията на комисионна/заплата
+    // остава само през /api/hr/partners и /api/hr/fixed-salaries, admin-only,
+    // за да не си редактира мениджърът сам условията). Админ може да разгледа
+    // чужд екип през ?target_id=.
+    if (pathname === '/api/hr/my-team' && req.method === 'GET') {
+      const user = requireAuth(req, res);
+      if (!user) return;
+      const targetId = query.target_id || user.id;
+      if (targetId !== user.id && !isAdminOrAbove(user)) {
+        return sendJson(res, 403, { error: 'Нямате права за това действие' });
+      }
+      const target = db.findUserById(targetId);
+      if (!target) return sendJson(res, 404, { error: 'Служителят не е намерен' });
+      const { password: _pw, ...safeTarget } = target;
+      return sendJson(res, 200, {
+        profile: safeTarget,
+        team: db.listTeamProfiles(targetId),
+        commission: db.getPartnerCommissionProfile(targetId),
+        commission_stats: db.getPartnerStats(targetId, { from: query.from, to: query.to }),
+        fixed_salary: db.getFixedSalaryProfile(targetId),
+      });
+    }
+
     // ---- ПАРТНЬОРСКИ КОМИСИОННИ (реферални/посреднически партньори) ------
     // Партньорите/посредниците се моделират като профили с роля 'manager'
     // (могат едновременно да работят и като шофьори), с шофьори, зачислени
@@ -2653,7 +2700,7 @@ async function handleApi(req, res, pathname, query) {
       const profile = db.findUserById(targetId);
       if (!profile || profile.role !== 'manager') return sendJson(res, 404, { error: 'Партньорът не е намерен' });
       const body = await readJsonBody(req);
-      const allowed = ['comp_type', 'percentage', 'fixed_amount', 'fixed_period', 'comp_base', 'per_driver_amount', 'qualifying_threshold', 'active', 'notes'];
+      const allowed = ['comp_type', 'percentage', 'fixed_amount', 'fixed_period', 'comp_base', 'per_driver_amount', 'qualifying_threshold', 'team_qualifying_goal', 'tiers', 'active', 'notes'];
       const patch = {};
       allowed.forEach(k => { if (k in body) patch[k] = body[k]; });
       const rec = db.setPartnerCommissionProfile(targetId, patch);
@@ -2694,6 +2741,97 @@ async function handleApi(req, res, pathname, query) {
       const body = await readJsonBody(req);
       try {
         const rec = db.createPartnerCommissionPayment({
+          profileId: targetId, periodFrom: body.period_from, periodTo: body.period_to,
+          amount: body.amount, note: body.note, createdBy: user.id,
+        });
+        return sendJson(res, 201, { payment: rec, cashier_balance: db.getCashierBalance(db.getCashierProfileId()) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // ---- ТВЪРДИ ЗАПЛАТИ (офис/ръководен състав — виж lib/db.js за пълния --
+    // коментар защо е отделен модул от партньорската комисионна и от
+    // шофьорските заплати по брой поръчки). Същия permission модул
+    // 'fixed_salaries' като партньорите — само admin вижда/редактира,
+    // плащането само super_admin (реално касово движение).
+    if (pathname === '/api/hr/fixed-salaries' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'fixed_salaries', 'view');
+      if (!user) return;
+      const salaried = db.listUsers()
+        .map(u => ({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, status: u.status, salary: db.getFixedSalaryProfile(u.id) }))
+        .filter(u => u.salary); // по подразбиране само вече конфигурираните — добавянето на нов става през търсачката
+      return sendJson(res, 200, { salaried });
+    }
+    // търсене на служител за добавяне на нова твърда заплата (всеки, не само
+    // текущо конфигурираните) — лек списък, без пароли/лични данни
+    if (pathname === '/api/hr/fixed-salaries/search' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'fixed_salaries', 'view');
+      if (!user) return;
+      const q = (query.q || '').toLowerCase();
+      const results = db.listUsers()
+        .filter(u => !q || `${u.full_name} ${u.email}`.toLowerCase().includes(q))
+        .slice(0, 20)
+        .map(u => ({ id: u.id, full_name: u.full_name, email: u.email, role: u.role, has_salary: !!db.getFixedSalaryProfile(u.id) }));
+      return sendJson(res, 200, { results });
+    }
+
+    const fixedSalaryMatch = pathname.match(/^\/api\/hr\/fixed-salaries\/([\w-]+)$/);
+    if (fixedSalaryMatch && req.method === 'GET') {
+      const user = requireAuth(req, res);
+      if (!user) return;
+      const targetId = fixedSalaryMatch[1];
+      if (targetId !== user.id && !isAdminOrAbove(user)) {
+        return sendJson(res, 403, { error: 'Нямате права за това действие' });
+      }
+      const profile = db.findUserById(targetId);
+      if (!profile) return sendJson(res, 404, { error: 'Служителят не е намерен' });
+      const { password: _pw, ...safeProfile } = profile;
+      return sendJson(res, 200, { profile: safeProfile, salary: db.getFixedSalaryProfile(targetId) });
+    }
+    if (fixedSalaryMatch && req.method === 'PUT') {
+      const user = requirePermission(req, res, 'fixed_salaries', 'manage');
+      if (!user) return;
+      const targetId = fixedSalaryMatch[1];
+      const profile = db.findUserById(targetId);
+      if (!profile) return sendJson(res, 404, { error: 'Служителят не е намерен' });
+      const body = await readJsonBody(req);
+      const allowed = ['amount', 'period', 'active', 'notes'];
+      const patch = {};
+      allowed.forEach(k => { if (k in body) patch[k] = body[k]; });
+      const rec = db.setFixedSalaryProfile(targetId, patch);
+      return sendJson(res, 200, { salary: rec });
+    }
+
+    const fixedSalaryStatsMatch = pathname.match(/^\/api\/hr\/fixed-salaries\/([\w-]+)\/stats$/);
+    if (fixedSalaryStatsMatch && req.method === 'GET') {
+      const user = requireAuth(req, res);
+      if (!user) return;
+      const targetId = fixedSalaryStatsMatch[1];
+      if (targetId !== user.id && !isAdminOrAbove(user)) {
+        return sendJson(res, 403, { error: 'Нямате права за това действие' });
+      }
+      const stats = db.getFixedSalaryStats(targetId, { from: query.from, to: query.to });
+      return sendJson(res, 200, stats);
+    }
+
+    const fixedSalaryPaymentsMatch = pathname.match(/^\/api\/hr\/fixed-salaries\/([\w-]+)\/payments$/);
+    if (fixedSalaryPaymentsMatch && req.method === 'GET') {
+      const user = requireAuth(req, res);
+      if (!user) return;
+      const targetId = fixedSalaryPaymentsMatch[1];
+      if (targetId !== user.id && !isAdminOrAbove(user)) {
+        return sendJson(res, 403, { error: 'Нямате права за това действие' });
+      }
+      return sendJson(res, 200, { payments: db.listFixedSalaryPayments({ profileId: targetId }) });
+    }
+    if (fixedSalaryPaymentsMatch && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const targetId = fixedSalaryPaymentsMatch[1];
+      const body = await readJsonBody(req);
+      try {
+        const rec = db.createFixedSalaryPayment({
           profileId: targetId, periodFrom: body.period_from, periodTo: body.period_to,
           amount: body.amount, note: body.note, createdBy: user.id,
         });
