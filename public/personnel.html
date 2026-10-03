@@ -9,19 +9,18 @@
 <link rel="stylesheet" href="/css/app.css">
 <script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
 <style>
-  /* компактна таблица — Шофьорска книжка е премахната, а Телефон/Град/
-     Платформа са добавени, затова стесняваме колоните, за да се съберат
-     на един екран без хоризонтален скрол (виж заявката на клиента) */
+  /* компактна таблица — Име/Имейл/Телефон са обединени в една колона
+     „Служител“ (stack: име + имейл/телефон отдолу), затова стесняваме
+     останалите колони, за да се съберат на един екран без хоризонтален
+     скрол (виж заявката на клиента) */
   .personnel-table{table-layout:fixed;width:100%;}
   .personnel-table th,.personnel-table td{padding:9px 8px;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;}
-  .personnel-table th:nth-child(1),.personnel-table td:nth-child(1){width:15%;}
-  .personnel-table th:nth-child(2),.personnel-table td:nth-child(2){width:17%;}
-  .personnel-table th:nth-child(3),.personnel-table td:nth-child(3){width:12%;}
-  .personnel-table th:nth-child(4),.personnel-table td:nth-child(4){width:10%;}
-  .personnel-table th:nth-child(5),.personnel-table td:nth-child(5){width:10%;}
-  .personnel-table th:nth-child(6),.personnel-table td:nth-child(6){width:9%;}
-  .personnel-table th:nth-child(7),.personnel-table td:nth-child(7){width:11%;}
-  .personnel-table th:nth-child(8),.personnel-table td:nth-child(8){width:16%;white-space:normal;}
+  .personnel-table th:nth-child(1),.personnel-table td:nth-child(1){width:44%;}
+  .personnel-table th:nth-child(2),.personnel-table td:nth-child(2){width:10%;}
+  .personnel-table th:nth-child(3),.personnel-table td:nth-child(3){width:10%;}
+  .personnel-table th:nth-child(4),.personnel-table td:nth-child(4){width:9%;}
+  .personnel-table th:nth-child(5),.personnel-table td:nth-child(5){width:11%;}
+  .personnel-table th:nth-child(6),.personnel-table td:nth-child(6){width:16%;white-space:normal;}
 </style>
 </head>
 <body>
@@ -66,13 +65,16 @@ function personnelTable(employees) {
   return `
     <div class="table-wrap">
       <table class="personnel-table">
-        <thead><tr><th>Име</th><th>Имейл</th><th>Телефон</th><th>Град</th><th>Платформа</th><th>Роля</th><th>Статус</th><th>Изтичащи документи</th></tr></thead>
+        <thead><tr><th>Служител</th><th>Град</th><th>Платформа</th><th>Роля</th><th>Статус</th><th>Изтичащи документи</th></tr></thead>
         <tbody>
           ${sorted.map(e => `
             <tr class="clickable" onclick="window.location='/personnel-detail.html?id=${e.id}'" title="${escapeHtml(e.full_name)}">
-              <td><a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a>${driverIdLine(e)}</td>
-              <td title="${escapeHtml(e.email)}">${e.email}</td>
-              <td>${e.phone || '<span class="hint">—</span>'}</td>
+              <td>
+                <div class="stack">
+                  <a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a>
+                  <small title="${escapeHtml(e.email)}">${e.email}${e.phone ? ' · ' + e.phone : ''}</small>
+                </div>${driverIdLine(e)}
+              </td>
               <td>${e.city || '<span class="hint">—</span>'}</td>
               <td>${platformBadges(e.platforms)}</td>
               <td>${ROLE_LABELS[e.role] || e.role}</td>

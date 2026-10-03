@@ -25,7 +25,7 @@ let DRIVER_BY_VEHICLE = {};
 function vehicleDriverLine(v) {
   const d = DRIVER_BY_VEHICLE[v.id];
   if (!d) return '';
-  return `<div class="hint" style="margin-top:2px;font-size:.72rem;">${d.external ? d.name + ' (външен)' : d.name}</div>`;
+  return `<small>${d.external ? d.name + ' (външен)' : d.name}</small>`;
 }
 const CAT_LABELS = { economy:'Икономична', comfort:'Комфортна', hybrid_electric:'Хибрид/Електро', moto:'Мотор', scooter:'Скутер', bike:'Е-колело' };
 const CAT_LABELS_REV = Object.fromEntries(Object.entries(CAT_LABELS).map(([k,v]) => [v.toLowerCase(), k]));
@@ -143,7 +143,7 @@ function renderTable(vehicles) {
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${v.make} ${v.model}</td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${v.year || '—'}</td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${CAT_LABELS[v.category] || v.category || '—'}</td>
-              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${vehicleStatusBadge(v.status)}${vehicleDriverLine(v)}</td>
+              <td onclick="window.location='/vehicle-detail.html?id=${v.id}'"><div class="stack">${vehicleStatusBadge(v.status)}${vehicleDriverLine(v)}</div></td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${fmtMoney(v.purchase_price)}</td>
               <td onclick="window.location='/vehicle-detail.html?id=${v.id}'">${docExpiryChips(v)}</td>
               ${canDelete ? `<td class="no-print"><button type="button" class="btn btn-ghost btn-sm delete-vehicle-btn" data-id="${v.id}" data-plate="${v.plate_number}" title="Изтрий колата">🗑</button></td>` : ''}

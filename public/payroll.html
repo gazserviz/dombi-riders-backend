@@ -20,7 +20,7 @@ const PLATFORM_LABELS = { bolt: 'Bolt', glovo: 'Glovo' };
 function platformBreakdownLine(e) {
   const pb = e.platform_breakdown;
   if (!pb || !Object.keys(pb).length) return '';
-  return `<div class="hint" style="font-size:.72rem;margin-top:2px;">${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</div>`;
+  return `<small>${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</small>`;
 }
 function signBadge(status) {
   if (status === 'signed_in_person' || status === 'signed_remote') return '<span class="badge badge-green">Потвърдено</span>';
@@ -64,11 +64,11 @@ async function loadEntries() {
             <td>${weekRangeLabel(e.week_start, e.week_end)}</td>
             <td><strong>${e.order_count}</strong></td>
             ${earningsVisible ? `
-            <td>${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</td>
+            <td><div class="stack">${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</div></td>
             <td>${fmtMoney(e.deduction_amount)}</td>
             <td>${fmtMoney(e.car_rent_amount)}</td>
             <td><strong>${fmtMoney(e.net_amount)}</strong></td>` : ''}
-            <td>${signBadge(e.signature_status)}${e.signed_by_name ? `<div class="hint" style="font-size:.74rem;">${e.signed_by_name} · ${fmtDate(e.signed_at)}</div>` : ''}</td>
+            <td><div class="stack">${signBadge(e.signature_status)}${e.signed_by_name ? `<small>${e.signed_by_name} · ${fmtDate(e.signed_at)}</small>` : ''}</div></td>
             <td>${paidBadge(e.paid)}</td>
             <td style="white-space:nowrap;">
               ${e.signature_status === 'none' ? `<button type="button" class="btn btn-primary btn-sm sign-btn" data-id="${e.id}">Подпиши</button>` : ''}

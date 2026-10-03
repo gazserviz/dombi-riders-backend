@@ -80,7 +80,7 @@ function applicationDetailHtml(app, isAdmin) {
   const isOpen = OPEN_STATUSES.includes(app.status);
   const detailsGiven = app.egn || app.id_card_number || app.driver_license_number;
   return `
-    <tr><td colspan="7">
+    <tr><td colspan="6">
       <div class="panel" style="margin:0;background:var(--panel-2);">
         ${managerAssignHtml(app, isAdmin)}
         ${['pending', 'link_sent'].includes(app.status) ? `
@@ -151,13 +151,12 @@ function applicationsTable(apps, isAdmin) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Дата</th><th>Име</th><th>Телефон</th><th>Договор</th><th>Мениджър</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>Дата</th><th>Кандидат</th><th>Договор</th><th>Мениджър</th><th>Статус</th><th></th></tr></thead>
         <tbody>
           ${apps.map(a => `
             <tr>
               <td>${fmtDate(a.created_at)}${retentionBadge(a)}</td>
-              <td><strong>${a.full_name}</strong>${a.email ? `<div class="sub" style="color:var(--muted);font-size:.78rem;">${a.email}</div>` : ''}</td>
-              <td>${a.phone}</td>
+              <td><div class="stack"><strong>${a.full_name}</strong><small>${a.phone}${a.email ? ' · ' + a.email : ''}</small></div></td>
               <td>${EC_TYPE_LABELS[a.desired_contract_type] || a.desired_contract_type}${a.desired_hours_per_day ? ' · ' + a.desired_hours_per_day + 'ч' : ''}</td>
               <td>${managerLabel(a.manager_id) || '<span class="hint">— без —</span>'}</td>
               <td>${appStatusBadge(a.status)}</td>

@@ -46,12 +46,11 @@ async function loadPartners() {
   }
   host.innerHTML = `
     <div class="table-wrap"><table>
-      <thead><tr><th>Партньор</th><th>Имейл</th><th>Екип (шофьори)</th><th>Комисионна</th><th></th></tr></thead>
+      <thead><tr><th>Партньор</th><th>Екип (шофьори)</th><th>Комисионна</th><th></th></tr></thead>
       <tbody>
         ${partners.map(p => `
           <tr>
-            <td><strong>${p.full_name}</strong></td>
-            <td>${p.email}</td>
+            <td><div class="stack"><strong>${p.full_name}</strong><small>${p.email}</small></div></td>
             <td>${p.team_size}</td>
             <td>${compSummary(p.commission)}</td>
             <td><button type="button" class="btn btn-ghost btn-sm select-partner-btn" data-id="${p.id}">Настрой →</button></td>

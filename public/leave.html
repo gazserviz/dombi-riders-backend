@@ -44,7 +44,7 @@ function requestsTable(requests, opts) {
             <td>${LEAVE_TYPE_LABELS[r.type] || r.type}</td>
             <td>${fmtDate(r.start_date)} — ${fmtDate(r.end_date)}</td>
             <td><strong>${r.days}</strong></td>
-            <td>${leaveStatusBadge(r.status)}${r.decision_note ? `<div class="hint" style="font-size:.74rem;">${r.decision_note}</div>` : ''}</td>
+            <td><div class="stack">${leaveStatusBadge(r.status)}${r.decision_note ? `<small>${r.decision_note}</small>` : ''}</div></td>
             <td>${r.note || '—'}</td>
             <td style="white-space:nowrap;">
               ${(showActions && r.status === 'pending') ? `

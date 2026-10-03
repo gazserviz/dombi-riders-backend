@@ -563,7 +563,7 @@ const PLATFORM_LABELS = { bolt: 'Bolt', glovo: 'Glovo' };
 function platformBreakdownLine(e) {
   const pb = e.platform_breakdown;
   if (!pb || !Object.keys(pb).length) return '';
-  return `<div class="hint" style="font-size:.72rem;margin-top:2px;">${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</div>`;
+  return `<small>${Object.entries(pb).map(([k, v]) => `${PLATFORM_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</small>`;
 }
 
 async function loadEarnings() {
@@ -618,7 +618,7 @@ async function loadEarnings() {
             <tr>
               <td>${weekRangeLabel(e.week_start, e.week_end)}</td>
               <td>${e.order_count || 0}</td>
-              <td>${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</td>
+              <td><div class="stack">${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</div></td>
               <td>${fmtMoney(e.deduction_amount)}</td>
               <td><strong>${fmtMoney(e.net_amount)}</strong></td>
               <td>${e.paid ? '<span class="badge badge-green">Платено</span>' : '<span class="badge badge-warn">Дължимо</span>'}</td>

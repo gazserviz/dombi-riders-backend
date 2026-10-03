@@ -38,8 +38,8 @@ function depositCell(c) {
   if (!c.deposit_amount && (!d || !d.taken)) return '<span class="hint">без депозит</span>';
   if (!d || !d.taken) return `<span class="hint">не е взет (${fmtMoney(c.deposit_amount)})</span>`;
   if (d.currently_held > 0) {
-    return `<span style="color:var(--green);font-weight:700;">Държим ${fmtMoney(d.currently_held)}</span>` +
-      (d.returned ? `<br><span class="hint">частично върнат ${fmtMoney(d.returned_amount)}</span>` : '');
+    if (!d.returned) return `<span style="color:var(--green);font-weight:700;">Държим ${fmtMoney(d.currently_held)}</span>`;
+    return `<div class="stack"><span style="color:var(--green);font-weight:700;">Държим ${fmtMoney(d.currently_held)}</span><small>частично върнат ${fmtMoney(d.returned_amount)}</small></div>`;
   }
   return `<span class="hint">върнат изцяло (${fmtMoney(d.returned_amount)})</span>`;
 }
