@@ -16,6 +16,7 @@ const { callClaudeVision, scanIdCard, scanDriverLicense } = require('./lib/talon
 const docRender = require('./lib/doc-render');
 const docTemplates = require('./lib/doc-templates');
 const earningsImport = require('./lib/earnings-import');
+const boltStatsImport = require('./lib/bolt-stats-import');
 const bankImport = require('./lib/bank-import');
 const docxToPdf = require('./lib/docx-to-pdf');
 const esign = require('./lib/esign');
@@ -2577,6 +2578,133 @@ async function handleApi(req, res, pathname, query) {
         created_profiles: created,
         unmatched: stillUnmatched,
       });
+    }
+
+    // ---- Bolt седмична статистика на шофьорите (активност/поръчки/баланси) --
+    // Отделно табло от заплатите — чисто информативно, с тенденции ▲/▼ спрямо
+    // предходната седмица за същия шофьор (виж lib/bolt-stats-import.js и
+    // db.getBoltStatsWithTrends). Двустъпков поток като при импорта на
+    // заплати: .../import/preview (само разчита + съпоставя по телефон) и
+    // .../import/apply (действително записва). Файловете НЕ носят седмица в
+    // себе си (за разлика от Glovo експортите), затова week_start/week_end се
+    // подават изрично от администратора/мениджъра във формата.
+    if (pathname === '/api/hr/bolt-stats/import/status' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'driver_stats', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { available: boltStatsImport.isAvailable() });
+    }
+
+    function bufFromB64Stats(b64) {
+      const buffer = Buffer.from(String(b64 || '').replace(/^data:[^,]*,/, ''), 'base64');
+      if (!buffer.length) throw new Error('Празен или невалиден файл');
+      return buffer;
+    }
+
+    function parseBoltStatsFiles(body) {
+      if (!body.orders_file_base64 && !body.activity_file_base64 && !body.earnings_file_base64) {
+        throw new Error('Качете поне един от трите файла (поръчки / активност / заработки и баланси).');
+      }
+      const orders = body.orders_file_base64 ? boltStatsImport.parseOrdersWorkbook(bufFromB64Stats(body.orders_file_base64)) : {};
+      const activity = body.activity_file_base64 ? boltStatsImport.parseActivityWorkbook(bufFromB64Stats(body.activity_file_base64)) : {};
+      const earnings = body.earnings_file_base64 ? boltStatsImport.parseEarningsBalancesWorkbook(bufFromB64Stats(body.earnings_file_base64)) : {};
+      return boltStatsImport.mergeByCourierUid({ orders, activity, earnings });
+    }
+
+    function matchDriverByPhoneStats(phone, driverProfiles) {
+      if (!phone) return null;
+      return driverProfiles.find(p => boltStatsImport.normPhone(p.phone) === phone) || null;
+    }
+
+    if (pathname === '/api/hr/bolt-stats/import/preview' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'driver_stats', 'manage');
+      if (!user) return;
+      if (!boltStatsImport.isAvailable()) {
+        return sendJson(res, 503, { error: 'Импортът изисква пакета "xlsx", който не е наличен в тази среда.' });
+      }
+      const body = await readJsonBody(req);
+      let records;
+      try { records = parseBoltStatsFiles(body); }
+      catch (e) { return sendJson(res, 400, { error: e.message }); }
+
+      const driverProfiles = db.listUsers().filter(p => p.role === 'driver');
+      const matched = [];
+      const unmatched = [];
+      records.forEach(r => {
+        const profile = matchDriverByPhoneStats(r.phone, driverProfiles);
+        const row = { ...r, profile_id: profile ? profile.id : null, profile_name: profile ? profile.full_name : null };
+        (profile ? matched : unmatched).push(row);
+      });
+      return sendJson(res, 200, { matched, unmatched });
+    }
+
+    if (pathname === '/api/hr/bolt-stats/import/apply' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'driver_stats', 'manage');
+      if (!user) return;
+      if (!boltStatsImport.isAvailable()) {
+        return sendJson(res, 503, { error: 'Импортът изисква пакета "xlsx", който не е наличен в тази среда.' });
+      }
+      const body = await readJsonBody(req);
+      const weekStart = body.week_start;
+      const weekEnd = body.week_end;
+      if (!weekStart || !weekEnd) {
+        return sendJson(res, 400, { error: 'Липсва седмица (начало/край).' });
+      }
+      const spanDays = Math.round((new Date(weekEnd) - new Date(weekStart)) / 86400000);
+      if (spanDays !== 6) {
+        return sendJson(res, 400, {
+          error: `Периодът ${weekStart} — ${weekEnd} не е точно 7 дни. Въведете начало и край, отстоящи точно на 6 дни (напр. понеделник — неделя).`,
+        });
+      }
+      let records;
+      try { records = parseBoltStatsFiles(body); }
+      catch (e) { return sendJson(res, 400, { error: e.message }); }
+
+      const driverProfiles = db.listUsers().filter(p => p.role === 'driver');
+      const written = [];
+      const unmatched = [];
+      for (const r of records) {
+        const profile = matchDriverByPhoneStats(r.phone, driverProfiles);
+        if (!profile) { unmatched.push(r); continue; }
+        const rec = db.upsertBoltWeeklyStat({
+          profile_id: profile.id, week_start: weekStart, week_end: weekEnd,
+          courier_uid: r.courier_uid, city: r.city,
+          orders_proposed: r.orders_proposed, orders_accepted: r.orders_accepted, orders_delivered: r.orders_delivered,
+          acceptance_rate: r.acceptance_rate, completion_rate: r.completion_rate,
+          online_seconds: r.online_seconds, utilized_seconds: r.utilized_seconds,
+          online_hms: r.online_hms, utilized_hms: r.utilized_hms,
+          utilization_rate: r.utilization_rate, shift_count: r.shift_count,
+          earnings_no_vat: r.earnings_no_vat, waiting_compensation: r.waiting_compensation,
+          adjustments: r.adjustments, campaign_bonus: r.campaign_bonus, tips_no_vat: r.tips_no_vat,
+          total_earnings_with_tips: r.total_earnings_with_tips,
+          cash_received_from_clients: r.cash_received_from_clients, overdue_cash_debt: r.overdue_cash_debt,
+          cash_paid_to_providers: r.cash_paid_to_providers,
+          balance_before: r.balance_before, balance_after: r.balance_after,
+          created_by: user.id,
+        });
+        written.push(rec.id);
+      }
+      return sendJson(res, 200, { written_entries: written.length, unmatched });
+    }
+
+    if (pathname === '/api/hr/bolt-stats' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'driver_stats', 'view');
+      if (!user) return;
+      const result = db.getBoltStatsWithTrends({
+        weekStart: query.week_start || null, city: query.city || null, managerId: query.manager_id || null,
+      });
+      return sendJson(res, 200, result);
+    }
+
+    if (pathname === '/api/hr/bolt-stats/weeks' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'driver_stats', 'view');
+      if (!user) return;
+      const all = db.listBoltWeeklyStats();
+      const weeksMap = new Map();
+      all.forEach(r => { if (!weeksMap.has(r.week_start)) weeksMap.set(r.week_start, r.week_end); });
+      const weeks = Array.from(weeksMap.entries())
+        .map(([week_start, week_end]) => ({ week_start, week_end }))
+        .sort((a, b) => (a.week_start < b.week_start ? 1 : -1));
+      return sendJson(res, 200, { weeks });
     }
 
     const payrollEsignMatch = pathname.match(/^\/api\/hr\/payroll\/([\w-]+)\/esign-events$/);
