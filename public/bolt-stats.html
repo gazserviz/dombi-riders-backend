@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bolt статистика — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+</head>
+<body>
+<div id="app-shell" data-active="/bolt-stats.html" data-title="Bolt статистика"></div>
+
+<script src="/js/app.js"></script>
+<script>
+// ---------------------------------------------------------------------------
+// bolt-stats.html — седмична СТАТИСТИКА на активността на шофьорите от Bolt
+// Food (поръчки/онлайн време/баланси), ОТДЕЛНО от заплатите (виж payroll.html).
+// Чисто информативно табло: качва се седмично от трите Bolt отчета, пази се
+// история и се показват цветни ▲/▼ тенденции спрямо предходната седмица за
+// всеки шофьор (виж lib/bolt-stats-import.js и db.getBoltStatsWithTrends).
+// ---------------------------------------------------------------------------
+
+let CURRENT_USER = null;
+let BS_CITIES = [];
+let BS_MANAGERS = [];
+let BS_WEEKS = [];
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function bsHms(seconds) {
+  if (seconds === null || seconds === undefined) return '—';
+  const s = Math.max(0, Math.round(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h}ч ${String(m).padStart(2, '0')}м`;
+}
+
+function bsPct(v) {
+  if (v === null || v === undefined) return '—';
+  return `${Number(v).toFixed(1)}%`;
+}
+
+function bsArrow(trend) {
+  if (!trend) return '';
+  if (trend.direction === 'flat') return ' <span class="hint">●</span>';
+  const up = trend.direction === 'up';
+  const color = up ? 'var(--green,#4dff7a)' : 'var(--danger,#ff6b6b)';
+  const arrow = up ? '▲' : '▼';
+  return ` <span style="color:${color};font-weight:800;">${arrow}</span>`;
+}
+
+function renderImportPreviewRows(rows, { matched }) {
+  if (!rows.length) return '<p class="hint">няма</p>';
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Куриер</th><th>Телефон</th>${matched ? '<th>Съпоставен профил</th>' : ''}<th>Поръчки доставени</th><th>Онлайн</th><th>Заработка с бакшиши</th></tr></thead>
+    <tbody>${rows.map(r => `
+      <tr>
+        <td>${(r.first_name || '') + ' ' + (r.last_name || '')}</td>
+        <td>${r.phone ? '+359' + r.phone : '<span class="hint">няма</span>'}</td>
+        ${matched ? `<td>${r.profile_name}</td>` : ''}
+        <td>${r.orders_delivered ?? '—'}</td>
+        <td>${r.online_seconds !== null && r.online_seconds !== undefined ? bsHms(r.online_seconds) : '—'}</td>
+        <td>${r.total_earnings_with_tips !== null && r.total_earnings_with_tips !== undefined ? Number(r.total_earnings_with_tips).toFixed(2) + ' €' : '—'}</td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function initImportPanel() {
+  const importWeekStart = document.getElementById('bsImportWeekStart');
+  const importWeekEnd = document.getElementById('bsImportWeekEnd');
+  mountPeriodPicker(document.getElementById('bsImportPeriodPicker'), importWeekStart, importWeekEnd);
+  importWeekStart.value = previousWeekStart();
+  importWeekEnd.value = addDaysStr(importWeekStart.value, 6);
+
+  const errorBox = document.getElementById('bsImportError');
+  const previewBtn = document.getElementById('bsImportPreviewBtn');
+  const previewHost = document.getElementById('bsImportPreviewHost');
+
+  try {
+    const { available } = await Api.get('/api/hr/bolt-stats/import/status');
+    if (!available) {
+      document.getElementById('bsImportUnavailable').style.display = 'block';
+      document.getElementById('bsImportControls').style.display = 'none';
+      previewBtn.style.display = 'none';
+    }
+  } catch (e) { /* оставяме контролите достъпни */ }
+
+  let lastFiles = null;
+
+  previewBtn.addEventListener('click', async () => {
+    errorBox.classList.remove('show');
+    const ordersFile = document.getElementById('bsOrdersFile').files[0];
+    const activityFile = document.getElementById('bsActivityFile').files[0];
+    const earningsFile = document.getElementById('bsEarningsFile').files[0];
+    if (!ordersFile && !activityFile && !earningsFile) {
+      errorBox.textContent = 'Качете поне един от трите файла.';
+      errorBox.classList.add('show');
+      return;
+    }
+    previewBtn.disabled = true;
+    previewHost.innerHTML = '<div class="loading">Разчитане на файловете…</div>';
+    try {
+      lastFiles = {};
+      if (ordersFile) lastFiles.orders_file_base64 = await fileToBase64(ordersFile);
+      if (activityFile) lastFiles.activity_file_base64 = await fileToBase64(activityFile);
+      if (earningsFile) lastFiles.earnings_file_base64 = await fileToBase64(earningsFile);
+      const result = await Api.post('/api/hr/bolt-stats/import/preview', lastFiles);
+      previewHost.innerHTML = `
+        <p><strong>Съпоставени по телефон (${result.matched.length}):</strong></p>
+        ${renderImportPreviewRows(result.matched, { matched: true })}
+        <p style="margin-top:10px;"><strong>Несъпоставени (${result.unmatched.length}):</strong></p>
+        ${renderImportPreviewRows(result.unmatched, { matched: false })}
+        <button type="button" class="btn btn-primary btn-sm" id="bsImportApplyBtn" style="margin-top:8px;">Приложи импорта</button>
+      `;
+      document.getElementById('bsImportApplyBtn').addEventListener('click', async () => {
+        const applyBtn = document.getElementById('bsImportApplyBtn');
+        applyBtn.disabled = true;
+        errorBox.classList.remove('show');
+        try {
+          const body = {
+            ...lastFiles,
+            week_start: importWeekStart.value,
+            week_end: importWeekEnd.value,
+          };
+          if (!body.week_start || !body.week_end) throw new Error('Въведете начало и край на седмицата.');
+          const res = await Api.post('/api/hr/bolt-stats/import/apply', body);
+          previewHost.innerHTML = `<p class="hint">Готово: записани ${res.written_entries} записа за ${weekRangeLabel(importWeekStart.value, importWeekEnd.value)}, останали несъпоставени ${res.unmatched.length}.</p>`;
+          await loadWeeksList();
+          document.getElementById('bsDashWeek').value = importWeekStart.value;
+          await loadDashboard();
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.classList.add('show');
+        } finally {
+          applyBtn.disabled = false;
+        }
+      });
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+      previewHost.innerHTML = '';
+    } finally {
+      previewBtn.disabled = false;
+    }
+  });
+}
+
+function populateDashFilters() {
+  document.getElementById('bsDashCity').innerHTML = `<option value="">Всички градове</option>` + BS_CITIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  document.getElementById('bsDashManager').innerHTML = `<option value="">Всички мениджъри</option>` + BS_MANAGERS.map(m => `<option value="${m.id}">${escapeHtml(m.full_name)}</option>`).join('');
+}
+
+async function loadWeeksList() {
+  const { weeks } = await Api.get('/api/hr/bolt-stats/weeks');
+  BS_WEEKS = weeks;
+  const select = document.getElementById('bsDashWeek');
+  if (!weeks.length) {
+    select.innerHTML = `<option value="">(няма качена статистика все още)</option>`;
+    return;
+  }
+  select.innerHTML = weeks.map(w => `<option value="${w.week_start}">${weekRangeLabel(w.week_start, w.week_end)}</option>`).join('');
+}
+
+async function initDashboardPanel() {
+  try {
+    const { employees } = await Api.get('/api/hr/personnel');
+    BS_CITIES = [...new Set(employees.map(e => e.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg'));
+    BS_MANAGERS = employees.filter(e => ['manager', 'admin', 'super_admin'].includes(e.role));
+  } catch (e) { /* незадължително */ }
+  populateDashFilters();
+  await loadWeeksList();
+
+  ['bsDashWeek', 'bsDashCity', 'bsDashManager'].forEach(id => document.getElementById(id).addEventListener('change', loadDashboard));
+  document.getElementById('bsDashRefreshBtn').addEventListener('click', loadDashboard);
+  await loadDashboard();
+}
+
+async function loadDashboard() {
+  const host = document.getElementById('bsDashHost');
+  const weekStart = document.getElementById('bsDashWeek').value;
+  if (!weekStart) { host.innerHTML = '<p class="hint">Няма качена статистика все още — качете седмичните Bolt файлове по-горе.</p>'; return; }
+  host.innerHTML = '<div class="loading">Зареждане…</div>';
+  const params = new URLSearchParams({ week_start: weekStart });
+  const city = document.getElementById('bsDashCity').value;
+  const managerId = document.getElementById('bsDashManager').value;
+  if (city) params.set('city', city);
+  if (managerId) params.set('manager_id', managerId);
+  try {
+    const { rows } = await Api.get(`/api/hr/bolt-stats?${params}`);
+    if (!rows.length) { host.innerHTML = '<p class="hint">Няма записи за избрания филтър.</p>'; return; }
+    host.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr>
+        <th>Шофьор</th><th>Град</th>
+        <th>Доставени</th><th>Приемане</th><th>Завършване</th>
+        <th>Онлайн</th><th>Използване</th>
+        <th>Заработка с бакшиши</th><th>Баланс след</th>
+      </tr></thead>
+      <tbody>${rows.map(r => `
+        <tr>
+          <td><a class="employee-name-link" href="/personnel-detail.html?id=${r.profile_id}">${escapeHtml(r.full_name)}</a></td>
+          <td>${r.city ? escapeHtml(r.city) : '—'}</td>
+          <td>${r.orders_delivered ?? '—'}${bsArrow(r.trends.orders_delivered)}</td>
+          <td>${bsPct(r.acceptance_rate)}${bsArrow(r.trends.acceptance_rate)}</td>
+          <td>${bsPct(r.completion_rate)}${bsArrow(r.trends.completion_rate)}</td>
+          <td>${bsHms(r.online_seconds)}${bsArrow(r.trends.online_seconds)}</td>
+          <td>${bsPct(r.utilization_rate)}${bsArrow(r.trends.utilization_rate)}</td>
+          <td>${r.total_earnings_with_tips !== null && r.total_earnings_with_tips !== undefined ? fmtMoney(r.total_earnings_with_tips) : '—'}${bsArrow(r.trends.total_earnings_with_tips)}</td>
+          <td>${r.balance_after !== null && r.balance_after !== undefined ? fmtMoney(r.balance_after) : '—'}${bsArrow(r.trends.balance_after)}</td>
+        </tr>`).join('')}
+      </tbody></table></div>
+      ${rows[0] && rows[0].prev_week_start ? `<p class="hint" style="margin-top:8px;">Тенденциите ▲/▼ са спрямо седмицата, започваща ${rows[0].prev_week_start}.</p>` : '<p class="hint" style="margin-top:8px;">Няма предходна седмица за сравнение — тенденциите ще се появят от следващия качен седмичен отчет.</p>'}
+    `;
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (!['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Тази страница е за мениджъри и администратори.</div>`;
+    return;
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <div class="panel" id="bsImportPanel">
+      <div class="panel-head"><h2>Качване на седмичен отчет от Bolt</h2></div>
+      <p class="hint">Качете 1 до 3 от седмичните Bolt Food партньорски отчета (courier_orders, courier_activity_periods, fleet_courier_earnings_and_balances) — системата ще съпостави куриерите със съществуващи профили по телефон и ще покаже преглед преди запис. Данните тук са само статистика за активността — заплатите се въвеждат отделно в „Заплати“.</p>
+      <div class="error-box" id="bsImportError"></div>
+      <div id="bsImportUnavailable" class="hint" style="display:none;color:var(--warn,#c99);">Импортът не е наличен в момента (липсва пакетът за четене на Excel файлове в тази среда).</div>
+      <div id="bsImportControls">
+        <div class="field-row">
+          <div class="field"><label>courier_orders (.xlsx)</label><input id="bsOrdersFile" type="file" accept=".xlsx,.xls"></div>
+          <div class="field"><label>courier_activity_periods (.xlsx)</label><input id="bsActivityFile" type="file" accept=".xlsx,.xls"></div>
+          <div class="field"><label>fleet_courier_earnings_and_balances (.xlsx)</label><input id="bsEarningsFile" type="file" accept=".xlsx,.xls"></div>
+        </div>
+        <div id="bsImportPeriodPicker"></div>
+        <div class="field-row">
+          <div class="field"><label>Начало на седмица *</label><input id="bsImportWeekStart" type="date"></div>
+          <div class="field"><label>Край на седмица *</label><input id="bsImportWeekEnd" type="date"></div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="bsImportPreviewBtn">Прегледай файловете</button>
+      <div id="bsImportPreviewHost" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="panel" id="bsDashPanel">
+      <div class="panel-head"><h2>Табло — активност на шофьорите</h2></div>
+      <p class="hint">Цветните стрелки показват тенденцията спрямо предходната качена седмица за същия шофьор.</p>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field"><label>Седмица</label><select id="bsDashWeek"></select></div>
+        <div class="field"><label>Град</label><select id="bsDashCity"><option value="">Всички градове</option></select></div>
+        <div class="field"><label>Мениджър</label><select id="bsDashManager"><option value="">Всички мениджъри</option></select></div>
+        <div class="field"><button type="button" class="btn btn-ghost btn-sm" id="bsDashRefreshBtn">Обнови</button></div>
+      </div>
+      <div id="bsDashHost" class="loading">Зареждане…</div>
+    </div>
+  `;
+
+  await initImportPanel();
+  await initDashboardPanel();
+}
+init();
+</script>
+</body>
+</html>
