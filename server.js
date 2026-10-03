@@ -2331,6 +2331,83 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { updated_count: updated.length, updated });
     }
 
+    // ---- Справка "дължимо / изплатено" --------------------------------
+    // Едно обобщение по шофьор за избран период, с филтър по град/мениджър/
+    // статус — захранва новата секция "Бързо изплащане" в /payroll.html,
+    // така че "какво дължим на кого и за кой период" да е видимо с едно
+    // зареждане на страницата, без допълнителен бутон/заявка.
+    if (pathname === '/api/hr/payroll/report' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'payroll', 'view');
+      if (!user) return;
+      const report = db.getPayrollDueReport({
+        weekStart: query.week_start || undefined,
+        weekEnd: query.week_end || undefined,
+        city: query.city || undefined,
+        managerId: query.manager_id || undefined,
+        status: query.status || undefined,
+      });
+      return sendJson(res, 200, report);
+    }
+
+    // ---- Масово изплащане ("Изплати маркираните") ----------------------
+    if (pathname === '/api/hr/payroll/bulk-pay' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'payroll', 'finalize');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      if (!Array.isArray(body.ids) || !body.ids.length) {
+        return sendJson(res, 400, { error: 'Липсва списък от записи за изплащане (ids).' });
+      }
+      const result = db.bulkMarkPayrollPaid(body.ids, user.id);
+      return sendJson(res, 200, { updated_count: result.updated.length, updated: result.updated, errors: result.errors });
+    }
+
+    // ---- Заявки за корекция на вече записана седмица --------------------
+    // Мениджър предлага промяна ("при грешка") → изчаква одобрение от админ,
+    // вместо да презаписва директно записа (виж коментара в lib/db.js над
+    // createPayrollCorrectionRequest). Огледално на /api/hr/leave/requests.
+    if (pathname === '/api/hr/payroll/correction-requests' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'payroll', 'view');
+      if (!user) return;
+      const filter = { status: query.status || undefined };
+      if (!isAdminOrAbove(user)) filter.requestedBy = user.id;
+      return sendJson(res, 200, { requests: db.listPayrollCorrectionRequests(filter) });
+    }
+
+    if (pathname === '/api/hr/payroll/correction-requests' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'payroll', 'request_correction');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      if (!body.payroll_entry_id || !body.requested_changes || !Object.keys(body.requested_changes).length) {
+        return sendJson(res, 400, { error: 'Липсва запис за заплата или предложени промени.' });
+      }
+      try {
+        const rec = db.createPayrollCorrectionRequest({
+          payroll_entry_id: body.payroll_entry_id,
+          requested_changes: body.requested_changes,
+          reason: body.reason || null,
+          requested_by: user.id,
+        });
+        return sendJson(res, 201, { request: rec });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    const payrollCorrectionDecideMatch = pathname.match(/^\/api\/hr\/payroll\/correction-requests\/([\w-]+)\/decide$/);
+    if (payrollCorrectionDecideMatch && req.method === 'POST') {
+      const user = requirePermission(req, res, 'payroll', 'finalize');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const rec = db.decidePayrollCorrectionRequest(payrollCorrectionDecideMatch[1], {
+          approve: !!body.approve, decided_by: user.id, decision_note: body.decision_note || null,
+        });
+        return sendJson(res, 200, { request: rec });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // ---- Импорт на реални седмични заработки от Bolt/Glovo Excel файл -----
     // Двустъпков поток от UI-то на "Заплати":
     //  1) POST .../import/preview  -> само разчита файла, съпоставя по телефон
