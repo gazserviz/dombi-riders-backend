@@ -80,21 +80,40 @@ function renderList() {
   });
 }
 
-async function loadMessages() {
+// silent=true (за автоматичното периодично опресняване по-долу) — не пипа
+// индикатора за зареждане, за да не трепти списъкът пред очите на
+// потребителя на всеки 45 сек.; грешки при тих опит просто се подминават
+// (следващият ръчен "Обнови" или следващият тих опит ще я покаже отново)
+async function loadMessages(silent) {
   const host = document.getElementById('mailListHost');
   const errorBox = document.getElementById('listError');
-  errorBox.classList.remove('show');
-  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  if (!silent) {
+    errorBox.classList.remove('show');
+    host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  }
   const endpoint = CURRENT_TAB === 'sent' ? '/api/mail/sent' : '/api/mail/inbox';
   try {
     const { messages } = await Api.get(`${endpoint}?limit=50`);
     MESSAGES = messages;
     renderList();
   } catch (err) {
+    if (silent) return;
     host.innerHTML = '';
     errorBox.textContent = err.message;
     errorBox.classList.add('show');
   }
+}
+
+// пощата "се чекира сама" — тихо презареждане на текущия таб на интервал,
+// вместо да се разчита само на ръчния бутон "Обнови"; индикаторът в
+// sidebar-а (виж startNotificationBadges в app.js) върши същото за броя
+// непрочетени на всички останали страници, тук опресняваме и самия списък,
+// докато потребителят реално гледа пощенската кутия.
+const MAIL_AUTO_REFRESH_MS = 45000;
+let mailAutoRefreshTimer = null;
+function startMailAutoRefresh() {
+  if (mailAutoRefreshTimer) clearInterval(mailAutoRefreshTimer);
+  mailAutoRefreshTimer = setInterval(() => loadMessages(true), MAIL_AUTO_REFRESH_MS);
 }
 
 function switchTab(tab) {
@@ -318,6 +337,7 @@ async function init() {
   });
 
   await loadMessages();
+  startMailAutoRefresh();
 }
 init();
 </script>
