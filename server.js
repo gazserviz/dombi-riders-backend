@@ -16,6 +16,7 @@ const { callClaudeVision, scanIdCard, scanDriverLicense } = require('./lib/talon
 const docRender = require('./lib/doc-render');
 const docTemplates = require('./lib/doc-templates');
 const earningsImport = require('./lib/earnings-import');
+const bankImport = require('./lib/bank-import');
 const docxToPdf = require('./lib/docx-to-pdf');
 const esign = require('./lib/esign');
 const pdfBuilder = require('./lib/pdf-builder');
@@ -1562,6 +1563,114 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 400, { error: err.message });
       }
     }
+    // ---- Качване на банково извлечение (CSV/Excel) — preview → apply, по
+    // същия двустъпков модел като Bolt/Glovo импорта на заработки (виж по-
+    // горе и lib/bank-import.js). Заключено само за super_admin — както
+    // всички останали РЪЧНИ движения по касата/банката (виж коментара над
+    // addBankMovement в lib/db.js).
+    if (pathname === '/api/cashier/bank-statement/imports' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'cashier', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { imports: db.listBankStatementImports() });
+    }
+    if (pathname === '/api/cashier/bank-statement/preview' && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const buffer = Buffer.from(String(body.file_base64 || '').replace(/^data:[^,]*,/, ''), 'base64');
+      if (!buffer.length) return sendJson(res, 400, { error: 'Празен или невалиден файл' });
+      let parsed;
+      try { parsed = bankImport.parseBankStatementFile(buffer, body.column_map); }
+      catch (e) {
+        const status = e.code === 'MODULE_NOT_AVAILABLE' ? 503 : 400;
+        return sendJson(res, status, { error: e.message, code: e.code || null });
+      }
+      // за всеки успешно разчетен ред — предложение за съпоставка (ако има) +
+      // проверка дали вече е качен преди (по external_ref, ако банката го дава)
+      const rows = parsed.rows.map((r) => {
+        if (r.error) return r;
+        const duplicate = r.external_ref ? db.findBankMovementByExternalRef(r.external_ref) : null;
+        const suggestion = duplicate ? null : db.suggestBankMatch(r);
+        return { ...r, duplicate: !!duplicate, suggested_match: suggestion };
+      });
+      const reconciliation = body.statement_closing_balance != null
+        ? db.getBankBalanceReconciliation(body.statement_closing_balance)
+        : null;
+      return sendJson(res, 200, {
+        headers: parsed.headers, detected: parsed.detected, errors: parsed.errors, rows, reconciliation,
+      });
+    }
+    if (pathname === '/api/cashier/bank-statement/apply' && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const buffer = Buffer.from(String(body.file_base64 || '').replace(/^data:[^,]*,/, ''), 'base64');
+      if (!buffer.length) return sendJson(res, 400, { error: 'Празен или невалиден файл' });
+      let parsed;
+      try { parsed = bankImport.parseBankStatementFile(buffer, body.column_map); }
+      catch (e) {
+        const status = e.code === 'MODULE_NOT_AVAILABLE' ? 503 : 400;
+        return sendJson(res, status, { error: e.message, code: e.code || null });
+      }
+
+      // rowOverrides (по избор): { [row_index]: { skip: true } | { category: '...' } } —
+      // идва от преглед/потвърждение на администратора в UI-то, например
+      // "пропусни този ред" или ръчно избрана категория за несъпоставен ред.
+      const rowOverrides = body.row_overrides || {};
+      let archivedFile = null;
+      try { archivedFile = saveBase64File(body.file_base64, 'bank-statement-import', 'csv'); }
+      catch (e) { /* архивирането на оригиналния файл е best-effort, не блокира импорта */ }
+
+      // първо подготвяме КОИ редове реално ще се запишат (и с какъв
+      // matched_type) — без да пипаме базата — за да можем да създадем
+      // bank_statement_imports записа с правилните броячи ПРЕДИ движенията,
+      // и после да подадем готовия import_batch_id директно при създаването
+      // им (вместо да го допълваме със late мутация след запис, което в
+      // Postgres режим НЕ би се отразило трайно, защото writeDb вече е
+      // извикан — виж addBankMovement/writeDb в lib/db.js).
+      let skippedDuplicates = 0, skippedErrors = 0;
+      const toWrite = [];
+      for (const r of parsed.rows) {
+        const override = rowOverrides[r.row_index] || {};
+        if (r.error || override.skip) { skippedErrors += r.error ? 1 : 0; continue; }
+        if (r.external_ref && db.findBankMovementByExternalRef(r.external_ref)) { skippedDuplicates++; continue; }
+        const suggestion = db.suggestBankMatch(r);
+        const matchedType = override.matched_type || (suggestion ? suggestion.matched_type : 'unmatched');
+        const matchedRefId = override.matched_ref_id || (suggestion ? suggestion.matched_ref_id : null);
+        toWrite.push({
+          row: r, matchedType, matchedRefId,
+          description: r.description || override.category || (suggestion ? suggestion.label : 'Банкова транзакция'),
+          category: override.category || null,
+        });
+      }
+
+      const importRec = db.addBankStatementImport({
+        bank_name: body.bank_name || 'Пощенска банка', account_label: body.account_label || null,
+        period_from: body.period_from || null, period_to: body.period_to || null,
+        statement_closing_balance: body.statement_closing_balance,
+        file_url: archivedFile ? archivedFile.url : null, imported_by: user.id,
+        row_count: parsed.rows.length,
+        matched_count: toWrite.filter(x => x.matchedType && x.matchedType !== 'unmatched').length,
+        unmatched_count: toWrite.filter(x => !x.matchedType || x.matchedType === 'unmatched').length,
+      });
+
+      const createdMovements = toWrite.map(x => db.addBankMovement({
+        direction: x.row.direction, amount: x.row.amount, description: x.description,
+        movement_date: x.row.date, created_by: user.id,
+        source: 'import', import_batch_id: importRec.id, external_ref: x.row.external_ref,
+        matched_type: x.matchedType, matched_ref_id: x.matchedRefId, category: x.category,
+      }));
+      const written = createdMovements.length;
+
+      const reconciliation = body.statement_closing_balance != null
+        ? db.getBankBalanceReconciliation(body.statement_closing_balance)
+        : null;
+      return sendJson(res, 201, {
+        import: importRec, written, skipped_duplicates: skippedDuplicates, skipped_errors: skippedErrors,
+        reconciliation,
+      });
+    }
+
     // обобщение за период (ден/седмица/месец — просто from/to дати): всичко,
     // което реално мина през касата + банковите движения = ясна печалба
     if (pathname === '/api/cashier/period-summary' && req.method === 'GET') {
@@ -1575,6 +1684,25 @@ async function handleApi(req, res, pathname, query) {
       const user = requirePermission(req, res, 'cashier', 'view');
       if (!user) return;
       return sendJson(res, 200, db.getNonCashPayrollStats({ from: query.from, to: query.to }));
+    }
+
+    // ---- Автоматични седмични отчети (вж. ensureLastCompletedWeeklyReport в
+    // lib/db.js) — "ensure-latest" генерира (само ако липсва) отчета за
+    // последната завършена седмица; вика се best-effort при отваряне на
+    // /profit.html, не блокира самото табло ако пропадне.
+    if (pathname === '/api/reports/weekly' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'cashier', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { reports: db.listWeeklyReports() });
+    }
+    if (pathname === '/api/reports/weekly/ensure-latest' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'cashier', 'view');
+      if (!user) return;
+      try {
+        return sendJson(res, 200, { report: db.ensureLastCompletedWeeklyReport(user.id) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
 
     // ---- СЧЕТОВОДСТВО (общ финансов отчет + ръчна счетоводна книга) -------
@@ -2053,10 +2181,17 @@ async function handleApi(req, res, pathname, query) {
       if (!body.profile_id || !body.week_start || !body.week_end) {
         return sendJson(res, 400, { error: 'Липсват задължителни полета (служител, начало/край на седмица)' });
       }
+      // ако администраторът въведе удръжка на ръка, пазим я като 'manual' —
+      // процентната автоматика (deduction_source: 'percentage') е само за
+      // удръжки, изчислени директно от заработка в качен седмичен отчет
+      // (вж. /api/hr/payroll/import/apply по-долу); ръчен ред тук винаги е
+      // изричен избор на администратора, затова не пипаме source/rate.
       const rec = db.upsertPayrollEntry({
         profile_id: body.profile_id, week_start: body.week_start, week_end: body.week_end,
         order_count: Number(body.order_count) || 0, gross_earnings: Number(body.gross_earnings) || 0,
         deduction_amount: body.deduction_amount != null ? Number(body.deduction_amount) : undefined,
+        deduction_source: body.deduction_amount != null ? 'manual' : undefined,
+        deduction_rate: body.deduction_amount != null ? null : undefined,
         car_rent_amount: body.car_rent_amount != null ? Number(body.car_rent_amount) : undefined,
         source: body.source || 'manual',
         created_by: user.id,
@@ -2199,14 +2334,23 @@ async function handleApi(req, res, pathname, query) {
           // за НОВ седмичен запис попълваме удръжка/наем на кола по подразбиране
           // от активните договори на служителя (вж. getDefaultPayrollDeductions)
           // — иначе тези колони остават 0 за всеки импортиран запис, докато
-          // някой не влезе да ги въведе ръчно за всеки служител всяка седмица
-          const defaults = existing ? null : db.getDefaultPayrollDeductions(profile.id);
+          // някой не влезе да ги въведе ръчно за всеки служител всяка седмица.
+          // Винаги смятаме defaults на база ТЕКУЩАТА обща заработка (и за
+          // Bolt, и за Glovo платформата) — за ПРОЦЕНТНА удръжка това е
+          // задължително: ако двете платформи за същата седмица се качат
+          // отделно, при добавянето на втората обща заработка се променя и
+          // удръжката трябва да се преизчисли на база новата обща сума, а не
+          // да остане замръзнала на базата само на първата платформа.
+          const defaults = db.getDefaultPayrollDeductions(profile.id, combinedGross);
+          const reuseExistingDeduction = existing && existing.deduction_source !== 'percentage';
 
           const rec = db.upsertPayrollEntry({
             profile_id: profile.id, week_start: weekStart, week_end: weekEnd,
             order_count: r.order_count_unknown && existing ? existing.order_count : combinedOrders,
             gross_earnings: combinedGross,
-            deduction_amount: existing ? existing.deduction_amount : defaults.deduction_amount,
+            deduction_amount: reuseExistingDeduction ? existing.deduction_amount : defaults.deduction_amount,
+            deduction_source: reuseExistingDeduction ? existing.deduction_source : defaults.deduction_source,
+            deduction_rate: reuseExistingDeduction ? existing.deduction_rate : defaults.deduction_rate,
             car_rent_amount: existing ? existing.car_rent_amount : defaults.car_rent_amount,
             source: sources.length > 1 ? 'bolt+glovo' : r.platform,
             platform_breakdown: otherPlatform,
