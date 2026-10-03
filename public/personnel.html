@@ -148,6 +148,35 @@ function applyPersonnelFilters() {
   document.getElementById('tableHost').innerHTML = personnelTable(filtered);
 }
 
+// временна парола за новосъздаден служител — показва се еднократно след
+// създаване (идентично на тази в users.html, вижте и там)
+function employeeTempPasswordBox(name, password) {
+  return `
+    <div class="temp-pw-box" id="empTempPwBox" style="background:#4dff7a18;border:1px solid #4dff7a44;color:var(--text);padding:12px 14px;border-radius:10px;font-size:.84rem;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <span>Временна парола за <strong>${escapeHtml(name)}</strong>: <code id="empTempPwValue" style="background:#00000040;padding:3px 9px;border-radius:6px;font-size:.9rem;color:var(--green);letter-spacing:.02em;">${escapeHtml(password)}</code></span>
+      <span style="display:flex;gap:8px;flex:none;">
+        <button type="button" class="btn btn-ghost btn-sm" id="empTempPwCopyBtn">Копирай</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="empTempPwCloseBtn">✕</button>
+      </span>
+    </div>`;
+}
+
+function wireEmployeeTempPasswordBox(container) {
+  const box = container.querySelector('#empTempPwBox');
+  if (!box) return;
+  const copyBtn = box.querySelector('#empTempPwCopyBtn');
+  const closeBtn = box.querySelector('#empTempPwCloseBtn');
+  copyBtn.addEventListener('click', async () => {
+    const value = box.querySelector('#empTempPwValue').textContent;
+    try {
+      await navigator.clipboard.writeText(value);
+      copyBtn.textContent = 'Копирано ✓';
+      setTimeout(() => { copyBtn.textContent = 'Копирай'; }, 1500);
+    } catch (err) { alert(value); }
+  });
+  closeBtn.addEventListener('click', () => box.remove());
+}
+
 function managerFilterOptions() {
   const managers = ALL_EMPLOYEES.filter(e => ['admin', 'manager'].includes(e.role));
   return managers.map(m => `<option value="${m.id}">${escapeHtml(m.full_name)}</option>`).join('');
@@ -186,7 +215,39 @@ async function init() {
     </div>` : ''}
     <div class="panel">
       <div class="panel-head"><h2>Всички служители</h2>
-        ${['admin', 'manager', 'super_admin'].includes(user.role) ? '<button type="button" class="btn btn-ghost btn-sm" id="bulkAssignToggleBtn">👥 Зачисли към мениджър</button>' : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${['admin', 'super_admin'].includes(user.role) ? '<button type="button" class="btn btn-primary btn-sm" id="addEmployeeToggleBtn">➕ Добави служител</button>' : ''}
+          ${['admin', 'manager', 'super_admin'].includes(user.role) ? '<button type="button" class="btn btn-ghost btn-sm" id="bulkAssignToggleBtn">👥 Зачисли към мениджър</button>' : ''}
+        </div>
+      </div>
+      <div id="addEmployeeBar" class="panel" style="display:none;background:var(--bg-soft,rgba(255,255,255,.03));margin-bottom:14px;">
+        <p class="hint">Създава нов служител директно от тук — без да минавате през „Потребители и роли“.</p>
+        <div class="error-box" id="addEmployeeError"></div>
+        <div class="success-box" id="addEmployeeSuccess"></div>
+        <div id="addEmployeeTempPwHost"></div>
+        <form id="addEmployeeForm">
+          <div class="field-row">
+            <div class="field"><label>Пълно име *</label><input name="full_name" required></div>
+            <div class="field"><label>Имейл *</label><input name="email" type="email" required></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Телефон</label><input name="phone"></div>
+            <div class="field"><label>Роля *</label>
+              <select name="role">
+                <option value="driver">Шофьор</option>
+                <option value="manager">Мениджър</option>
+                <option value="admin">Администратор</option>
+                ${user.role === 'super_admin' ? '<option value="super_admin">Супер администратор</option>' : ''}
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Първоначална парола</label>
+            <input name="password" minlength="4" placeholder="напр. име123">
+            <p class="hint">По избор — ако оставите празно, ще се генерира автоматично и ще се покаже след създаване.</p>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Създай служител</button>
+        </form>
       </div>
       <div id="bulkAssignBar" class="panel" style="display:none;background:var(--bg-soft,rgba(255,255,255,.03));margin-bottom:14px;">
         <p class="hint">Избери шофьори от списъка по-долу (само без зачислен мениджър по подразбиране — филтърът „Без мениджър“ е включен автоматично) и ги зачисли наведнъж към един мениджър. Всеки шофьор трябва да е зачислен към някой — виж и бройката „без мениджър“ на началния екран.</p>
@@ -279,6 +340,46 @@ async function init() {
     document.getElementById('personnelManagerFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelPlatformFilter').addEventListener('change', applyPersonnelFilters);
 
+    const addEmployeeToggleBtn = document.getElementById('addEmployeeToggleBtn');
+    if (addEmployeeToggleBtn) {
+      addEmployeeToggleBtn.addEventListener('click', () => {
+        const bar = document.getElementById('addEmployeeBar');
+        const show = bar.style.display === 'none';
+        bar.style.display = show ? '' : 'none';
+        addEmployeeToggleBtn.textContent = show ? '✕ Откажи' : '➕ Добави служител';
+        if (show) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+    const addEmployeeForm = document.getElementById('addEmployeeForm');
+    if (addEmployeeForm) {
+      addEmployeeForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errorBox = document.getElementById('addEmployeeError');
+        const successBox = document.getElementById('addEmployeeSuccess');
+        const tempPwHost = document.getElementById('addEmployeeTempPwHost');
+        errorBox.classList.remove('show'); successBox.classList.remove('show');
+        tempPwHost.innerHTML = '';
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        if (!data.password) delete data.password;
+        try {
+          const res = await Api.post('/api/users', data);
+          successBox.textContent = 'Служителят е създаден.';
+          successBox.classList.add('show');
+          if (res.temp_password) {
+            tempPwHost.innerHTML = employeeTempPasswordBox(data.full_name, res.temp_password);
+            wireEmployeeTempPasswordBox(tempPwHost);
+          }
+          e.target.reset();
+          const { employees: refreshed } = await Api.get('/api/hr/personnel');
+          ALL_EMPLOYEES = refreshed;
+          document.getElementById('personnelManagerFilter').innerHTML = '<option value="">Всички</option><option value="none">Без мениджър</option>' + managerFilterOptions();
+          applyPersonnelFilters();
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.classList.add('show');
+        }
+      });
+    }
     const toggleBtn = document.getElementById('bulkAssignToggleBtn');
     if (toggleBtn) {
       toggleBtn.addEventListener('click', () => {
