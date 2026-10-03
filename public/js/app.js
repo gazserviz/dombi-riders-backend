@@ -95,6 +95,7 @@ const NAV = [
     { href: '/partners.html', icon: '🤝', label: 'Партньорски комисионни', roles: ['admin'] },
   ]},
   { group: 'Финанси', items: [
+    { href: '/profit.html', icon: '📈', label: 'Печалба', roles: ['admin','manager'] },
     { href: '/finance.html', icon: '💰', label: 'Счетоводство', roles: ['admin','manager'] },
     { href: '/cashier.html', icon: '🏦', label: 'Обща каса', roles: ['admin','manager'] },
   ]},
