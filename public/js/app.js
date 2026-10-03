@@ -91,6 +91,7 @@ const NAV = [
     { href: '/personnel-detail.html', icon: '🪪', label: 'Моето досие', roles: ['driver'] },
     { href: '/applications.html', icon: '📥', label: 'Кандидатури', roles: ['admin','manager'], badgeKey: 'applications' },
     { href: '/payroll.html', icon: '💶', label: 'Заплати', roles: ['admin','manager','driver'] },
+    { href: '/bolt-stats.html', icon: '📦', label: 'Bolt статистика', roles: ['admin','manager'] },
     { href: '/leave.html', icon: '🏖️', label: 'Отпуски', roles: ['admin','manager','driver'] },
     { href: '/my-team.html', icon: '🧑‍🤝‍🧑', label: 'Моят екип', roles: ['admin','manager'] },
     { href: '/partners.html', icon: '🤝', label: 'Партньорски комисионни', roles: ['admin'] },
