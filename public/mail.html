@@ -18,9 +18,12 @@
   .mail-row.unread .mr-from,.mail-row.unread .mr-subject{font-weight:800;}
   .mail-row .mr-date{color:var(--muted);white-space:nowrap;font-size:.74rem;}
   .mail-row .mr-subject{font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;}
-  .mail-tabs{display:flex;gap:6px;margin-bottom:10px;}
+  .mail-row .mr-replied{color:var(--green-2);margin-right:4px;font-weight:700;}
+  .mail-row.unread .mr-from::before{content:'●';color:var(--green);font-size:.6rem;margin-right:6px;vertical-align:middle;}
+  .mail-tabs{display:flex;gap:6px;margin-bottom:10px;align-items:center;}
   .mail-tabs button{background:transparent;border:1px solid var(--line);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;}
   .mail-tabs button.active{background:var(--panel-2);color:var(--text);border-color:var(--line);}
+  .mail-tabs .unread-toggle{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted);cursor:pointer;user-select:none;}
   .mail-detail-head{margin-bottom:14px;}
   .mail-detail-head .subj{font-size:1.05rem;font-weight:800;margin-bottom:6px;}
   .mail-detail-head .meta{font-size:.8rem;color:var(--muted);line-height:1.6;}
@@ -42,6 +45,8 @@ let SELECTED_UID = null;
 let SELECTED_FOLDER = null;
 let CURRENT_TAB = 'inbox'; // 'inbox' | 'sent'
 let FORWARD_ATTACHMENTS = []; // [{filename, contentType, content(base64)}] — попълва се при "Препрати"
+let FILTER_UNREAD = false; // "Само непрочетени" — чисто клиентски филтър на вече заредения списък
+let REPLY_CONTEXT = null; // {uid, folder} на писмото, на което в момента отговаряме (за \Answered след изпращане)
 
 function arrayBufferToBase64(buf) {
   let binary = '';
@@ -62,17 +67,21 @@ function fmtBytes(n) {
 
 function renderList() {
   const host = document.getElementById('mailListHost');
-  if (!MESSAGES.length) {
-    host.innerHTML = `<p class="hint">${CURRENT_TAB === 'sent' ? 'Няма изпратени писма.' : 'Няма писма във входящата кутия.'}</p>`;
+  const list = FILTER_UNREAD ? MESSAGES.filter(m => !m.seen) : MESSAGES;
+  if (!list.length) {
+    const emptyMsg = FILTER_UNREAD
+      ? 'Няма непрочетени писма.'
+      : (CURRENT_TAB === 'sent' ? 'Няма изпратени писма.' : 'Няма писма във входящата кутия.');
+    host.innerHTML = `<p class="hint">${emptyMsg}</p>`;
     return;
   }
-  host.innerHTML = MESSAGES.map(m => `
+  host.innerHTML = list.map(m => `
     <button type="button" class="mail-row ${m.seen ? '' : 'unread'} ${m.uid === SELECTED_UID && m.folder === SELECTED_FOLDER ? 'active' : ''}" data-uid="${m.uid}" data-folder="${m.folder}">
       <div class="mr-top">
         <span class="mr-from">${CURRENT_TAB === 'sent' ? ('До: ' + (m.to || '—')) : m.fromName}</span>
         <span class="mr-date">${m.date ? fmtDateTime(m.date) : ''}</span>
       </div>
-      <div class="mr-subject">${m.subject}</div>
+      <div class="mr-subject">${m.answered ? '<span class="mr-replied" title="Отговорено">↩</span>' : ''}${m.subject}</div>
     </button>
   `).join('');
   host.querySelectorAll('.mail-row').forEach(btn => {
@@ -151,6 +160,7 @@ function renderMessageDetail(msg) {
     <div style="margin-top:16px;display:flex;gap:8px;">
       ${CURRENT_TAB === 'sent' ? '' : '<button class="btn btn-primary btn-sm" id="replyBtn">↩ Отговори</button>'}
       <button class="btn btn-ghost btn-sm" id="forwardBtn">↪ Препрати</button>
+      ${CURRENT_TAB === 'sent' ? '' : '<button class="btn btn-ghost btn-sm" id="markUnreadBtn">✉️ Маркирай като непрочетено</button>'}
     </div>
   `;
   if (msg.html) {
@@ -168,9 +178,35 @@ function renderMessageDetail(msg) {
       subject: /^re:/i.test(msg.subject) ? msg.subject : `Re: ${msg.subject}`,
       inReplyTo: msg.messageId,
       references: [msg.references, msg.messageId].filter(Boolean).join(' '),
+      replyToUid: msg.uid,
+      replyToFolder: msg.folder,
     }));
   }
   document.getElementById('forwardBtn').addEventListener('click', () => forwardMessage(msg));
+  const markUnreadBtn = document.getElementById('markUnreadBtn');
+  if (markUnreadBtn) {
+    markUnreadBtn.addEventListener('click', () => markMessageUnread(msg.uid, msg.folder));
+  }
+}
+
+// ръчно "Маркирай като непрочетено" — обратното на автоматичното маркиране
+// при отваряне (виж openMessage); връща писмото обратно в непрочетените и
+// в sidebar-а (следващото тихо опресняване на badge-а, виж startNotificationBadges)
+async function markMessageUnread(uid, folder) {
+  const btn = document.getElementById('markUnreadBtn');
+  if (btn) btn.disabled = true;
+  try {
+    await Api.post(`/api/mail/message/${uid}/seen`, { folder, seen: false });
+    const m = MESSAGES.find(x => x.uid === uid && x.folder === folder);
+    if (m) m.seen = false;
+    renderList();
+    document.getElementById('mailDetailHost').innerHTML = `<p class="hint">Изберете писмо от списъка вляво.</p>`;
+    SELECTED_UID = null;
+    SELECTED_FOLDER = null;
+  } catch (err) {
+    alert(`Грешка: ${err.message}`);
+    if (btn) btn.disabled = false;
+  }
 }
 
 // подготвя ново писмо с цитираното оригинално съобщение и (ако има) с
@@ -235,6 +271,7 @@ function renderForwardAttachmentsNotice() {
 function openCompose(prefill) {
   prefill = prefill || {};
   if (!prefill.keepForwardAttachments) FORWARD_ATTACHMENTS = [];
+  REPLY_CONTEXT = (prefill.replyToUid && prefill.replyToFolder) ? { uid: prefill.replyToUid, folder: prefill.replyToFolder } : null;
   const panel = document.getElementById('composePanel');
   panel.classList.add('show');
   document.getElementById('composeTo').value = prefill.to || '';
@@ -288,6 +325,7 @@ async function init() {
         <div class="mail-tabs">
           <button type="button" data-tab="inbox" class="active">Входящи</button>
           <button type="button" data-tab="sent">Изпратени</button>
+          <label class="unread-toggle"><input type="checkbox" id="unreadOnlyToggle"> Само непрочетени</label>
         </div>
         <div class="error-box" id="listError"></div>
         <div class="mail-list" id="mailListHost"><div class="loading">Зареждане…</div></div>
@@ -303,10 +341,15 @@ async function init() {
   document.getElementById('cancelComposeBtn').addEventListener('click', () => {
     document.getElementById('composePanel').classList.remove('show');
     FORWARD_ATTACHMENTS = [];
+    REPLY_CONTEXT = null;
   });
   document.getElementById('refreshBtn').addEventListener('click', loadMessages);
   document.querySelectorAll('.mail-tabs button').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+  document.getElementById('unreadOnlyToggle').addEventListener('change', (e) => {
+    FILTER_UNREAD = e.target.checked;
+    renderList();
   });
   document.getElementById('composeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -323,9 +366,18 @@ async function init() {
         inReplyTo: document.getElementById('composeInReplyTo').value || undefined,
         references: document.getElementById('composeReferences').value || undefined,
         attachments: FORWARD_ATTACHMENTS.length ? FORWARD_ATTACHMENTS : undefined,
+        replyToUid: REPLY_CONTEXT ? REPLY_CONTEXT.uid : undefined,
+        replyToFolder: REPLY_CONTEXT ? REPLY_CONTEXT.folder : undefined,
       });
       document.getElementById('composePanel').classList.remove('show');
       FORWARD_ATTACHMENTS = [];
+      // локално отбелязваме оригинала като "отговорено" (↩ в списъка), без да
+      // чакаме следващото опресняване — виж \Answered в lib/mail.js sendMail()
+      if (REPLY_CONTEXT) {
+        const m = MESSAGES.find(x => x.uid === REPLY_CONTEXT.uid && x.folder === REPLY_CONTEXT.folder);
+        if (m) { m.answered = true; renderList(); }
+        REPLY_CONTEXT = null;
+      }
       alert('Писмото е изпратено.');
       if (CURRENT_TAB === 'sent') loadMessages();
     } catch (err) {
