@@ -62,6 +62,13 @@ function suggestedDeductionFor(contract, gross) {
   return Math.round(Number(gross || 0) * (rate / 100) * 100) / 100;
 }
 
+// 'admin'/'super_admin' може директно да маркира платено и да одобрява
+// заявки за корекция (вж. 'payroll':'finalize' в permissions-catalog.js);
+// 'manager' вижда записите, но промяна по вече записана седмица минава през
+// заявка за одобрение (вж. openCorrectionRequestForm по-долу).
+function canFinalizePayroll() { return ['admin', 'super_admin'].includes(CURRENT_USER.role); }
+function canRequestCorrection() { return CURRENT_USER.role === 'manager'; }
+
 async function loadEntries() {
   const host = document.getElementById('entriesHost');
   const isAdmin = ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role);
@@ -94,11 +101,13 @@ async function loadEntries() {
             <td>${paidBadge(e.paid)}</td>
             <td style="white-space:nowrap;">
               ${e.signature_status === 'none' ? `<button type="button" class="btn btn-primary btn-sm sign-btn" data-id="${e.id}">Подпиши</button>` : ''}
-              ${(isAdmin && !e.paid) ? `<button type="button" class="btn btn-ghost btn-sm mark-paid-btn" data-id="${e.id}">Маркирай платено</button>` : ''}
+              ${(canFinalizePayroll() && !e.paid) ? `<button type="button" class="btn btn-ghost btn-sm mark-paid-btn" data-id="${e.id}">Маркирай платено</button>` : ''}
+              ${canRequestCorrection() ? `<button type="button" class="btn btn-ghost btn-sm request-correction-btn" data-id="${e.id}">Заяви корекция</button>` : ''}
             </td>
           </tr>`).join('')}
       </tbody>
-    </table></div>`;
+    </table></div>
+    <div id="correctionFormHost"></div>`;
 
   host.querySelectorAll('.sign-btn').forEach(btn => {
     btn.addEventListener('click', () => openSignDialog(btn.dataset.id));
@@ -109,6 +118,226 @@ async function loadEntries() {
       catch (err) { alert(err.message); }
     });
   });
+  host.querySelectorAll('.request-correction-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const entry = entries.find(e => e.id === btn.dataset.id);
+      openCorrectionRequestForm(entry);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ЗАЯВКИ ЗА КОРЕКЦИЯ — мениджър предлага промяна по вече записана седмица,
+// админ одобрява/отказва (вж. /api/hr/payroll/correction-requests* в
+// server.js). Показваме секция с опашка само ако има какво да се види —
+// за админ: чакащи за одобрение; за мениджър: собствените му заявки.
+// ---------------------------------------------------------------------------
+function openCorrectionRequestForm(entry) {
+  const host = document.getElementById('correctionFormHost');
+  if (!host || !entry) return;
+  host.innerHTML = `
+    <div class="panel" style="margin-top:10px;">
+      <div class="panel-head"><h3>Заяви корекция — ${weekRangeLabel(entry.week_start, entry.week_end)}</h3></div>
+      <p class="hint">Промяната НЕ се прилага веднага — изпраща се за одобрение от администратор.</p>
+      <div class="error-box" id="correctionError"></div>
+      <div class="field-row">
+        <div class="field"><label>Брой поръчки</label><input id="corrOrders" type="number" min="0" value="${entry.order_count}"></div>
+        <div class="field"><label>Заработка (€)</label><input id="corrGross" type="number" step="0.01" value="${entry.gross_earnings}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Удръжка (€)</label><input id="corrDeduction" type="number" step="0.01" value="${entry.deduction_amount}"></div>
+        <div class="field"><label>Наем на кола (€)</label><input id="corrCarRent" type="number" step="0.01" value="${entry.car_rent_amount}"></div>
+      </div>
+      <div class="field"><label>Причина за корекцията *</label><textarea id="corrReason" rows="2" placeholder="напр. грешно въведена заработка от файла"></textarea></div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary btn-sm" id="corrSubmitBtn">Изпрати заявка</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="corrCancelBtn">Откажи</button>
+      </div>
+    </div>`;
+  document.getElementById('corrCancelBtn').addEventListener('click', () => { host.innerHTML = ''; });
+  document.getElementById('corrSubmitBtn').addEventListener('click', async () => {
+    const errorBox = document.getElementById('correctionError');
+    errorBox.classList.remove('show');
+    const reason = document.getElementById('corrReason').value.trim();
+    if (!reason) { errorBox.textContent = 'Въведете причина за корекцията.'; errorBox.classList.add('show'); return; }
+    const changes = {
+      order_count: Number(document.getElementById('corrOrders').value),
+      gross_earnings: Number(document.getElementById('corrGross').value),
+      deduction_amount: Number(document.getElementById('corrDeduction').value),
+      car_rent_amount: Number(document.getElementById('corrCarRent').value),
+    };
+    try {
+      await Api.post('/api/hr/payroll/correction-requests', { payroll_entry_id: entry.id, requested_changes: changes, reason });
+      host.innerHTML = `<p class="hint">Заявката е изпратена за одобрение.</p>`;
+      await loadCorrectionRequests();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+
+function correctionDiffLine(req) {
+  const labels = { order_count: 'поръчки', gross_earnings: 'заработка', deduction_amount: 'удръжка', car_rent_amount: 'наем кола' };
+  return Object.entries(req.requested_changes || {})
+    .filter(([k, v]) => Number(req.before?.[k]) !== Number(v))
+    .map(([k, v]) => `${labels[k] || k}: ${fmtMoney(req.before?.[k])} → <strong>${fmtMoney(v)}</strong>`)
+    .join(', ') || 'няма промяна в сумите';
+}
+
+const CORRECTION_STATUS_BADGE = {
+  pending: '<span class="badge badge-warn">Чака одобрение</span>',
+  approved: '<span class="badge badge-green">Одобрена</span>',
+  rejected: '<span class="badge badge-muted">Отказана</span>',
+};
+
+async function loadCorrectionRequests() {
+  const panel = document.getElementById('correctionRequestsPanel');
+  const host = document.getElementById('correctionRequestsHost');
+  if (!panel || !host) return;
+  const isAdmin = canFinalizePayroll();
+  const { requests } = await Api.get(`/api/hr/payroll/correction-requests${isAdmin ? '?status=pending' : ''}`);
+  if (!requests.length) {
+    panel.style.display = isAdmin ? 'none' : (canRequestCorrection() ? 'block' : 'none');
+    host.innerHTML = `<p class="hint">Няма изпратени заявки.</p>`;
+    document.getElementById('correctionBadge').textContent = '';
+    return;
+  }
+  panel.style.display = 'block';
+  document.getElementById('correctionBadge').textContent = isAdmin ? ` (${requests.length})` : '';
+  host.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Служител</th><th>Седмица</th><th>Промяна</th><th>Причина</th><th>Статус</th>${isAdmin ? '<th></th>' : ''}</tr></thead>
+    <tbody>${requests.map(r => `
+      <tr>
+        <td>${ALL_NAMES_BY_ID[r.profile_id] || (DIRECTORY.find(u => u.id === r.profile_id) || {}).full_name || r.profile_id}</td>
+        <td>${weekRangeLabel(r.week_start, r.week_end)}</td>
+        <td><small>${correctionDiffLine(r)}</small></td>
+        <td><small>${r.reason || ''}</small></td>
+        <td>${CORRECTION_STATUS_BADGE[r.status] || r.status}</td>
+        ${isAdmin ? `<td style="white-space:nowrap;">
+          <button type="button" class="btn btn-primary btn-sm corr-approve-btn" data-id="${r.id}">Одобри</button>
+          <button type="button" class="btn btn-ghost btn-sm corr-reject-btn" data-id="${r.id}">Откажи</button>
+        </td>` : ''}
+      </tr>`).join('')}
+    </tbody></table></div>`;
+  host.querySelectorAll('.corr-approve-btn').forEach(btn => btn.addEventListener('click', () => decideCorrection(btn.dataset.id, true)));
+  host.querySelectorAll('.corr-reject-btn').forEach(btn => btn.addEventListener('click', () => decideCorrection(btn.dataset.id, false)));
+}
+
+async function decideCorrection(id, approve) {
+  try {
+    await Api.post(`/api/hr/payroll/correction-requests/${id}/decide`, { approve });
+    await loadCorrectionRequests();
+    await loadQuickPayReport();
+    if (selectedProfileId) await loadEntries();
+  } catch (err) { alert(err.message); }
+}
+
+// ---------------------------------------------------------------------------
+// "БЪРЗО ИЗПЛАЩАНЕ" — основният работен изглед при влизане в страницата:
+// филтър по период/град/мениджър/статус + компактна таблица с чекбоксове +
+// едно копче за масово изплащане. Замества нуждата да се скролва надолу до
+// старата статистика и да се избира служител по един, за да се провери/
+// изплати (вж. оплакването на потребителя за "прекалено много скролване").
+// ---------------------------------------------------------------------------
+let QUICK_PAY_CITIES = [];
+let QUICK_PAY_MANAGERS = [];
+
+function populateQuickPayFilters() {
+  const citySelect = document.getElementById('qpCity');
+  const managerSelect = document.getElementById('qpManager');
+  citySelect.innerHTML = `<option value="">Всички градове</option>` + QUICK_PAY_CITIES.map(c => `<option value="${c}">${c}</option>`).join('');
+  managerSelect.innerHTML = `<option value="">Всички мениджъри</option>` + QUICK_PAY_MANAGERS.map(m => `<option value="${m.id}">${m.full_name}</option>`).join('');
+}
+
+async function initQuickPayPanel() {
+  const from = document.getElementById('qpFrom');
+  const to = document.getElementById('qpTo');
+  from.value = addDaysStr(currentWeekStart(), -7 * 8);
+  to.value = todayStr();
+  mountPeriodPicker(document.getElementById('qpPeriodPicker'), from, to, { useMonthPreset: true, onApply: loadQuickPayReport });
+
+  try {
+    const { employees } = await Api.get('/api/hr/personnel');
+    QUICK_PAY_CITIES = [...new Set(employees.map(e => e.city).filter(Boolean))].sort();
+    QUICK_PAY_MANAGERS = employees.filter(e => ['manager', 'admin', 'super_admin'].includes(e.role));
+  } catch (e) { /* незадължително — филтрите просто остават празни */ }
+  populateQuickPayFilters();
+
+  ['qpCity', 'qpManager', 'qpStatus'].forEach(id => document.getElementById(id).addEventListener('change', loadQuickPayReport));
+  document.getElementById('qpRefreshBtn').addEventListener('click', loadQuickPayReport);
+  document.getElementById('qpSelectAllUnpaid').addEventListener('click', () => {
+    document.querySelectorAll('.qp-row-check').forEach(cb => { if (cb.dataset.unpaid === '1') cb.checked = true; });
+    updateQuickPaySelection();
+  });
+  document.getElementById('qpPayBtn').addEventListener('click', payQuickPaySelection);
+  await loadQuickPayReport();
+}
+
+function updateQuickPaySelection() {
+  const checked = Array.from(document.querySelectorAll('.qp-row-check:checked'));
+  const sum = checked.reduce((s, cb) => s + Number(cb.dataset.unpaidAmount || 0), 0);
+  const btn = document.getElementById('qpPayBtn');
+  btn.disabled = checked.length === 0;
+  btn.textContent = checked.length ? `Изплати избраните (${checked.length}) — ${fmtMoney(sum)}` : 'Изплати избраните';
+}
+
+async function payQuickPaySelection() {
+  const checked = Array.from(document.querySelectorAll('.qp-row-check:checked'));
+  const ids = checked.flatMap(cb => JSON.parse(cb.dataset.unpaidIds || '[]'));
+  if (!ids.length) return;
+  if (!confirm(`Маркирай ${ids.length} седмичен(ни) запис(а) като платени?`)) return;
+  const btn = document.getElementById('qpPayBtn');
+  btn.disabled = true;
+  try {
+    await Api.post('/api/hr/payroll/bulk-pay', { ids });
+    await loadQuickPayReport();
+  } catch (err) { alert(err.message); }
+  finally { btn.disabled = false; }
+}
+
+async function loadQuickPayReport() {
+  const host = document.getElementById('qpReportHost');
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const params = new URLSearchParams();
+  const from = document.getElementById('qpFrom').value;
+  const to = document.getElementById('qpTo').value;
+  const city = document.getElementById('qpCity').value;
+  const managerId = document.getElementById('qpManager').value;
+  const status = document.getElementById('qpStatus').value;
+  if (from) params.set('week_start', from);
+  if (to) params.set('week_end', to);
+  if (city) params.set('city', city);
+  if (managerId) params.set('manager_id', managerId);
+  if (status) params.set('status', status);
+  try {
+    const { rows, totals } = await Api.get(`/api/hr/payroll/report?${params}`);
+    document.getElementById('qpTotalsHost').innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Общо за периода</div><div class="value">${fmtMoney(totals.total_net)}</div></div>
+        <div class="stat-card"><div class="label">Изплатено</div><div class="value green">${fmtMoney(totals.paid_amount)}</div></div>
+        <div class="stat-card"><div class="label">Остава да се плати</div><div class="value ${totals.unpaid_amount > 0 ? 'warn' : ''}">${fmtMoney(totals.unpaid_amount)}</div></div>
+      </div>`;
+    if (!rows.length) { host.innerHTML = `<p class="hint">Няма записи за избрания филтър.</p>`; return; }
+    host.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th></th><th>Служител</th><th>Град</th><th>Мениджър</th><th>Седмици</th><th>Общо нето</th><th>Платено</th><th>Остава</th></tr></thead>
+      <tbody>${rows.map(r => `
+        <tr>
+          <td>${r.unpaid_amount > 0.005 ? `<input type="checkbox" class="qp-row-check" data-unpaid="1" data-unpaid-amount="${r.unpaid_amount}" data-unpaid-ids='${JSON.stringify(r.unpaid_entry_ids)}'>` : ''}</td>
+          <td><a class="employee-name-link" href="/personnel-detail.html?id=${r.profile_id}">${r.full_name}</a></td>
+          <td>${r.city || '—'}</td>
+          <td>${r.manager_name || '—'}</td>
+          <td>${r.weeks_count}</td>
+          <td><strong>${fmtMoney(r.total_net)}</strong></td>
+          <td>${fmtMoney(r.paid_amount)}</td>
+          <td>${r.unpaid_amount > 0.005 ? `<strong style="color:var(--warn);">${fmtMoney(r.unpaid_amount)}</strong>` : fmtMoney(r.unpaid_amount)}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+    host.querySelectorAll('.qp-row-check').forEach(cb => cb.addEventListener('change', updateQuickPaySelection));
+    updateQuickPaySelection();
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
 }
 
 function setupSignatureCanvas(canvas) {
@@ -396,6 +625,43 @@ async function init() {
 
   document.getElementById('app-content').innerHTML = `
     ${isAdmin ? `
+    <div class="panel" id="quickPayPanel">
+      <div class="panel-head"><h2>⚡ Бързо изплащане и справка</h2></div>
+      <p class="hint">Филтрирай по период/град/мениджър, маркирай и изплати с едно копче — заместя нуждата да се избира служител по един.</p>
+      <div id="qpPeriodPicker"></div>
+      <div class="field-row">
+        <div class="field"><label>От (седмица, начало)</label><input type="date" id="qpFrom"></div>
+        <div class="field"><label>До (седмица, начало)</label><input type="date" id="qpTo"></div>
+        <div class="field"><label>Град</label><select id="qpCity"></select></div>
+        <div class="field"><label>Мениджър</label><select id="qpManager"></select></div>
+        <div class="field"><label>Статус</label>
+          <select id="qpStatus">
+            <option value="">Всички</option>
+            <option value="unpaid">Неплатени</option>
+            <option value="paid">Платени</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="qpRefreshBtn">Обнови</button>
+        ${canFinalizePayroll() ? `
+        <button type="button" class="btn btn-ghost btn-sm" id="qpSelectAllUnpaid">Избери всички неплатени</button>
+        <button type="button" class="btn btn-primary btn-sm" id="qpPayBtn" disabled>Изплати избраните</button>` : ''}
+      </div>
+      <div id="qpTotalsHost"></div>
+      <div id="qpReportHost" style="margin-top:10px;" class="loading">Зареждане…</div>
+    </div>
+
+    <div class="panel" id="correctionRequestsPanel" style="display:none;">
+      <div class="panel-head"><h2>🔔 Заявки за корекция<span id="correctionBadge"></span></h2></div>
+      <p class="hint">${canFinalizePayroll() ? 'Промени по вече записани седмици, предложени от колеги — изискват твоето одобрение.' : 'Собствените ти изпратени заявки за корекция.'}</p>
+      <div id="correctionRequestsHost" class="loading">Зареждане…</div>
+    </div>` : ''}
+
+    ${isAdmin ? `
+    <details id="advancedToolsDetails">
+      <summary class="panel-head" style="cursor:pointer;"><h2 style="display:inline;">Разширени инструменти — ръчно въвеждане, импорт, пълна статистика</h2></summary>
+
     <div class="grid-2">
       <div class="panel">
         <div class="panel-head"><h2>Избери служител</h2></div>
@@ -425,9 +691,8 @@ async function init() {
           <button type="submit" class="btn btn-primary btn-sm">Запази седмицата</button>
         </form>
       </div>
-    </div>` : ''}
+    </div>
 
-    ${isAdmin ? `
     <div class="panel" id="importPanel">
       <div class="panel-head"><h2>Импорт от Bolt / Glovo (реален седмичен файл)</h2></div>
       <p class="hint">Качете оригиналния .xlsx експорт от Bolt Food или Glovo (Freestreets BG) за дадена седмица — системата ще опита да съпостави куриерите със съществуващи профили по телефон и ще предложи преглед преди запис. Заработката се изчислява като сумата, изкарана от шофьора вкл. бакшишите, без ДДС.</p>
@@ -448,9 +713,8 @@ async function init() {
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="importPreviewBtn">Прегледай файла</button>
       <div id="importPreviewHost" style="margin-top:14px;"></div>
-    </div>` : ''}
+    </div>
 
-    ${isAdmin ? `
     <div class="panel" id="statsPanel">
       <div class="panel-head"><h2>Статистика за периода (всички служители)</h2></div>
       <div id="statsPeriodPicker"></div>
@@ -460,7 +724,8 @@ async function init() {
       </div>
       <button type="button" class="btn btn-ghost btn-sm" id="statsRefreshBtn">Обнови</button>
       <div id="payrollStatsHost" style="margin-top:14px;" class="loading">Зареждане…</div>
-    </div>` : ''}
+    </div>
+    </details>` : ''}
 
     <div class="panel">
       <div class="panel-head"><h2>${isAdmin ? 'Седмици на избрания служител' : 'Моите седмици'}</h2></div>
@@ -470,6 +735,8 @@ async function init() {
   `;
 
   if (isAdmin) {
+    await initQuickPayPanel();
+    await loadCorrectionRequests();
     await initImportPanel();
     await initPayrollStatsPanel();
     const select = document.getElementById('employeeSelect');
