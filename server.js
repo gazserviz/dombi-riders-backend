@@ -1844,6 +1844,24 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, status, { error: err.message });
       }
     }
+    // ръчно маркиране прочетено/непрочетено (напр. "Маркирай като непрочетено"
+    // в detail изгледа — обратното вече става автоматично при отваряне, виж
+    // getMessage() в lib/mail.js); body: {folder, seen: true|false}
+    const mailSeenMatch = pathname.match(/^\/api\/mail\/message\/([\w-]+)\/seen$/);
+    if (mailSeenMatch && req.method === 'POST') {
+      const user = requirePermission(req, res, 'mail', 'view');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const folder = body.folder || 'INBOX';
+      const seen = body.seen !== false;
+      try {
+        await mail.setSeen(mailSeenMatch[1], folder, seen);
+        return sendJson(res, 200, { ok: true, seen });
+      } catch (err) {
+        const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : 502);
+        return sendJson(res, status, { error: err.message });
+      }
+    }
     const mailAttachmentMatch = pathname.match(/^\/api\/mail\/message\/([\w-]+)\/attachment\/(\d+)$/);
     if (mailAttachmentMatch && req.method === 'GET') {
       const user = requirePermission(req, res, 'mail', 'view');
@@ -1892,6 +1910,8 @@ async function handleApi(req, res, pathname, query) {
           inReplyTo: body.inReplyTo || undefined,
           references: body.references || undefined,
           attachments,
+          replyToUid: body.replyToUid || undefined,
+          replyToFolder: body.replyToFolder || undefined,
         });
         return sendJson(res, 200, { ok: true, messageId: result.messageId });
       } catch (err) {
