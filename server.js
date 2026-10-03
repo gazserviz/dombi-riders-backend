@@ -1805,6 +1805,21 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, err.code === 'MAIL_NOT_CONFIGURED' ? 503 : 502, { error: err.message });
       }
     }
+    // лек брояч на непрочетени — за индикатора в sidebar-а (вика се на всяка
+    // страница, на интервал, виж startNotificationBadges в app.js); нарочно
+    // НЕ хвърля грешка при неконфигурирана/недостъпна поща, за да не чупи
+    // менюто на страници, различни от самата "Пощенска кутия" — просто
+    // показва 0 (бадж-ът остава скрит).
+    if (pathname === '/api/mail/unread-count' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'mail', 'view');
+      if (!user) return;
+      try {
+        const unread = await mail.getUnreadCount();
+        return sendJson(res, 200, { unread });
+      } catch (err) {
+        return sendJson(res, 200, { unread: 0, error: err.message });
+      }
+    }
     if (pathname === '/api/mail/sent' && req.method === 'GET') {
       const user = requirePermission(req, res, 'mail', 'view');
       if (!user) return;
