@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Твърди заплати — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+</head>
+<body>
+<div id="app-shell" data-active="/fixed-salaries.html" data-title="Твърди заплати"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const FS_PERIOD_LABELS = { day: 'ден', week: 'седмица', month: 'месец' };
+
+let CURRENT_USER = null;
+let SALARIED = [];
+let selectedId = null;
+let LAST_STATS = null;
+let searchTimer = null;
+
+function salarySummary(s) {
+  if (!s || s.active === false || !s.amount) return '<span class="badge badge-muted">Не е зададена</span>';
+  return `<span class="badge badge-green">${fmtMoney(s.amount)} / ${FS_PERIOD_LABELS[s.period] || s.period}</span>`;
+}
+
+async function loadSalaried() {
+  const host = document.getElementById('salariedHost');
+  const { salaried } = await Api.get('/api/hr/fixed-salaries');
+  SALARIED = salaried;
+  if (!salaried.length) {
+    host.innerHTML = `<p class="hint">Няма служители с твърда заплата все още — потърсете служител по-долу и задайте му заплата.</p>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Служител</th><th>Роля</th><th>Заплата</th><th></th></tr></thead>
+      <tbody>
+        ${salaried.map(s => `
+          <tr>
+            <td><div class="stack"><strong>${escapeHtml(s.full_name)}</strong><small>${escapeHtml(s.email)}</small></div></td>
+            <td>${ROLE_LABELS[s.role] || s.role}</td>
+            <td>${salarySummary(s.salary)}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm select-salaried-btn" data-id="${s.id}">Настрой →</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  host.querySelectorAll('.select-salaried-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectEmployee(btn.dataset.id, btn.closest('tr').querySelector('strong').textContent));
+  });
+}
+
+async function runSearch(q) {
+  const host = document.getElementById('searchResults');
+  if (!q) { host.innerHTML = ''; return; }
+  const { results } = await Api.get(`/api/hr/fixed-salaries/search?q=${encodeURIComponent(q)}`);
+  if (!results.length) { host.innerHTML = '<p class="hint">Няма съвпадения.</p>'; return; }
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <tbody>
+        ${results.map(r => `
+          <tr>
+            <td><div class="stack"><strong>${escapeHtml(r.full_name)}</strong><small>${escapeHtml(r.email)} · ${ROLE_LABELS[r.role] || r.role}</small></div></td>
+            <td style="text-align:right;"><button type="button" class="btn btn-ghost btn-sm search-pick-btn" data-id="${r.id}" data-name="${escapeHtml(r.full_name)}">${r.has_salary ? 'Отвори →' : '+ Задай заплата'}</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  host.querySelectorAll('.search-pick-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectEmployee(btn.dataset.id, btn.dataset.name));
+  });
+}
+
+function fillSalaryForm(s) {
+  const form = document.getElementById('salaryForm');
+  form.amount.value = (s && s.amount != null) ? s.amount : '';
+  form.period.value = (s && s.period) || 'month';
+  form.notes.value = (s && s.notes) || '';
+  form.active.checked = s ? s.active !== false : true;
+}
+
+async function loadStats() {
+  const statsHost = document.getElementById('fsStatsHost');
+  statsHost.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const from = document.getElementById('fsStatsFrom').value;
+  const to = document.getElementById('fsStatsTo').value;
+  const qs = new URLSearchParams();
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  const stats = await Api.get(`/api/hr/fixed-salaries/${selectedId}/stats?${qs.toString()}`);
+  statsHost.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">Периоди в диапазона (прибл.)</div><div class="value">${stats.period_count_approx ? stats.period_count_approx.toFixed(2) : 0}</div></div>
+      <div class="stat-card"><div class="label">Начислена заплата</div><div class="value green">${fmtMoney(stats.salary_owed)}</div></div>
+    </div>`;
+  LAST_STATS = stats;
+}
+
+function paymentsHtml(payments) {
+  if (!payments.length) return '<p class="hint">Няма платени заплати за този служител все още.</p>';
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Платено на</th><th>Период</th><th>Сума</th><th>Бележка</th></tr></thead>
+      <tbody>
+        ${payments.map(p => `
+          <tr>
+            <td>${fmtDateTime(p.paid_at)}</td>
+            <td>${fmtDate(p.period_from)} – ${fmtDate(p.period_to)}</td>
+            <td><strong>${fmtMoney(p.amount)}</strong></td>
+            <td>${p.note || ''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+async function loadPayments() {
+  const host = document.getElementById('fsPaymentsHost');
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  const { payments } = await Api.get(`/api/hr/fixed-salaries/${selectedId}/payments`);
+  host.innerHTML = paymentsHtml(payments);
+}
+
+function prefillPaymentForm() {
+  const form = document.getElementById('fsPaymentForm');
+  if (!form) return;
+  const from = document.getElementById('fsStatsFrom').value;
+  const to = document.getElementById('fsStatsTo').value;
+  if (from) form.period_from.value = from;
+  if (to) form.period_to.value = to;
+  if (LAST_STATS && LAST_STATS.salary_owed != null) form.amount.value = LAST_STATS.salary_owed.toFixed(2);
+}
+
+async function selectEmployee(id, name) {
+  selectedId = id;
+  document.getElementById('detailHost').style.display = '';
+  document.getElementById('detailTitle').textContent = `Служител: ${name}`;
+  const { salary } = await Api.get(`/api/hr/fixed-salaries/${id}`);
+  fillSalaryForm(salary);
+  await loadStats();
+  prefillPaymentForm();
+  await loadPayments();
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (!['admin', 'super_admin'].includes(CURRENT_USER.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Само администратор управлява твърдите заплати.</div>`;
+    return;
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <p class="hint">За служители с фиксирано възнаграждение — независимо от броя поръчки (шофьорски заплати) или от представянето на екип (партньорски комисионни). Обичайно собственик, администратор, координатор. Може да се зададе на служител с всякаква роля, включително на мениджър, който паралелно води и екип с комисионна — двете са отделни, несвързани записи.</p>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Служители с твърда заплата</h2></div>
+      <div id="salariedHost" class="loading">Зареждане…</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Добави / намери служител</h2></div>
+      <div class="field"><label>Търсене (име или имейл)</label><input type="text" id="fsSearchInput" placeholder="напр. Цветелина или Виктор"></div>
+      <div id="searchResults"></div>
+    </div>
+
+    <div class="panel" id="detailHost" style="display:none;">
+      <div class="panel-head"><h2 id="detailTitle">Служител</h2></div>
+      <div class="error-box" id="salaryError"></div>
+      <div class="success-box" id="salarySuccess"></div>
+      <form id="salaryForm">
+        <div class="field-row">
+          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" min="0" required></div>
+          <div class="field"><label>Период</label>
+            <select name="period"><option value="day">Дневно</option><option value="week">Седмично</option><option value="month">Месечно</option></select>
+          </div>
+        </div>
+        <div class="field"><label>Бележки</label><input name="notes"></div>
+        <div class="field"><label><input type="checkbox" name="active" style="width:auto;display:inline-block;margin-right:6px;">Активна заплата</label></div>
+        <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+      </form>
+
+      <div class="panel-head" style="margin-top:22px;"><h2>Начислено за период</h2></div>
+      <div id="fsStatsPeriodPicker"></div>
+      <div class="field-row">
+        <div class="field"><label>От</label><input type="date" id="fsStatsFrom"></div>
+        <div class="field"><label>До</label><input type="date" id="fsStatsTo"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="fsStatsRefreshBtn">Обнови</button>
+      <div id="fsStatsHost" style="margin-top:14px;"></div>
+
+      <div class="panel-head" style="margin-top:22px;"><h2>Плащане на заплата</h2></div>
+      <p class="hint">Записва действително платена заплата — с период и сума. Отразява се като разход в общата каса. Само супер администратор.</p>
+      ${CURRENT_USER && CURRENT_USER.role === 'super_admin' ? `
+      <div class="error-box" id="fsPaymentError"></div>
+      <div class="success-box" id="fsPaymentSuccess"></div>
+      <form id="fsPaymentForm">
+        <div class="field-row">
+          <div class="field"><label>Период от *</label><input name="period_from" type="date" required></div>
+          <div class="field"><label>Период до *</label><input name="period_to" type="date" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" min="0" required></div>
+          <div class="field"><label>Бележка</label><input name="note" placeholder="за какво/уточнение"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Маркирай платено</button>
+      </form>` : '<p class="hint">Само супер администратор може да маркира плащане.</p>'}
+
+      <div class="panel-head" style="margin-top:18px;"><h3 style="margin:0;">История на плащанията</h3></div>
+      <div id="fsPaymentsHost" class="loading">Зареждане…</div>
+    </div>
+  `;
+
+  document.getElementById('fsSearchInput').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    const q = e.target.value.trim();
+    searchTimer = setTimeout(() => runSearch(q), 250);
+  });
+
+  document.getElementById('fsStatsRefreshBtn').addEventListener('click', async () => { await loadStats(); prefillPaymentForm(); });
+
+  const fsStatsFrom = document.getElementById('fsStatsFrom');
+  const fsStatsTo = document.getElementById('fsStatsTo');
+  mountPeriodPicker(document.getElementById('fsStatsPeriodPicker'), fsStatsFrom, fsStatsTo, {
+    wireWeekEnd: false, weekPresetMode: 'single', useMonthPreset: true,
+    onApply: async () => { if (selectedId) { await loadStats(); prefillPaymentForm(); } },
+  });
+  fsStatsFrom.value = previousWeekStart();
+  fsStatsTo.value = previousWeekStart();
+
+  document.getElementById('salaryForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('salaryError');
+    const successBox = document.getElementById('salarySuccess');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const form = e.target;
+    const patch = {
+      amount: form.amount.value ? Number(form.amount.value) : null,
+      period: form.period.value,
+      notes: form.notes.value || null,
+      active: form.active.checked,
+    };
+    try {
+      await Api.put(`/api/hr/fixed-salaries/${selectedId}`, patch);
+      successBox.textContent = 'Заплатата е запазена.';
+      successBox.classList.add('show');
+      await loadSalaried();
+      await loadStats();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+
+  const paymentForm = document.getElementById('fsPaymentForm');
+  if (paymentForm) {
+    paymentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById('fsPaymentError');
+      const successBox = document.getElementById('fsPaymentSuccess');
+      errorBox.classList.remove('show'); successBox.classList.remove('show');
+      const form = e.target;
+      try {
+        await Api.post(`/api/hr/fixed-salaries/${selectedId}/payments`, {
+          period_from: form.period_from.value, period_to: form.period_to.value,
+          amount: Number(form.amount.value), note: form.note.value || null,
+        });
+        successBox.textContent = 'Заплатата е маркирана като платена.';
+        successBox.classList.add('show');
+        await loadPayments();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  }
+
+  await loadSalaried();
+}
+init();
+</script>
+</body>
+</html>

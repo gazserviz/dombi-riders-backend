@@ -59,16 +59,25 @@ function sortPersonnel(employees) {
   });
 }
 
+// режим на масово зачисляване към мениджър — включва се от бутона над
+// таблицата, вижда се само докато е активен филтърът "Без мениджър" (виж
+// applyPersonnelFilters), за да не се разсейва админът с чекбоксове, когато
+// гледа всички служители
+let BULK_ASSIGN_MODE = false;
+let BULK_SELECTED = new Set();
+
 function personnelTable(employees) {
   if (!employees.length) return `<p class="hint">Няма служители, отговарящи на филтъра.</p>`;
   const sorted = sortPersonnel(employees);
+  const showCheckbox = BULK_ASSIGN_MODE;
   return `
     <div class="table-wrap">
       <table class="personnel-table">
-        <thead><tr><th>Служител</th><th>Град</th><th>Платформа</th><th>Роля</th><th>Статус</th><th>Изтичащи документи</th></tr></thead>
+        <thead><tr>${showCheckbox ? '<th style="width:28px;"></th>' : ''}<th>Служител</th><th>Град</th><th>Платформа</th><th>Роля</th><th>Статус</th><th>Изтичащи документи</th></tr></thead>
         <tbody>
           ${sorted.map(e => `
-            <tr class="clickable" onclick="window.location='/personnel-detail.html?id=${e.id}'" title="${escapeHtml(e.full_name)}">
+            <tr class="clickable" onclick="${showCheckbox ? `event.stopPropagation();toggleBulkSelect('${e.id}')` : `window.location='/personnel-detail.html?id=${e.id}'`}" title="${escapeHtml(e.full_name)}">
+              ${showCheckbox && e.role === 'driver' ? `<td onclick="event.stopPropagation()"><input type="checkbox" class="bulk-select-cb" data-id="${e.id}" ${BULK_SELECTED.has(e.id) ? 'checked' : ''} onchange="toggleBulkSelect('${e.id}', this.checked)"></td>` : (showCheckbox ? '<td></td>' : '')}
               <td>
                 <div class="stack">
                   <a class="employee-name-link" href="/personnel-detail.html?id=${e.id}" onclick="event.stopPropagation()">${e.full_name}</a>
@@ -87,6 +96,26 @@ function personnelTable(employees) {
         </tbody>
       </table>
     </div>`;
+}
+
+function toggleBulkSelect(id, checked) {
+  if (checked === undefined) {
+    // клик върху реда (не самия чекбокс) — обръща текущото състояние
+    checked = !BULK_SELECTED.has(id);
+    const cb = document.querySelector(`.bulk-select-cb[data-id="${id}"]`);
+    if (cb) cb.checked = checked;
+  }
+  if (checked) BULK_SELECTED.add(id); else BULK_SELECTED.delete(id);
+  updateBulkAssignBar();
+}
+
+function updateBulkAssignBar() {
+  const bar = document.getElementById('bulkAssignBar');
+  if (!bar) return;
+  const countEl = document.getElementById('bulkSelectedCount');
+  if (countEl) countEl.textContent = BULK_SELECTED.size;
+  const btn = document.getElementById('bulkAssignSubmitBtn');
+  if (btn) btn.disabled = BULK_SELECTED.size === 0 || !document.getElementById('bulkAssignManagerSelect').value;
 }
 
 function applyPersonnelFilters() {
@@ -156,7 +185,20 @@ async function init() {
       </form>
     </div>` : ''}
     <div class="panel">
-      <div class="panel-head"><h2>Всички служители</h2></div>
+      <div class="panel-head"><h2>Всички служители</h2>
+        ${['admin', 'manager', 'super_admin'].includes(user.role) ? '<button type="button" class="btn btn-ghost btn-sm" id="bulkAssignToggleBtn">👥 Зачисли към мениджър</button>' : ''}
+      </div>
+      <div id="bulkAssignBar" class="panel" style="display:none;background:var(--bg-soft,rgba(255,255,255,.03));margin-bottom:14px;">
+        <p class="hint">Избери шофьори от списъка по-долу (само без зачислен мениджър по подразбиране — филтърът „Без мениджър“ е включен автоматично) и ги зачисли наведнъж към един мениджър. Всеки шофьор трябва да е зачислен към някой — виж и бройката „без мениджър“ на началния екран.</p>
+        <div class="field-row" style="align-items:flex-end;">
+          <div class="field"><label>Мениджър</label>
+            <select id="bulkAssignManagerSelect"><option value="">— избери —</option></select>
+          </div>
+          <div class="field"><button type="button" class="btn btn-primary btn-sm" id="bulkAssignSubmitBtn" disabled>Зачисли избраните (<span id="bulkSelectedCount">0</span>)</button></div>
+        </div>
+        <div class="success-box" id="bulkAssignSuccess"></div>
+        <div class="error-box" id="bulkAssignError"></div>
+      </div>
       <div class="field-row" style="align-items:flex-end;">
         <div class="field" style="flex:2;"><label>Търсене (име или имейл)</label><input type="text" id="personnelSearch" placeholder="напр. Иван Иванов"></div>
         <div class="field"><label>Статус</label>
@@ -227,6 +269,8 @@ async function init() {
     ALL_EMPLOYEES = employees;
     document.getElementById('tableHost').innerHTML = personnelTable(employees);
     document.getElementById('personnelManagerFilter').insertAdjacentHTML('beforeend', managerFilterOptions());
+    const bulkManagerSelect = document.getElementById('bulkAssignManagerSelect');
+    if (bulkManagerSelect) bulkManagerSelect.insertAdjacentHTML('beforeend', managerFilterOptions());
     document.getElementById('personnelSearch').addEventListener('input', applyPersonnelFilters);
     document.getElementById('personnelStatusFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelBlacklistFilter').addEventListener('change', applyPersonnelFilters);
@@ -234,6 +278,47 @@ async function init() {
     document.getElementById('personnelCityFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelManagerFilter').addEventListener('change', applyPersonnelFilters);
     document.getElementById('personnelPlatformFilter').addEventListener('change', applyPersonnelFilters);
+
+    const toggleBtn = document.getElementById('bulkAssignToggleBtn');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        BULK_ASSIGN_MODE = !BULK_ASSIGN_MODE;
+        BULK_SELECTED = new Set();
+        document.getElementById('bulkAssignBar').style.display = BULK_ASSIGN_MODE ? '' : 'none';
+        toggleBtn.textContent = BULK_ASSIGN_MODE ? '✕ Откажи избора' : '👥 Зачисли към мениджър';
+        if (BULK_ASSIGN_MODE) {
+          // автоматично филтрираме към "Без мениджър" — точно тези шофьори
+          // трябва да бъдат зачислени, виж изискването в началото на панела
+          document.getElementById('personnelManagerFilter').value = 'none';
+        }
+        applyPersonnelFilters();
+        updateBulkAssignBar();
+      });
+    }
+    const bulkSubmitBtn = document.getElementById('bulkAssignSubmitBtn');
+    if (bulkSubmitBtn) {
+      bulkManagerSelect.addEventListener('change', updateBulkAssignBar);
+      bulkSubmitBtn.addEventListener('click', async () => {
+        const errorBox = document.getElementById('bulkAssignError');
+        const successBox = document.getElementById('bulkAssignSuccess');
+        errorBox.classList.remove('show'); successBox.classList.remove('show');
+        try {
+          const result = await Api.post('/api/hr/personnel/bulk-assign-manager', {
+            driver_ids: [...BULK_SELECTED], manager_id: bulkManagerSelect.value,
+          });
+          successBox.textContent = `Зачислени ${result.updated} шофьора.`;
+          successBox.classList.add('show');
+          BULK_SELECTED = new Set();
+          const { employees: refreshed } = await Api.get('/api/hr/personnel');
+          ALL_EMPLOYEES = refreshed;
+          applyPersonnelFilters();
+          updateBulkAssignBar();
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.classList.add('show');
+        }
+      });
+    }
   } catch (err) {
     document.getElementById('tableHost').innerHTML = `<div class="error-box show">${err.message}</div>`;
   }

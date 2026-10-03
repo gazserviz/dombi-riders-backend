@@ -61,6 +61,8 @@ async function init() {
         <div class="stat-card"><div class="label">Активни договори за наем</div><div class="value">${data.active_contracts}</div></div>
         <div class="stat-card"><div class="label">Изтичащи документи (30 дни)</div><div class="value ${data.expiring_docs_total ? 'warn' : ''}">${data.expiring_docs_total}</div></div>
         <div class="stat-card"><div class="label">Изтичащи документи на служители (30 дни)</div><div class="value ${data.expiring_employee_docs_total ? 'warn' : ''}">${data.expiring_employee_docs_total}</div></div>
+        <div class="stat-card clickable" onclick="window.location='/personnel.html'"><div class="label">Шофьори без мениджър</div><div class="value ${data.unassigned_active_drivers_total ? 'warn' : ''}">${data.unassigned_active_drivers_total}</div>
+          ${data.unassigned_active_drivers_total ? '<div class="sub">всеки шофьор трябва да е зачислен — виж „Досиета на служители“ → филтър „Без мениджър“</div>' : ''}</div>
       </div>
 
       <div class="grid-2">

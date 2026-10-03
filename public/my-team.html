@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Моят екип — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+</head>
+<body>
+<div id="app-shell" data-active="/my-team.html" data-title="Моят екип"></div>
+
+<script src="/js/app.js"></script>
+<script>
+const MT_COMP_TYPE_LABELS = { percentage: 'Процент', fixed: 'Фиксирана сума', tiered_percentage: 'Стъпаловиден процент', per_active_driver: 'На активен шофьор' };
+const MT_PERIOD_LABELS = { day: 'ден', week: 'седмица', month: 'месец' };
+const MT_FS_PERIOD_LABELS = { day: 'дневно', week: 'седмично', month: 'месечно' };
+
+let CURRENT_USER = null;
+let TEAM = [];
+let CURRENT_TARGET_ID = null;
+
+function teamTable(team) {
+  if (!team.length) return `<p class="hint">Нямате зачислени шофьори все още.</p>`;
+  const sorted = [...team].sort((a, b) => {
+    const rankA = a.status === 'active' ? 0 : 1;
+    const rankB = b.status === 'active' ? 0 : 1;
+    if (rankA !== rankB) return rankA - rankB;
+    return (a.full_name || '').localeCompare(b.full_name || '', 'bg');
+  });
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Шофьор</th><th>Град</th><th>Статус</th><th></th></tr></thead>
+      <tbody>
+        ${sorted.map(d => `
+          <tr>
+            <td><div class="stack"><strong>${escapeHtml(d.full_name)}</strong><small>${escapeHtml(d.email)}${d.phone ? ' · ' + escapeHtml(d.phone) : ''}</small></div></td>
+            <td>${d.city ? escapeHtml(d.city) : '<span class="hint">—</span>'}</td>
+            <td>${d.status === 'active' ? '<span class="badge badge-green">Активен</span>' : '<span class="badge badge-muted">Спрян</span>'}</td>
+            <td><a class="btn btn-ghost btn-sm" href="/personnel-detail.html?id=${d.id}">Досие →</a></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function applyTeamCityFilter() {
+  const cityFilter = document.getElementById('teamCityFilter').value;
+  const filtered = cityFilter ? TEAM.filter(d => d.city === cityFilter) : TEAM;
+  document.getElementById('teamTableHost').innerHTML = teamTable(filtered);
+}
+
+function commissionCard(commission, stats) {
+  if (!commission || commission.active === false) {
+    return `<p class="hint">Нямате зададена партньорска комисионна (настройва се само от администратор).</p>`;
+  }
+  let summary = '<span class="badge badge-muted">Не е зададена</span>';
+  if (commission.comp_type === 'fixed' && commission.fixed_amount) {
+    summary = `<span class="badge badge-green">${fmtMoney(commission.fixed_amount)} / ${MT_PERIOD_LABELS[commission.fixed_period] || commission.fixed_period}</span>`;
+  } else if (commission.comp_type === 'percentage' && commission.percentage) {
+    summary = `<span class="badge badge-green">${commission.percentage}%</span>`;
+  } else if (commission.comp_type === 'tiered_percentage') {
+    summary = `<span class="badge badge-green">Стъпаловиден процент (${(commission.tiers || []).length} транша)</span>`;
+  } else if (commission.comp_type === 'per_active_driver' && commission.per_driver_amount) {
+    summary = `<span class="badge badge-green">${fmtMoney(commission.per_driver_amount)} / активен шофьор</span>`;
+  }
+  const goalLine = stats.team_qualifying_goal != null
+    ? `<p class="hint">Цел за екипа: ${fmtMoney(stats.team_qualifying_goal)} заработка за периода — ${stats.goal_met ? '<strong style="color:var(--green,#4dff7a)">постигната ✓</strong>' : '<strong>все още не е постигната</strong>'}.</p>`
+    : '';
+  return `
+    <p class="hint">⚠️ Базата за изчисление засега е заработката на екипа за периода — приблизителна стойност, докато не бъде готов импортът на реалните приходи от поръчки. За последната отчетена седмица/месец — сменете периода по-долу.</p>
+    ${goalLine}
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">Тип компенсация</div><div class="value" style="font-size:1rem;">${summary}</div></div>
+      <div class="stat-card"><div class="label">Заработка на екипа</div><div class="value">${fmtMoney(stats.total_gross_earnings)}</div></div>
+      <div class="stat-card"><div class="label">Дължима комисионна</div><div class="value green">${fmtMoney(stats.commission_owed)}</div></div>
+    </div>`;
+}
+
+function fixedSalaryCard(salary) {
+  if (!salary || salary.active === false || !salary.amount) {
+    return `<p class="hint">Нямате зададена твърда заплата (настройва се само от администратор).</p>`;
+  }
+  return `<div class="stat-grid"><div class="stat-card"><div class="label">Твърда заплата</div><div class="value green">${fmtMoney(salary.amount)} / ${MT_FS_PERIOD_LABELS[salary.period] || salary.period}</div></div></div>`;
+}
+
+async function loadMyTeam(targetId) {
+  const qs = new URLSearchParams();
+  if (targetId) qs.set('target_id', targetId);
+  const from = document.getElementById('mtStatsFrom') ? document.getElementById('mtStatsFrom').value : '';
+  const to = document.getElementById('mtStatsTo') ? document.getElementById('mtStatsTo').value : '';
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  const data = await Api.get(`/api/hr/my-team?${qs.toString()}`);
+  CURRENT_TARGET_ID = data.profile.id;
+  TEAM = data.team;
+
+  document.getElementById('teamCount').textContent = data.team.length;
+  const cities = [...new Set(data.team.map(d => d.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg'));
+  document.getElementById('teamCityFilter').innerHTML = `<option value="">Всички градове</option>` + cities.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  document.getElementById('teamTableHost').innerHTML = teamTable(data.team);
+
+  document.getElementById('commissionHost').innerHTML = commissionCard(data.commission, data.commission_stats);
+  document.getElementById('fixedSalaryHost').innerHTML = fixedSalaryCard(data.fixed_salary);
+  document.getElementById('leaveTeamLink').href = `/leave.html${targetId ? '?manager_id=' + targetId : ''}`;
+}
+
+async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  if (!['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Тази страница е за мениджъри и администратори.</div>`;
+    return;
+  }
+
+  const isAdmin = ['admin', 'super_admin'].includes(CURRENT_USER.role);
+  let managerPicker = '';
+  if (isAdmin) {
+    try {
+      const { employees } = await Api.get('/api/hr/personnel');
+      const managers = employees.filter(e => e.role === 'manager' || e.role === 'admin');
+      managerPicker = `
+        <div class="field"><label>Преглед на екипа на (само за админ)</label>
+          <select id="mtManagerPicker">
+            <option value="">— моя собствен екип —</option>
+            ${managers.filter(m => m.id !== CURRENT_USER.id).map(m => `<option value="${m.id}">${escapeHtml(m.full_name)}</option>`).join('')}
+          </select>
+        </div>`;
+    } catch (e) { /* незадължително */ }
+  }
+
+  document.getElementById('app-content').innerHTML = `
+    <p class="hint">Шофьорите, зачислени към Вас (виж „Досиета на служители“ → поле „Мениджър“), и Вашата собствена партньорска комисионна/твърда заплата — само за преглед, настройват се от администратор.</p>
+    ${managerPicker}
+
+    <div class="panel">
+      <div class="panel-head"><h2>Моят екип (<span id="teamCount">0</span>)</h2></div>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field"><label>Филтър по град</label><select id="teamCityFilter"><option value="">Всички градове</option></select></div>
+        <div class="field"><a class="btn btn-ghost btn-sm" id="leaveTeamLink" href="/leave.html">Заявки на моя екип →</a></div>
+      </div>
+      <div id="teamTableHost" class="loading">Зареждане…</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Моята комисионна</h2></div>
+      <div id="mtStatsPeriodPicker"></div>
+      <div class="field-row">
+        <div class="field"><label>От</label><input type="date" id="mtStatsFrom"></div>
+        <div class="field"><label>До</label><input type="date" id="mtStatsTo"></div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="mtStatsRefreshBtn">Обнови</button>
+      <div id="commissionHost" class="loading" style="margin-top:14px;">Зареждане…</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Моята твърда заплата</h2></div>
+      <div id="fixedSalaryHost" class="loading">Зареждане…</div>
+    </div>
+  `;
+
+  document.getElementById('teamCityFilter').addEventListener('change', applyTeamCityFilter);
+  document.getElementById('mtStatsRefreshBtn').addEventListener('click', () => loadMyTeam(document.getElementById('mtManagerPicker') ? document.getElementById('mtManagerPicker').value : ''));
+
+  const mtStatsFrom = document.getElementById('mtStatsFrom');
+  const mtStatsTo = document.getElementById('mtStatsTo');
+  mountPeriodPicker(document.getElementById('mtStatsPeriodPicker'), mtStatsFrom, mtStatsTo, {
+    wireWeekEnd: false, weekPresetMode: 'single', useMonthPreset: true,
+    onApply: () => loadMyTeam(document.getElementById('mtManagerPicker') ? document.getElementById('mtManagerPicker').value : ''),
+  });
+  mtStatsFrom.value = previousWeekStart();
+  mtStatsTo.value = previousWeekStart();
+
+  const picker = document.getElementById('mtManagerPicker');
+  if (picker) picker.addEventListener('change', () => loadMyTeam(picker.value));
+
+  await loadMyTeam('');
+}
+init();
+</script>
+</body>
+</html>
