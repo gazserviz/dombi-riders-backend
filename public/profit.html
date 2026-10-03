@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Печалба — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+<style>
+  .profit-hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;margin-bottom:20px;}
+  .profit-hero .label{font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:800;margin-bottom:8px;}
+  .profit-hero .value{font-family:'Anton',sans-serif;font-size:2.6rem;color:var(--text);line-height:1.1;}
+  .profit-hero .value.neg{color:var(--danger,#ff5a5a);}
+  .profit-hero .delta{font-size:.86rem;margin-top:8px;font-weight:700;}
+  .profit-hero .delta.up{color:var(--green);}
+  .profit-hero .delta.down{color:var(--danger,#ff5a5a);}
+  .profit-hero .sub{font-size:.78rem;color:var(--muted);margin-top:10px;max-width:560px;}
+  .profit-tile{cursor:pointer;transition:border-color .15s;}
+  .profit-tile:hover{border-color:var(--green);}
+  .profit-tile .delta{font-size:.72rem;margin-top:6px;font-weight:700;}
+  .profit-tile .delta.up{color:var(--green);}
+  .profit-tile .delta.down{color:var(--danger,#ff5a5a);}
+  .section-title{font-size:.9rem;font-weight:800;margin:26px 0 12px;color:var(--text);}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/profit.html" data-title="Печалба"></div>
+
+<script src="/js/app.js"></script>
+<script>
+function deltaHtml(current, previous) {
+  if (previous == null || previous === 0) return '';
+  const diff = current - previous;
+  const pct = (diff / Math.abs(previous)) * 100;
+  if (Math.abs(pct) < 0.5) return `<div class="delta">= спрямо предходния период</div>`;
+  const up = diff > 0;
+  const arrow = up ? '▲' : '▼';
+  return `<div class="delta ${up ? 'up' : 'down'}">${arrow} ${Math.abs(pct).toFixed(0)}% спрямо предходния период</div>`;
+}
+
+function tileHtml({ label, value, previous, href, valueClass }) {
+  return `
+    <div class="stat-card profit-tile" ${href ? `onclick="window.location='${href}'"` : ''}>
+      <div class="label">${label}</div>
+      <div class="value ${valueClass || ''}">${fmtMoney(value)}</div>
+      ${deltaHtml(value, previous)}
+    </div>`;
+}
+
+async function loadSafe(url) {
+  try { return await Api.get(url); } catch (e) { return null; }
+}
+
+async function loadPeriod(from, to) {
+  const [cashier, payrollStats, finance] = await Promise.all([
+    loadSafe(`/api/cashier/period-summary?from=${from}&to=${to}`),
+    loadSafe(`/api/cashier/non-cash-payroll-stats?from=${from}&to=${to}`),
+    loadSafe(`/api/finance/report?from=${from}&to=${to}`),
+  ]);
+  const byCategory = (finance && finance.by_category) || [];
+  const findCat = (direction, category) => {
+    const row = byCategory.find(c => c.direction === direction && c.category === category);
+    return row ? row.amount : 0;
+  };
+  return {
+    cash_net: cashier ? cashier.cash.net : null,
+    bank_net: cashier ? cashier.bank.net : null,
+    total_profit: cashier ? cashier.total_profit : null,
+    deposits_held: cashier ? cashier.deposits.currently_held_total : null,
+    gross_earnings: payrollStats ? payrollStats.gross_earnings_total : null,
+    deductions_rent: payrollStats ? payrollStats.total : null,
+    accrual_profit: finance ? finance.totals.profit : null,
+    repairs: findCat('expense', 'Сервиз'),
+    commissions: findCat('expense', 'Партньорски комисионни'),
+  };
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin','manager','super_admin'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате печалбата.</div>`;
+    return;
+  }
+  const content = document.getElementById('app-content');
+  content.innerHTML = `
+    <div id="periodPickerHost"></div>
+    <div id="profitHost" class="loading">Зареждане…</div>`;
+
+  const fromInput = { value: currentWeekStart() };
+  const toInput = { value: addDaysStr(currentWeekStart(), 6) };
+
+  async function render(from, to) {
+    document.getElementById('profitHost').innerHTML = `<div class="loading">Зареждане…</div>`;
+    // предходен период със същата дължина, непосредствено преди избрания —
+    // за сравнението "▲/▼ спрямо предходния период" на всяка плочка
+    const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+    const prevTo = addDaysStr(from, -1);
+    const prevFrom = addDaysStr(prevTo, -(days - 1));
+
+    const [cur, prev] = await Promise.all([loadPeriod(from, to), loadPeriod(prevFrom, prevTo)]);
+
+    document.getElementById('profitHost').innerHTML = `
+      <div class="profit-hero">
+        <div class="label">Нетна печалба (каса + банка) за периода ${fmtDate(from)} — ${fmtDate(to)}</div>
+        <div class="value ${cur.total_profit < 0 ? 'neg' : ''}">${fmtMoney(cur.total_profit)}</div>
+        ${deltaHtml(cur.total_profit, prev.total_profit)}
+        <div class="sub">Това са реално движени пари — в брой + банкова сметка. Удръжките/наемът на коли, които удържаме директно от заработката на шофьорите, никога не минават през касата в брой, затова се показват отделно по-долу като статистика.</div>
+      </div>
+
+      <div class="section-title">Пари в брой и банка</div>
+      <div class="stat-grid">
+        ${tileHtml({ label: 'Каса (в брой) — нето', value: cur.cash_net, previous: prev.cash_net, href: '/cashier.html' })}
+        ${tileHtml({ label: 'Банкова сметка — нето', value: cur.bank_net, previous: prev.bank_net, href: '/cashier.html' })}
+        ${tileHtml({ label: 'Депозити, държани в момента', value: cur.deposits_held, href: '/cashier.html' })}
+      </div>
+
+      <div class="section-title">Приходи и удръжки от шофьорите (статистика, не каса)</div>
+      <div class="stat-grid">
+        ${tileHtml({ label: 'Брутна заработка на шофьорите', value: cur.gross_earnings, previous: prev.gross_earnings, href: '/payroll.html' })}
+        ${tileHtml({ label: 'Удръжки + наем на коли', value: cur.deductions_rent, previous: prev.deductions_rent, href: '/payroll.html' })}
+      </div>
+
+      <div class="section-title">Разходи</div>
+      <div class="stat-grid">
+        ${tileHtml({ label: 'Ремонти/сервиз', value: cur.repairs, previous: prev.repairs, href: '/finance.html' })}
+        ${tileHtml({ label: 'Партньорски комисионни', value: cur.commissions, previous: prev.commissions, href: '/finance.html' })}
+      </div>
+
+      <div class="section-title">Обща счетоводна картина (начислена, не само кеш)</div>
+      <div class="stat-grid">
+        ${tileHtml({ label: 'Счетоводна печалба (P&L)', value: cur.accrual_profit, previous: prev.accrual_profit, href: '/finance.html' })}
+      </div>`;
+  }
+
+  mountPeriodPicker(document.getElementById('periodPickerHost'), fromInput, toInput, {
+    useMonthPreset: true,
+    onApply: (start, end) => render(start, end),
+  });
+  render(fromInput.value, toInput.value);
+}
+
+init();
+</script>
+</body>
+</html>
