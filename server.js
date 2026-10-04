@@ -251,6 +251,29 @@ function canAccessApplication(user, app) {
   return user.role === 'manager' && app.manager_id === user.id;
 }
 
+// същият модел като canAccessApplication, но за личните досиета (hr_personnel)
+// — requirePermission(req,res,'hr_personnel',...) проверява само РОЛЯТА
+// (по подразбиране 'manager' минава), но без това допълнително ограничение
+// всеки мениджър би управлявал досието на ВСЕКИ служител, не само на своя
+// екип (зачислен чрез manager_id — виж bulkAssignManager/"всеки шофьор да е
+// зачислен към мениджър"). admin/super_admin винаги минават.
+function canManagePersonnelRecord(user, targetId) {
+  if (isAdminOrAbove(user)) return true;
+  if (user.role !== 'manager') return false;
+  const target = db.findUserById(targetId);
+  return !!(target && target.manager_id === user.id);
+}
+
+// огледало на maskEgn() в public/js/app.js — последните 4 цифри остават
+// видими (за разпознаване/сверка), останалото е маскирано. Ползва се за да
+// не връщаме пълното ЕГН в обобщени списъци по мрежата, само в единичните
+// досиета, където вече има конкретна проверка по собственик/мениджър.
+function maskEgn(egn) {
+  const s = String(egn || '').trim();
+  if (!s) return null;
+  return s.length > 4 ? '•'.repeat(s.length - 4) + s.slice(-4) : s;
+}
+
 // ---------------------------------------------------------------------------
 // автогенерирана първоначална парола по шаблон "име123" (напр. "Иван
 // Иванов" -> "ivan123") — ползва се при създаване на потребител, ако админ
@@ -764,6 +787,12 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 429, { error: 'Твърде много опити за вход. Опитайте отново след няколко минути.' });
       }
       const { email, password } = await readJsonBody(req);
+      // отделен лимит И по имейл (не само по IP) — иначе разпределена атака
+      // (ротиращи IP-та) срещу ЕДИН известен акаунт не опира до никакъв таван
+      const emailKey = `login-email:${String(email || '').trim().toLowerCase()}`;
+      if (rateLimited(emailKey, { max: 10, windowMs: 10 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много опити за вход. Опитайте отново след няколко минути.' });
+      }
       const user = db.findUserByEmail(email || '');
       if (!user || !db.verifyPassword(password || '', user.password)) {
         return sendJson(res, 401, { error: 'Грешен имейл или парола' });
@@ -860,7 +889,13 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/users' && req.method === 'GET') {
       const user = requirePermission(req, res, 'users', 'view');
       if (!user) return;
-      return sendJson(res, 200, { users: db.listUsers() });
+      // admin/super_admin вижда всички (нужно им е за самото управление на
+      // потребители); обикновен мениджър (по подразбиране също има 'view' тук,
+      // виж permissions-catalog.js) вижда само своя зачислен екип, а не пълните
+      // лични данни (ЕГН и т.н.) на всеки служител във фирмата
+      const rawUsers = isAdminOrAbove(user) ? db.listUsers() : db.listUsers().filter(u => u.manager_id === user.id);
+      const users = isAdminOrAbove(user) ? rawUsers : rawUsers.map(u => ({ ...u, egn: maskEgn(u.egn) }));
+      return sendJson(res, 200, { users });
     }
     if (pathname === '/api/users' && req.method === 'POST') {
       const user = requirePermission(req, res, 'users', 'manage');
@@ -1229,8 +1264,15 @@ async function handleApi(req, res, pathname, query) {
     }
 
     // ---- HANDOVER PROTOCOLS ------------------------------------------------
+    // GET-овете по-долу бяха заключени само с requireAuth (всеки влязъл
+    // потребител, вкл. шофьор) — но няма отделна страница/линк в менюто за
+    // шофьор да преглежда протоколи (виж '/protocol-new.html': само
+    // admin/manager в permissions-catalog.js), така че достъпът на практика
+    // беше пропуск, не нарочна функционалност. Вече изисква 'protocols','view'
+    // (admin/manager по подразбиране), огледално на 'contracts','view'.
     if (pathname === '/api/protocols' && req.method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      const user = requirePermission(req, res, 'protocols', 'view');
+      if (!user) return;
       return sendJson(res, 200, { protocols: db.listProtocols({ vehicleId: query.vehicle_id }) });
     }
     if (pathname === '/api/protocols' && req.method === 'POST') {
@@ -1246,7 +1288,8 @@ async function handleApi(req, res, pathname, query) {
     }
     const protocolMatch = pathname.match(/^\/api\/protocols\/([\w-]+)$/);
     if (protocolMatch && req.method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      const user = requirePermission(req, res, 'protocols', 'view');
+      if (!user) return;
       const rec = db.getProtocol(protocolMatch[1]);
       if (!rec) return sendJson(res, 404, { error: 'Не е намерен' });
       return sendJson(res, 200, { protocol: rec });
@@ -1262,7 +1305,8 @@ async function handleApi(req, res, pathname, query) {
     // изтегляне на протокол като .docx / .pdf (вградена бланка или качен шаблон)
     const protocolDocMatch = pathname.match(/^\/api\/protocols\/([\w-]+)\/(docx|pdf)$/);
     if (protocolDocMatch && req.method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      const user = requirePermission(req, res, 'protocols', 'view');
+      if (!user) return;
       const rec = db.getProtocol(protocolDocMatch[1]);
       if (!rec) return sendJson(res, 404, { error: 'Не е намерен' });
       const result = await docRender.renderDocument('protocol', rec, protocolDocMatch[2]);
@@ -1382,15 +1426,18 @@ async function handleApi(req, res, pathname, query) {
       });
     }
 
-    // преглед на всички портфейли (само админ/мениджър) — за общ преглед
+    // преглед на всички портфейли (само админ/мениджър) — за общ преглед.
+    // admin/super_admin вижда всички; обикновен мениджър — само своя екип,
+    // и ЕГН се маскира за него (пълното ЕГН не е нужно за портфейлен преглед)
     if (pathname === '/api/wallet/users' && req.method === 'GET') {
       const user = requirePermission(req, res, 'wallet', 'view');
       if (!user) return;
-      const wallets = db.listUsers().map(u => ({
+      const scopedUsers = isAdminOrAbove(user) ? db.listUsers() : db.listUsers().filter(u => u.manager_id === user.id);
+      const wallets = scopedUsers.map(u => ({
         user_id: u.id, full_name: u.full_name, role: u.role,
         balance: db.getWalletBalance(u.id),
         // ЕГН/Bolt/Glovo ID — за да се вижда шофьорът навсякъде (виж driverIdLine в app.js)
-        egn: u.egn || null, external_ids: u.external_ids || null,
+        egn: isAdminOrAbove(user) ? (u.egn || null) : maskEgn(u.egn), external_ids: u.external_ids || null,
       }));
       return sendJson(res, 200, { wallets });
     }
@@ -1400,7 +1447,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetId = walletUserMatch[1];
-      if (targetId !== user.id && !isManagerOrAbove(user)) {
+      if (targetId !== user.id && !canManagePersonnelRecord(user, targetId)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       return sendJson(res, 200, {
@@ -2087,6 +2134,10 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/hr/personnel' && req.method === 'GET') {
       const user = requirePermission(req, res, 'hr_personnel', 'view');
       if (!user) return;
+      // мениджър вижда само своя зачислен екип в общия списък (досието на
+      // конкретен служител по /api/hr/personnel/:id има собствена, по-прецизна
+      // проверка по-долу) — виж canManagePersonnelRecord по-горе
+      const visibleUsers = isAdminOrAbove(user) ? db.listUsers() : db.listUsers().filter(u => u.manager_id === user.id);
       const alerts = db.getEmployeeDocumentAlerts();
       const nextAlertByProfile = {};
       alerts.forEach(a => { if (!nextAlertByProfile[a.profile_id]) nextAlertByProfile[a.profile_id] = a; });
@@ -2104,7 +2155,7 @@ async function handleApi(req, res, pathname, query) {
           set.add(p.source);
         }
       });
-      const employees = db.listUsers().map(u => ({
+      const employees = visibleUsers.map(u => ({
         id: u.id, full_name: u.full_name, email: u.email, phone: u.phone || '', role: u.role, status: u.status,
         manager_id: u.manager_id || null,
         city: u.city || null,
@@ -2114,8 +2165,11 @@ async function handleApi(req, res, pathname, query) {
         next_alert: nextAlertByProfile[u.id] || null,
         platforms: platformsByProfile[u.id] ? [...platformsByProfile[u.id]] : [],
         // ЕГН/Bolt/Glovo ID — за списъка "Всички служители" (виж driverIdLine
-        // в app.js); ЕГН се маскира на клиента, external_ids се показват изцяло
-        egn: u.egn || null,
+        // в app.js). ЕГН се маскира и СЪРВЪРНО (не само визуално в клиента) —
+        // в този обобщен списък никой изглед не показва/разкрива пълното ЕГН;
+        // то се връща в чист вид само през /api/hr/personnel/:id (единичното
+        // досие), който вече има собствена проверка по собственик/мениджър.
+        egn: maskEgn(u.egn),
         external_ids: u.external_ids || null,
       }));
       return sendJson(res, 200, { employees });
@@ -2145,7 +2199,10 @@ async function handleApi(req, res, pathname, query) {
       const user = requireAuth(req, res);
       if (!user) return;
       const targetId = personnelMatch[1];
-      if (targetId !== user.id && !isManagerOrAbove(user)) {
+      // собственото досие винаги е видимо; иначе — само admin/super_admin
+      // или мениджърът, на когото служителят Е РЕАЛНО зачислен (не всеки
+      // мениджър изобщо, виж canManagePersonnelRecord)
+      if (targetId !== user.id && !canManagePersonnelRecord(user, targetId)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       try {
@@ -2158,6 +2215,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelMatch && req.method === 'PUT') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да редактирате само досиетата на вашия екип' });
+      }
       const body = await readJsonBody(req);
       const allowed = ['egn', 'address', 'city', 'manager_id', 'full_name', 'phone', 'status',
         'id_card_number', 'id_card_expiry', 'driver_license_number', 'driver_license_expiry',
@@ -2189,6 +2249,9 @@ async function handleApi(req, res, pathname, query) {
       if (personnelMatch[1] === user.id) {
         return sendJson(res, 400, { error: 'Не можете да изтриете собствения си профил.' });
       }
+      if (!canManagePersonnelRecord(user, personnelMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да изтривате само досиета от вашия екип' });
+      }
       try {
         const removed = db.deleteUser(personnelMatch[1]);
         return sendJson(res, 200, { ok: true, profile: removed });
@@ -2201,6 +2264,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelBlacklistMatch && req.method === 'POST') {
       const user = requirePermission(req, res, 'hr_personnel', 'delete');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelBlacklistMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       const body = await readJsonBody(req);
       try {
         const updated = db.setUserBlacklist(personnelBlacklistMatch[1], {
@@ -2217,6 +2283,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelSendLinkMatch && req.method === 'POST') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelSendLinkMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       try {
         const profile = db.generatePersonnelLink(personnelSendLinkMatch[1]);
         const proto = req.headers['x-forwarded-proto'] || 'https';
@@ -2234,6 +2303,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelIdPhotoMatch && req.method === 'POST') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelIdPhotoMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'idcard');
       const field = body.side === 'back' ? 'id_card_photo_back_url' : 'id_card_photo_url';
@@ -2244,6 +2316,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelLicensePhotoMatch && req.method === 'POST') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelLicensePhotoMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'license');
       const field = body.side === 'back' ? 'driver_license_photo_back_url' : 'driver_license_photo_url';
@@ -2254,6 +2329,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelSelfiePhotoMatch && req.method === 'POST') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelSelfiePhotoMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       const body = await readJsonBody(req);
       const { url } = saveBase64Image(body.photo, 'selfie');
       const updated = db.updateUser(personnelSelfiePhotoMatch[1], { selfie_photo_url: url });
@@ -2266,6 +2344,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelIdPhotoMatch && req.method === 'DELETE') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelIdPhotoMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       const field = query.side === 'back' ? 'id_card_photo_back_url' : 'id_card_photo_url';
       const updated = db.updateUser(personnelIdPhotoMatch[1], { [field]: null });
       return sendJson(res, 200, { profile: updated });
@@ -2273,6 +2354,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelLicensePhotoMatch && req.method === 'DELETE') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelLicensePhotoMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       const field = query.side === 'back' ? 'driver_license_photo_back_url' : 'driver_license_photo_url';
       const updated = db.updateUser(personnelLicensePhotoMatch[1], { [field]: null });
       return sendJson(res, 200, { profile: updated });
@@ -2280,6 +2364,9 @@ async function handleApi(req, res, pathname, query) {
     if (personnelSelfiePhotoMatch && req.method === 'DELETE') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      if (!canManagePersonnelRecord(user, personnelSelfiePhotoMatch[1])) {
+        return sendJson(res, 403, { error: 'Можете да управлявате само досиетата на вашия екип' });
+      }
       const updated = db.updateUser(personnelSelfiePhotoMatch[1], { selfie_photo_url: null });
       return sendJson(res, 200, { profile: updated });
     }
@@ -2303,7 +2390,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const targetId = query.profile_id;
       if (!targetId) return sendJson(res, 400, { error: 'Липсва profile_id' });
-      if (targetId !== user.id && !isManagerOrAbove(user)) {
+      if (targetId !== user.id && !canManagePersonnelRecord(user, targetId)) {
         return sendJson(res, 403, { error: 'Нямате права за това действие' });
       }
       return sendJson(res, 200, { contracts: db.listEmploymentContracts(targetId) });
@@ -2315,6 +2402,9 @@ async function handleApi(req, res, pathname, query) {
       if (!body.profile_id || !body.contract_type || !body.start_date) {
         return sendJson(res, 400, { error: 'Липсват задължителни полета' });
       }
+      if (!canManagePersonnelRecord(user, body.profile_id)) {
+        return sendJson(res, 403, { error: 'Можете да създавате договори само за вашия екип' });
+      }
       const rec = db.createEmploymentContract({ ...body, created_by: user.id });
       return sendJson(res, 201, { contract: rec });
     }
@@ -2322,6 +2412,11 @@ async function handleApi(req, res, pathname, query) {
     if (employmentContractMatch && req.method === 'PUT') {
       const user = requirePermission(req, res, 'hr_personnel', 'manage');
       if (!user) return;
+      const existing = db.getEmploymentContract(employmentContractMatch[1]);
+      if (!existing) return sendJson(res, 404, { error: 'Договорът не е намерен' });
+      if (!canManagePersonnelRecord(user, existing.profile_id)) {
+        return sendJson(res, 403, { error: 'Можете да редактирате само договори на вашия екип' });
+      }
       const body = await readJsonBody(req);
       const rec = db.updateEmploymentContract(employmentContractMatch[1], body);
       return sendJson(res, 200, { contract: rec });
@@ -3680,6 +3775,9 @@ async function handleApi(req, res, pathname, query) {
     if (applicationApproveMatch && req.method === 'POST') {
       const user = requirePermission(req, res, 'applications', 'approve');
       if (!user) return;
+      const existingApp = db.getJobApplication(applicationApproveMatch[1]);
+      if (!existingApp) return sendJson(res, 404, { error: 'Не е намерена' });
+      if (!canAccessApplication(user, existingApp)) return sendJson(res, 403, { error: 'Нямате права за тази кандидатура' });
       const body = await readJsonBody(req);
       if (!body.email) return sendJson(res, 400, { error: 'Нужен е имейл за новия профил' });
       // генерираме паролата тук (не в lib/db.js), за да можем да я върнем еднократно
@@ -3813,7 +3911,13 @@ async function handleApi(req, res, pathname, query) {
     // documentType: 'protocol' | 'contract' (НЕ трудови договори — виж бележката в lib/esign.js)
     const esignListMatch = pathname.match(/^\/api\/esign\/(protocol|contract|employment_contract)\/([\w-]+)$/);
     if (esignListMatch && req.method === 'GET') {
-      if (!requireAuth(req, res)) return;
+      // одитната следа на подписването (имена, IP, user agent) е чувствителна —
+      // заключена със същото ниво като самите действия по подписване
+      // (in-person/remote по-долу), а не само "влязъл в системата" както беше;
+      // иначе всеки автентикиран потребител (вкл. шофьор) би могъл да изброи
+      // събития за ЧУЖД протокол/договор само като познае/изброи id-то му
+      const user = requirePermission(req, res, 'esign', 'manage');
+      if (!user) return;
       const [, documentType, documentId] = esignListMatch;
       return sendJson(res, 200, { events: db.listEsignEvents(documentType, documentId) });
     }
