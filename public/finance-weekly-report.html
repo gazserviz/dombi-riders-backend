@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Седмичен отчет — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+<style>
+  .wr-section{font-size:.9rem;font-weight:800;margin:22px 0 10px;color:var(--text);}
+  .wr-sub{font-size:.78rem;color:var(--muted);margin:-4px 0 12px;}
+  details.wr-block{border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px;}
+  details.wr-block summary{cursor:pointer;font-weight:700;font-size:.86rem;}
+  details.wr-block[open] summary{margin-bottom:8px;}
+  .stat-card .value.neg{color:var(--danger,#ff5a5a);}
+  #historyHost tr.active-row{background:var(--panel-2,rgba(255,255,255,.04));}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/finance-weekly-report.html" data-title="Седмичен отчет"></div>
+
+<script src="/js/app.js"></script>
+<script>
+// ---------------------------------------------------------------------------
+// finance-weekly-report.html — "всеки петък" подробен финансов отчет
+// (изрично искане на потребителя): кой е платен/колко, движение на касата и
+// печалба, приходи от такси/наеми и др., и разходи. За разлика от таблото
+// "Печалба" (profit.html, само суми), този показва РЕДОВЕ (поименно) и се
+// генерира автоматично от самия сървър (виж checkAndGenerateWeeklyFinancialReport
+// в server.js) — не само при отваряне на тази страница.
+//
+// Два отделни периода в един отчет (по изрично искане): "седмица" (пон-нед,
+// предходната завършена седмица) за всичко освен разходите, и "разходен
+// период" (следващия пон-пет, т.е. ТЕКУЩАТА седмица) само за разходите —
+// виж коментара над buildDetailedWeeklyFinancialReport в lib/db.js.
+// ---------------------------------------------------------------------------
+
+let REPORTS = [];
+let CURRENT_WEEK_START = null;
+
+function moneyRowsHtml(rows, cols) {
+  if (!rows.length) return '<p class="hint">Няма записи за този период.</p>';
+  return `<div class="table-wrap"><table>
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c.render(r)}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+const DATE_COL = { label: 'Дата', render: r => r.date ? fmtDate(r.date.slice(0, 10)) : (r.created_at ? fmtDate(r.created_at.slice(0, 10)) : '—') };
+const MONEY_COL = (key, label) => ({ label: label || 'Сума', render: r => fmtMoney(Math.abs(Number(r[key] || 0))) });
+
+function sectionHtml(title, sub, bodyHtml, open) {
+  return `<details class="wr-block"${open ? ' open' : ''}>
+    <summary>${title}</summary>
+    ${sub ? `<p class="wr-sub">${sub}</p>` : ''}
+    ${bodyHtml}
+  </details>`;
+}
+
+function reportDetailHtml(report) {
+  const d = report.data;
+  const exportUrl = `/api/reports/weekly-financial/export?week_start=${encodeURIComponent(report.week_start)}`;
+
+  const payoutsHtml = moneyRowsHtml(d.payouts, [
+    DATE_COL,
+    { label: 'На кого / за какво', render: r => escapeHtml(r.note || '') },
+    MONEY_COL('amount', 'Платено (€)'),
+  ]);
+
+  const revenueHtml = moneyRowsHtml(d.revenue_entries, [
+    DATE_COL,
+    { label: 'Категория', render: r => escapeHtml(r.category || '') },
+    { label: 'Детайли', render: r => escapeHtml(r.note || '') },
+    MONEY_COL('amount', 'Сума (€)'),
+  ]);
+
+  const cashHtml = moneyRowsHtml(d.cash.transactions, [
+    DATE_COL,
+    { label: 'Тип', render: r => escapeHtml(r.type || '') },
+    { label: 'Описание', render: r => escapeHtml(r.note || '') },
+    { label: 'Сума (€)', render: r => `<span style="color:${Number(r.amount) < 0 ? 'var(--danger,#ff5a5a)' : 'var(--green)'}">${fmtMoney(r.amount)}</span>` },
+  ]);
+
+  const bankHtml = moneyRowsHtml(d.bank.movements, [
+    { label: 'Дата', render: r => fmtDate(r.movement_date) },
+    { label: 'Посока', render: r => r.direction === 'income' ? 'Приход' : 'Разход' },
+    { label: 'Описание', render: r => escapeHtml(r.description || '') },
+    MONEY_COL('amount', 'Сума (€)'),
+  ]);
+
+  const depositsHtml = moneyRowsHtml(d.deposits.transactions, [
+    DATE_COL,
+    { label: 'Тип', render: r => r.type === 'deposit_received' ? 'Взет' : 'Върнат' },
+    { label: 'Описание', render: r => escapeHtml(r.note || '') },
+    MONEY_COL('amount', 'Сума (€)'),
+  ]);
+
+  const expensesHtml = moneyRowsHtml(d.expenses.accrual_entries, [
+    DATE_COL,
+    { label: 'Категория', render: r => escapeHtml(r.category || '') },
+    { label: 'Детайли', render: r => escapeHtml(r.note || '') },
+    MONEY_COL('amount', 'Сума (€)'),
+  ]);
+
+  return `
+    <div class="profit-hero" style="background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:800;">Отчетна седмица</div>
+          <div style="font-family:'Anton',sans-serif;font-size:1.6rem;">${fmtDate(d.week_start)} — ${fmtDate(d.week_end)}</div>
+          <div class="hint" style="margin-top:6px;">Генериран на ${fmtDate(report.generated_at.slice(0,10))}. Разходите по-долу са за ТЕКУЩАТА седмица (${fmtDate(d.expenses.from)} — ${fmtDate(d.expenses.to)}), по изрично искане — всичко останало е за седмицата по-горе.</div>
+        </div>
+        <a class="btn btn-primary btn-sm" href="${exportUrl}">⬇️ Изтегли Excel</a>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">Изплатени заплати</div><div class="value">${fmtMoney(d.payouts_total)}</div></div>
+      <div class="stat-card"><div class="label">Приходи (такси/наеми/др.)</div><div class="value">${fmtMoney(d.revenue_total)}</div></div>
+      <div class="stat-card"><div class="label">Печалба каса+банка</div><div class="value ${d.total_profit < 0 ? 'neg' : ''}">${fmtMoney(d.total_profit)}</div></div>
+      <div class="stat-card"><div class="label">Счетоводна печалба</div><div class="value ${d.accrual_profit < 0 ? 'neg' : ''}">${fmtMoney(d.accrual_profit)}</div></div>
+      <div class="stat-card"><div class="label">Разходи (текуща седмица)</div><div class="value">${fmtMoney(d.expenses.accrual_total)}</div></div>
+      <div class="stat-card"><div class="label">Депозити, държани в момента</div><div class="value">${fmtMoney(d.deposits.currently_held_total)}</div></div>
+    </div>
+
+    <div class="wr-section">Кой е платен — изплатени заплати</div>
+    ${sectionHtml(`Изплатени заплати (${d.payouts.length})`, 'Нетни суми, реално изплатени от касата през отчетната седмица.', payoutsHtml, true)}
+
+    <div class="wr-section">Приходи</div>
+    ${sectionHtml(`Приходи от такси, наеми и др. (${d.revenue_entries.length})`, 'Седмични такси от шофьори, наем на коли (удържан и външен), партньорски и други приходи.', revenueHtml, true)}
+
+    <div class="wr-section">Движение на касата</div>
+    ${sectionHtml(`Касови движения в брой (${d.cash.transactions.length})`, 'Всички реални движения на пари в брой през касата (изплащания, ремонти, депозити, наеми от външни наематели и др.).', cashHtml)}
+    ${sectionHtml(`Банкови движения (${d.bank.movements.length})`, 'Движения по фирмената банкова сметка за седмицата.', bankHtml)}
+    ${sectionHtml(`Депозити по договори за наем (${d.deposits.transactions.length})`, `Взети ${fmtMoney(d.deposits.received_in_period)} / върнати ${fmtMoney(d.deposits.returned_in_period)} през седмицата.`, depositsHtml)}
+
+    <div class="wr-section">Разходи (текуща седмица: ${fmtDate(d.expenses.from)} — ${fmtDate(d.expenses.to)})</div>
+    ${sectionHtml(`Всички разходи (${d.expenses.accrual_entries.length})`, 'Ремонти, периодични разходи по коли, партньорски комисионни, твърди заплати и ръчно въведени разходи.', expensesHtml, true)}
+  `;
+}
+
+function historyRowHtml(r) {
+  const active = r.week_start === CURRENT_WEEK_START;
+  return `<tr class="${active ? 'active-row' : ''}" style="cursor:pointer;${active ? 'font-weight:700;' : ''}" data-week="${r.week_start}">
+    <td>${fmtDate(r.week_start)} — ${fmtDate(r.week_end)}</td>
+    <td>${fmtMoney(r.payouts_total)}</td>
+    <td>${fmtMoney(r.revenue_total)}</td>
+    <td>${fmtMoney(r.total_profit)}</td>
+    <td>${fmtMoney(r.expenses_total)}</td>
+    <td><a class="btn btn-ghost btn-sm" href="/api/reports/weekly-financial/export?week_start=${encodeURIComponent(r.week_start)}">⬇️</a></td>
+  </tr>`;
+}
+
+async function selectWeek(weekStart) {
+  CURRENT_WEEK_START = weekStart;
+  document.querySelectorAll('#historyHost tr[data-week]').forEach(tr => {
+    tr.classList.toggle('active-row', tr.dataset.week === weekStart);
+  });
+  const host = document.getElementById('detailHost');
+  host.innerHTML = '<div class="loading">Зареждане…</div>';
+  try {
+    const { report } = await Api.get(`/api/reports/weekly-financial/detail?week_start=${encodeURIComponent(weekStart)}`);
+    host.innerHTML = reportDetailHtml(report);
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+async function loadHistory() {
+  const host = document.getElementById('historyHost');
+  host.innerHTML = '<div class="loading">Зареждане…</div>';
+  try {
+    const { reports } = await Api.get('/api/reports/weekly-financial');
+    REPORTS = reports;
+    if (!reports.length) {
+      host.innerHTML = '<p class="hint">Все още няма запазени седмични отчети — първият ще се генерира автоматично в петък (или при следващо отваряне на тази страница след петък).</p>';
+      document.getElementById('detailHost').innerHTML = '';
+      return;
+    }
+    host.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Седмица</th><th>Заплати</th><th>Приходи</th><th>Печалба</th><th>Разходи</th><th></th></tr></thead>
+      <tbody>${reports.map(historyRowHtml).join('')}</tbody>
+    </table></div>`;
+    host.querySelectorAll('tr[data-week]').forEach(tr => {
+      tr.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return; // не пречи на бутона за изтегляне
+        selectWeek(tr.dataset.week);
+      });
+    });
+    await selectWeek(reports[0].week_start);
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате седмичния финансов отчет.</div>`;
+    return;
+  }
+  document.getElementById('app-content').innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>Седмичен финансов отчет</h2>
+        <button type="button" class="btn btn-ghost btn-sm" id="refreshBtn" style="margin-left:auto;">Обнови</button>
+      </div>
+      <p class="hint">Генерира се автоматично всеки петък: кой е платен и колко, движение на касата и печалба, приходи от такси/наеми, депозити — за предходната пълна седмица; разходите по-долу са за текущата седмица. Може да се изтегли и като Excel файл.</p>
+      <div class="panel" style="margin:16px 0;"><div class="panel-head"><h3 style="font-size:.9rem;">История по седмици</h3></div><div id="historyHost" class="loading">Зареждане…</div></div>
+      <div id="detailHost" class="loading">Зареждане…</div>
+    </div>
+  `;
+  document.getElementById('refreshBtn').addEventListener('click', async () => {
+    try { await Api.post('/api/reports/weekly-financial/ensure-latest', {}); } catch (e) {}
+    await loadHistory();
+  });
+  // best-effort генериране на последния дължим отчет, ако липсва (виж
+  // коментара над ensureLatestWeeklyFinancialReport в lib/db.js) — двоен
+  // предпазител заедно с периодичната проверка в server.js
+  try { await Api.post('/api/reports/weekly-financial/ensure-latest', {}); } catch (e) {}
+  await loadHistory();
+}
+init();
+</script>
+</body>
+</html>
