@@ -2433,6 +2433,47 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---- ДЪЛЖИМИ СУМИ ОТПРЕДИ СТАРТА (outstanding_dues) -------------------
+    // вж. db.resetPayrollForFinancialStart/db.listOutstandingDues за пълния
+    // контекст: отделен списък (извън обичайните payroll_entries/броячи) с
+    // хора, на които не е платено към момента на финансовия рестарт на
+    // системата, докато не бъде изрично отбелязано като уредено.
+    if (pathname === '/api/hr/outstanding-dues' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'payroll', 'view');
+      if (!user) return;
+      const dues = db.listOutstandingDues({ profileId: query.profile_id, settled: query.settled != null ? query.settled === 'true' : undefined });
+      return sendJson(res, 200, { dues });
+    }
+    const settleDueMatch = pathname.match(/^\/api\/hr\/outstanding-dues\/([\w-]+)\/settle$/);
+    if (settleDueMatch && req.method === 'POST') {
+      // маркирането "уредено" е финансово потвърждение, че парите реално са
+      // дадени на шофьора — същата степен на отговорност като "Маркиране като
+      // платено" на обикновена седмица, затова payroll.finalize, не manage.
+      const user = requirePermission(req, res, 'payroll', 'finalize');
+      if (!user) return;
+      const body = await readJsonBody(req).catch(() => ({}));
+      try {
+        const rec = db.settleOutstandingDue(settleDueMatch[1], { settled_by: user.id, note: body && body.note });
+        return sendJson(res, 200, { due: rec });
+      } catch (err) {
+        return sendJson(res, 404, { error: err.message });
+      }
+    }
+
+    // Еднократен "финансов рестарт" на системата — изрично искане на
+    // потребителя (2026-10-04): трие ВСИЧКИ payroll_entries (платените
+    // напълно, неплатените се пренасят в outstanding_dues — виж
+    // db.resetPayrollForFinancialStart). Не пипа assignments/contracts (вж.
+    // отделните fleet-wide end/terminate извиквания от администратора).
+    // Необратимо и финансово значимо за цялата система наведнъж — заключено
+    // само за super_admin, не просто payroll.finalize.
+    if (pathname === '/api/hr/payroll/reset-financial-start' && req.method === 'POST') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      const result = db.resetPayrollForFinancialStart({ created_by: user.id });
+      return sendJson(res, 200, result);
+    }
+
     // еднократно/при нужда преизчисляване на удръжка по договор + наем на
     // кола за СЪЩЕСТВУВАЩИ седмични записи, по ТЕКУЩО зададените параметри
     // (активни трудови/граждански договори + активни договори за наем на
