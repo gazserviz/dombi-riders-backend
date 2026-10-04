@@ -304,6 +304,12 @@ async function mountShell() {
       </div>`;
   }).join('');
 
+  // "бърз запис в касата" (вж. CSS .quick-cash-fab/.sheet-* и wiring по-долу)
+  // — огледално на /api/cashier/adjustments на бекенда, който приема само
+  // super_admin; не показваме бутона на роли, за които така или иначе би
+  // отговорил с 403.
+  const canQuickCash = user.role === 'super_admin';
+
   mountPoint.outerHTML = `
     <div class="app-shell">
       <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
@@ -349,7 +355,31 @@ async function mountShell() {
           </div>
         </form>
       </div>
-    </div>`;
+    </div>
+    ${canQuickCash ? `
+    <button type="button" class="quick-cash-fab" id="qcFabBtn" aria-label="Бърз запис в касата" title="Бърз запис в касата">€</button>
+    <div class="sheet-overlay" id="qcSheetOverlay">
+      <div class="sheet-box">
+        <div class="sheet-handle"></div>
+        <button type="button" class="sheet-close" id="qcCloseBtn" aria-label="Затвори">✕</button>
+        <h3>Бърз запис в касата</h3>
+        <div class="error-box" id="qcError"></div>
+        <form id="qcForm">
+          <div class="qc-toggle">
+            <button type="button" class="active" data-kind="expense">− Разход</button>
+            <button type="button" data-kind="income">+ Приход</button>
+          </div>
+          <div class="qc-amount-field">
+            <input type="number" inputmode="decimal" step="0.01" min="0.01" name="amount" placeholder="0.00" required id="qcAmountInput">
+          </div>
+          <div class="qc-note-field">
+            <input type="text" name="note" placeholder="За какво е? (напр. резервни части)" required id="qcNoteInput">
+          </div>
+          <button type="submit" class="btn btn-primary qc-save-btn" id="qcSaveBtn" data-kind="expense">Запази разход</button>
+        </form>
+      </div>
+    </div>
+    <div class="qc-toast" id="qcToast"></div>` : ''}`;
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await Api.post('/api/logout');
@@ -421,6 +451,80 @@ async function mountShell() {
   burgerBtn.addEventListener('click', toggleSidebar);
   backdropEl.addEventListener('click', closeSidebar);
   sidebarEl.querySelectorAll('.nav-link').forEach(a => a.addEventListener('click', closeSidebar));
+
+  // ---- бърз запис приход/разход в касата (достъпно от ВСЯКА страница — вж.
+  // .quick-cash-fab/.sheet-* в app.css и canQuickCash по-горе) — идеята е да
+  // не се налага да се пише "на листче" какво е взето/дадено в брой, за да
+  // се въвежда после отделно в /cashier.html: директно тук, веднага, с
+  // минимум полета (сума + описание), през СЪЩИЯ ендпойнт като ръчния запис
+  // в касата (/api/cashier/adjustments) — просто с положителна сума за
+  // приход и отрицателна за разход.
+  const qcFabBtn = document.getElementById('qcFabBtn');
+  if (qcFabBtn) {
+    const qcOverlay = document.getElementById('qcSheetOverlay');
+    const qcForm = document.getElementById('qcForm');
+    const qcError = document.getElementById('qcError');
+    const qcAmountInput = document.getElementById('qcAmountInput');
+    const qcNoteInput = document.getElementById('qcNoteInput');
+    const qcSaveBtn = document.getElementById('qcSaveBtn');
+    const qcToast = document.getElementById('qcToast');
+    let qcKind = 'expense';
+
+    function qcSetKind(kind) {
+      qcKind = kind;
+      qcOverlay.querySelectorAll('.qc-toggle button').forEach(b => b.classList.toggle('active', b.dataset.kind === kind));
+      qcSaveBtn.dataset.kind = kind;
+      qcSaveBtn.textContent = kind === 'income' ? 'Запази приход' : 'Запази разход';
+    }
+    function qcOpen() {
+      qcError.classList.remove('show');
+      qcForm.reset();
+      qcSetKind('expense');
+      qcOverlay.classList.add('show');
+      // леко закъснение — да изчака sheet-ът да се плъзне нагоре, иначе
+      // автофокусът "скача" клавиатурата на телефона преди анимацията
+      setTimeout(() => qcAmountInput.focus(), 160);
+    }
+    function qcClose() { qcOverlay.classList.remove('show'); }
+
+    qcFabBtn.addEventListener('click', qcOpen);
+    document.getElementById('qcCloseBtn').addEventListener('click', qcClose);
+    qcOverlay.addEventListener('click', (e) => { if (e.target === qcOverlay) qcClose(); });
+    qcOverlay.querySelectorAll('.qc-toggle button').forEach(b => {
+      b.addEventListener('click', () => qcSetKind(b.dataset.kind));
+    });
+
+    function qcShowToast(kind, amount) {
+      qcToast.textContent = `${kind === 'income' ? '+' : '−'}${fmtMoney(amount)} записано в касата`;
+      qcToast.className = `qc-toast show ${kind}`;
+      setTimeout(() => { qcToast.classList.remove('show'); }, 2400);
+    }
+
+    qcForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      qcError.classList.remove('show');
+      const amt = Number(qcAmountInput.value);
+      const note = qcNoteInput.value.trim();
+      if (!amt || amt <= 0) { qcError.textContent = 'Въведете сума.'; qcError.classList.add('show'); return; }
+      if (!note) { qcError.textContent = 'Въведете кратко описание за какво е.'; qcError.classList.add('show'); return; }
+      qcSaveBtn.disabled = true;
+      try {
+        const signedAmount = qcKind === 'expense' ? -Math.abs(amt) : Math.abs(amt);
+        await Api.post('/api/cashier/adjustments', { amount: signedAmount, note });
+        qcClose();
+        qcShowToast(qcKind, amt);
+        // ако потребителят в момента е на самата /cashier.html, нека
+        // страницата си опресни баланса/списъка веднага, вместо да чака
+        // ръчно презареждане (вж. window.onQuickCashSaved в cashier.html)
+        if (typeof window.onQuickCashSaved === 'function') window.onQuickCashSaved();
+      } catch (err) {
+        qcError.textContent = err.message;
+        qcError.classList.add('show');
+      } finally {
+        qcSaveBtn.disabled = false;
+      }
+    });
+  }
 
   // достъп до самата страница (не само видимостта на линка в менюто) —
   // конфигурируем от супер администратора (виж navAccess по-горе). Ако
