@@ -160,6 +160,16 @@
         <h3 style="margin-top:20px;">Допълнителна информация</h3>
         <div class="field"><textarea name="notes" rows="3" style="width:100%;font-family:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);" placeholder="Опит, предпочитан график, друго…"></textarea></div>
 
+        <!-- попълват се автоматично от JS (виж collectTrafficSource() в app.js) —
+             откъде идва кандидатът, БЕЗ да го питаме нищо -->
+        <input type="hidden" name="source_referrer">
+        <input type="hidden" name="source_landing_path">
+        <input type="hidden" name="source_utm_source">
+        <input type="hidden" name="source_utm_medium">
+        <input type="hidden" name="source_utm_campaign">
+        <input type="hidden" name="source_utm_term">
+        <input type="hidden" name="source_utm_content">
+
         <button type="submit" class="btn btn-primary btn-block" style="margin-top:20px;">Изпрати кандидатура</button>
       </form>
     </div>
@@ -174,6 +184,23 @@
 
 <script src="/js/app.js"></script>
 <script>
+// засичаме откъде идва посетителят ВЕДНАГА при зареждане — и като общо
+// "посещение" (track-visit, виж app.js), и като скрити полета на самата
+// форма (ако в крайна сметка кандидатства, заявката му ще носи тази
+// информация), без да сме го питали нищо директно
+trackSiteVisit('apply');
+(function fillTrafficSourceFields() {
+  const src = collectTrafficSource();
+  const form = document.getElementById('applyForm');
+  form.source_referrer.value = src.referrer;
+  form.source_landing_path.value = src.landing_path;
+  form.source_utm_source.value = src.utm_source || (src.fbclid ? 'facebook' : (src.gclid ? 'google' : ''));
+  form.source_utm_medium.value = src.utm_medium;
+  form.source_utm_campaign.value = src.utm_campaign;
+  form.source_utm_term.value = src.utm_term;
+  form.source_utm_content.value = src.utm_content;
+})();
+
 const photos = {}; // bodyKey -> dataUrl (виж saveApplyPhotos в server.js)
 
 function bindPlainUpload(btnId, fileId, msgId, bodyKey, label) {

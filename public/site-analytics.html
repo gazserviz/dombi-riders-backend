@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Откъде ни намират — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+<style>
+  .sa-bar-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);}
+  .sa-bar-row:last-child{border-bottom:none;}
+  .sa-bar-label{flex:0 0 180px;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sa-bar-track{flex:1;height:10px;background:var(--panel-2);border-radius:999px;overflow:hidden;}
+  .sa-bar-fill{height:100%;background:var(--green-fill,#4dff7a);border-radius:999px;}
+  .sa-bar-count{flex:0 0 46px;text-align:right;font-weight:800;font-size:.84rem;}
+  .sa-range-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .sa-range-btns button{padding:7px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);font-weight:700;font-size:.8rem;cursor:pointer;}
+  .sa-range-btns button.active{border-color:var(--green,#4dff7a);color:var(--green,#4dff7a);background:var(--green-dim,#143621);}
+  .sa-snippet{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px;font-family:monospace;font-size:.76rem;white-space:pre-wrap;word-break:break-all;}
+  .sa-empty{color:var(--muted);font-size:.85rem;padding:10px 0;}
+</style>
+</head>
+<body>
+<div id="app-shell" data-active="/site-analytics.html" data-title="Откъде ни намират"></div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <p class="hint" style="margin:0;">
+    Пасивна статистика — показва откъде идват хората, БЕЗ да сме ги питали нищо (четем Referrer и utm_* параметрите,
+    които браузърът/рекламните платформи сами изпращат). В момента реално се засича само формата за кандидатстване
+    (<code>/apply.html</code>), защото тя е част от тази система. Основният маркетинг сайт (dombi.bg) и Rent-a-Car
+    сайтът са ОТДЕЛНИ проекти — за да започнат да се броят и техните посещения, долу има готов код за поставяне там.
+  </p>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="sa-range-btns" id="saRangeBtns">
+    <button data-days="7">7 дни</button>
+    <button data-days="30" class="active">30 дни</button>
+    <button data-days="90">90 дни</button>
+    <button data-days="0">Откакто следим</button>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Сайт</label>
+      <select id="saSiteFilter">
+        <option value="">Всички</option>
+        <option value="apply">Кандидатстване (apply.html)</option>
+        <option value="dombi.bg">dombi.bg</option>
+        <option value="rentacar">Rent-a-Car сайт</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div id="saStatsHost">Зареждане…</div>
+
+<div class="panel" style="margin-top:20px;">
+  <h3 style="margin-top:0;">Как да проследим и dombi.bg / Rent-a-Car сайта</h3>
+  <p class="hint">
+    Сложете този код веднъж във всяка страница на съответния сайт (най-добре веднага след отварянето на
+    <code>&lt;body&gt;</code>). За Rent-a-Car сайта сменете <code>site: 'dombi.bg'</code> на <code>site: 'rentacar'</code>.
+    Нищо друго не пита посетителя — само тихо отчита, че е дошъл, и откъде.
+  </p>
+  <div class="sa-snippet" id="saSnippet"></div>
+  <button type="button" class="btn" id="saCopyBtn" style="margin-top:10px;">Копирай кода</button>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+let CURRENT_USER = null;
+
+function saBarList(hostId, rows, labelFn) {
+  const host = document.getElementById(hostId);
+  if (!rows || !rows.length) { host.innerHTML = '<div class="sa-empty">Няма данни за избрания период.</div>'; return; }
+  const max = Math.max(...rows.map(r => r.count));
+  host.innerHTML = rows.map(r => `
+    <div class="sa-bar-row">
+      <div class="sa-bar-label" title="${escapeHtml(labelFn ? labelFn(r.key) : r.key)}">${escapeHtml(labelFn ? labelFn(r.key) : r.key)}</div>
+      <div class="sa-bar-track"><div class="sa-bar-fill" style="width:${Math.max(4, Math.round(r.count / max * 100))}%;"></div></div>
+      <div class="sa-bar-count">${r.count}</div>
+    </div>`).join('');
+}
+
+const SOURCE_LABELS = {
+  direct: 'Директно (без referrer)',
+  google: 'Google',
+  'facebook/instagram': 'Facebook / Instagram',
+  bing: 'Bing',
+  own_site: 'Вътре в самия сайт',
+  other: 'Друго (неразпознато)',
+};
+const PATH_LABELS = { '/apply.html': 'Кандидатстване', };
+
+function statsHtml(d) {
+  return `
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="label">Общо посещения в периода</div><div class="value">${d.total}</div></div>
+      <div class="stat-card"><div class="label">Най-силен източник</div><div class="value" style="font-size:1.1rem;">${d.by_source[0] ? escapeHtml(SOURCE_LABELS[d.by_source[0].key] || d.by_source[0].key) : '—'}</div></div>
+      <div class="stat-card"><div class="label">Различни страници</div><div class="value">${d.by_path.length}</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <h3 style="margin-top:0;">Източник на трафика</h3>
+        <div id="saBySource"></div>
+      </div>
+      <div class="panel">
+        <h3 style="margin-top:0;">UTM кампании (ако има маркирани линкове)</h3>
+        <div id="saByUtm"></div>
+      </div>
+      <div class="panel">
+        <h3 style="margin-top:0;">Топ препращащи сайтове/страници</h3>
+        <div id="saTopReferrers"></div>
+      </div>
+      <div class="panel">
+        <h3 style="margin-top:0;">По ден</h3>
+        <div id="saByDay"></div>
+      </div>
+    </div>`;
+}
+
+async function loadStats() {
+  const days = Number(document.querySelector('#saRangeBtns button.active').dataset.days);
+  const site = document.getElementById('saSiteFilter').value;
+  const params = new URLSearchParams();
+  if (days > 0) {
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    params.set('from', from);
+  }
+  if (site) params.set('site', site);
+  const d = await Api.get('/api/site-visits/stats?' + params.toString());
+  document.getElementById('saStatsHost').innerHTML = statsHtml(d);
+  saBarList('saBySource', d.by_source, k => SOURCE_LABELS[k] || k);
+  saBarList('saByUtm', d.by_utm_source);
+  saBarList('saTopReferrers', d.top_referrers);
+  saBarList('saByDay', d.by_day.map(r => ({ key: r.day, count: r.count })));
+}
+
+document.getElementById('saRangeBtns').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#saRangeBtns button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadStats();
+});
+document.getElementById('saSiteFilter').addEventListener('change', loadStats);
+
+const SNIPPET = `<script>
+(function(){
+  try {
+    var p = new URLSearchParams(location.search);
+    var payload = {
+      site: 'dombi.bg', // за Rent-a-Car сайта сложете 'rentacar'
+      referrer: document.referrer || '',
+      landing_path: location.pathname,
+      utm_source: p.get('utm_source') || (p.get('fbclid') ? 'facebook' : (p.get('gclid') ? 'google' : '')),
+      utm_medium: p.get('utm_medium') || '',
+      utm_campaign: p.get('utm_campaign') || '',
+      utm_term: p.get('utm_term') || '',
+      utm_content: p.get('utm_content') || '',
+    };
+    fetch('https://dombi-riders-backend.onrender.com/api/public/track-visit', {
+      method: 'POST', headers: {'content-type':'application/json'},
+      body: JSON.stringify(payload), keepalive: true, mode: 'cors',
+    }).catch(function(){});
+  } catch (e) {}
+})();
+<\/script>`;
+document.getElementById('saSnippet').textContent = SNIPPET;
+document.getElementById('saCopyBtn').addEventListener('click', () => {
+  copyToClipboard(SNIPPET).then(ok => {
+    const btn = document.getElementById('saCopyBtn');
+    const original = btn.textContent;
+    btn.textContent = ok ? 'Копирано ✓' : 'Грешка';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  });
+});
+
+(async function init() {
+  CURRENT_USER = await mountShell();
+  if (!CURRENT_USER) return;
+  await loadStats();
+})();
+</script>
+</body>
+</html>
