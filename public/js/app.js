@@ -196,9 +196,14 @@ function mergeNavConfig(baseNav, config) {
   return result;
 }
 
+// по изрично искане на потребителя (2026-10-04) сумите навсякъде в системата
+// се показват ТОЧНО, със стотинки — преди maximumFractionDigits:0 закръгляше
+// визуално до цяло евро (напр. 496.37 € се показваше като "496 €"), което
+// подвеждаше при справки/плащания, въпреки че реалната стойност си остава
+// точна навсякъде другаде (в базата, при изчисления, при износ към Excel)
 function fmtMoney(n) {
   if (n == null || isNaN(n)) return '—';
-  return Number(n).toLocaleString('bg-BG', { maximumFractionDigits: 0 }) + ' €';
+  return Number(n).toLocaleString('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 }
 function fmtDate(d) {
   if (!d) return '—';
