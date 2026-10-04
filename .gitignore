@@ -1,0 +1,4 @@
+# Runtime-generated data (persisted on Render's disk in production, not part of the repo)
+data/backups/
+data/uploads/
+node_modules/
