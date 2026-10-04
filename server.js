@@ -1631,10 +1631,17 @@ async function handleApi(req, res, pathname, query) {
       // извикан — виж addBankMovement/writeDb в lib/db.js).
       let skippedDuplicates = 0, skippedErrors = 0;
       const toWrite = [];
+      // следим external_ref-овете, вече избрани за запис В ТОЗИ ПАКЕТ — иначе
+      // два реда със еднакъв external_ref В ЕДИН И СЪЩИ файл (напр. банката
+      // случайно е изнесла една транзакция два пъти) минават проверката по-
+      // долу (която гледа само вече ЗАПИСАНИ движения в базата) и се
+      // записват и двата, задвоявайки сумата (открит и потвърден бъг при одита).
+      const seenRefsInBatch = new Set();
       for (const r of parsed.rows) {
         const override = rowOverrides[r.row_index] || {};
         if (r.error || override.skip) { skippedErrors += r.error ? 1 : 0; continue; }
-        if (r.external_ref && db.findBankMovementByExternalRef(r.external_ref)) { skippedDuplicates++; continue; }
+        if (r.external_ref && (db.findBankMovementByExternalRef(r.external_ref) || seenRefsInBatch.has(r.external_ref))) { skippedDuplicates++; continue; }
+        if (r.external_ref) seenRefsInBatch.add(r.external_ref);
         const suggestion = db.suggestBankMatch(r);
         const matchedType = override.matched_type || (suggestion ? suggestion.matched_type : 'unmatched');
         const matchedRefId = override.matched_ref_id || (suggestion ? suggestion.matched_ref_id : null);
@@ -2556,7 +2563,19 @@ async function handleApi(req, res, pathname, query) {
           otherPlatform[r.platform] = r.gross_earnings;
           const sources = Object.keys(otherPlatform);
           const combinedGross = Math.round(Object.values(otherPlatform).reduce((a, b) => a + Number(b || 0), 0) * 100) / 100;
-          const combinedOrders = (existing && existing.source !== r.platform ? Number(existing.order_count || 0) : 0) + Number(r.order_count || 0);
+          // брой поръчки ПО ПЛАТФОРМА, огледално на platform_breakdown за
+          // заработката — ВАЖНО: старата логика `existing.source !== r.platform`
+          // се чупи след първото обединение на две платформи, защото
+          // existing.source става 'bolt+glovo' и вече никога не съвпада с
+          // самостоятелно име на платформа, затова ВСЯКО следващо качване
+          // (дори поправка на СЪЩАТА вече включена платформа) трупаше
+          // existing.order_count върху себе си отгоре — задвоявайки броя
+          // поръчки при всеки повторен/коригиран импорт (открит и потвърден
+          // бъг при одита). С breakdown по платформа повторен импорт на Glovo
+          // просто ПРЕЗАПИСВА своя дял, вместо да се трупа отгоре.
+          const orderBreakdown = existing && existing.order_count_breakdown ? { ...existing.order_count_breakdown } : {};
+          if (!r.order_count_unknown) orderBreakdown[r.platform] = Number(r.order_count || 0);
+          const combinedOrders = Object.values(orderBreakdown).reduce((a, b) => a + Number(b || 0), 0);
           // за НОВ седмичен запис попълваме удръжка/наем на кола по подразбиране
           // от активните договори на служителя (вж. getDefaultPayrollDeductions)
           // — иначе тези колони остават 0 за всеки импортиран запис, докато
@@ -2572,7 +2591,7 @@ async function handleApi(req, res, pathname, query) {
 
           const rec = db.upsertPayrollEntry({
             profile_id: profile.id, week_start: weekStart, week_end: weekEnd,
-            order_count: r.order_count_unknown && existing ? existing.order_count : combinedOrders,
+            order_count: combinedOrders,
             gross_earnings: combinedGross,
             deduction_amount: reuseExistingDeduction ? existing.deduction_amount : defaults.deduction_amount,
             deduction_source: reuseExistingDeduction ? existing.deduction_source : defaults.deduction_source,
@@ -2580,6 +2599,7 @@ async function handleApi(req, res, pathname, query) {
             car_rent_amount: existing ? existing.car_rent_amount : defaults.car_rent_amount,
             source: sources.length > 1 ? 'bolt+glovo' : r.platform,
             platform_breakdown: otherPlatform,
+            order_count_breakdown: orderBreakdown,
             needs_review: !!r.needs_review || (existing ? !!existing.needs_review : false),
             order_count_unknown: !!r.order_count_unknown,
             import_file: archivedFile ? archivedFile.url : (existing ? existing.import_file : null),
