@@ -84,6 +84,7 @@ const NAV = [
     { href: '/site-editor.html', icon: '🏠', label: 'Начална страница (сайт)', roles: ['admin','manager'] },
     { href: '/reservations.html', icon: '📅', label: 'Резервации (сайт под наем)', roles: ['admin','manager'] },
     { href: '/rentacar-site-editor.html', icon: '🚙', label: 'Начална страница (Rent-a-Car)', roles: ['admin','manager'] },
+    { href: '/site-analytics.html', icon: '📈', label: 'Откъде ни намират', roles: ['admin','manager'] },
   ]},
   { group: 'HR', items: [
     { href: '/wallet.html', icon: '👛', label: 'Портфейл', roles: ['admin','manager','driver'] },
@@ -888,3 +889,42 @@ document.addEventListener('click', (e) => {
     return;
   }
 });
+
+// ---------------------------------------------------------------------------
+// пасивно засичане откъде идва посетителят — БЕЗ да го питаме нищо: четем
+// document.referrer (кой сайт/страница е довела посетителя тук) и стандартните
+// utm_*/fbclid/gclid параметри, които рекламните платформи (Facebook, Google)
+// сами слагат в адреса на линковете си. Нарочно НЕ се вика от mountShell() —
+// само публични страници (apply.html и т.н.) го ползват изрично, за да не
+// изпращаме излишни заявки от вътрешните (логнати) страници на екипа.
+// ---------------------------------------------------------------------------
+function collectTrafficSource() {
+  const params = new URLSearchParams(location.search);
+  return {
+    referrer: document.referrer || '',
+    landing_path: location.pathname,
+    utm_source: params.get('utm_source') || '',
+    utm_medium: params.get('utm_medium') || '',
+    utm_campaign: params.get('utm_campaign') || '',
+    utm_term: params.get('utm_term') || '',
+    utm_content: params.get('utm_content') || '',
+    fbclid: params.get('fbclid') ? '1' : '',
+    gclid: params.get('gclid') ? '1' : '',
+  };
+}
+
+// изпраща събитие "посещение" към /api/public/track-visit — best-effort,
+// никога не хвърля грешка и никога не забавя/блокира зареждането на
+// страницата (keepalive: true, за да се довърши дори ако потребителят веднага
+// затвори/напусне страницата).
+function trackSiteVisit(site) {
+  try {
+    const payload = { site, ...collectTrafficSource() };
+    fetch('/api/public/track-visit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) { /* никога не пречи на страницата */ }
+}
