@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Финансови сигнали — Dombi Riders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
+</head>
+<body>
+<div id="app-shell" data-active="/finance-alerts.html" data-title="Финансови сигнали"></div>
+
+<script src="/js/app.js"></script>
+<script>
+// ---------------------------------------------------------------------------
+// finance-alerts.html — "системата сама трябва да прави анализ и да
+// алармира за финансови грешки" (изрично искане на потребителя). Чисто
+// информативно табло — изчислява се на поискване от db.getFinanceAlerts()
+// (виж server.js: GET /api/finance/alerts), нищо тук не се пази трайно.
+// Обхваща 4 категории: каса и портфейли, банково съгласуване, заплати,
+// договори за наем. Само в системата — без имейли (бадж в менюто идва от
+// /api/finance/alerts/count, виж NOTIFICATION_BADGE_CHECKS в app.js).
+// ---------------------------------------------------------------------------
+
+const CATEGORY_LABELS = {
+  cashier: 'Каса и портфейли',
+  bank: 'Банково съгласуване',
+  payroll: 'Заплати',
+  rental: 'Договори за наем',
+};
+const CATEGORY_ICONS = { cashier: '🏦', bank: '🏛️', payroll: '💶', rental: '📄' };
+
+function severityBadge(sev) {
+  if (sev === 'high') return `<span class="badge badge-danger">Важно</span>`;
+  return `<span class="badge badge-warn">За проверка</span>`;
+}
+
+function alertLink(a) {
+  if (a.category === 'rental' && a.ref_id) return `/contract-print.html?id=${a.ref_id}`;
+  if (a.category === 'payroll' && a.ref_id && a.ref_id.startsWith('pr-')) return `/payroll.html`;
+  if (a.category === 'cashier') return `/cashier.html`;
+  if (a.category === 'bank') return `/cashier.html`;
+  return null;
+}
+
+function renderAlerts(alerts, activeCategory) {
+  const filtered = activeCategory ? alerts.filter(a => a.category === activeCategory) : alerts;
+  if (!filtered.length) {
+    return `<p class="hint">${alerts.length ? 'Няма сигнали в тази категория.' : '✅ Няма открити финансови грешки или разминавания в момента.'}</p>`;
+  }
+  return `<div class="table-wrap"><table>
+    <thead><tr><th></th><th>Категория</th><th>Сигнал</th><th>Детайли</th><th>Дата</th><th></th></tr></thead>
+    <tbody>${filtered.map(a => {
+      const link = alertLink(a);
+      return `
+      <tr>
+        <td>${severityBadge(a.severity)}</td>
+        <td>${CATEGORY_ICONS[a.category] || ''} ${escapeHtml(CATEGORY_LABELS[a.category] || a.category)}</td>
+        <td><strong>${escapeHtml(a.title)}</strong></td>
+        <td>${escapeHtml(a.detail)}</td>
+        <td>${a.date ? fmtDate(a.date) : '—'}</td>
+        <td>${link ? `<a class="btn btn-ghost btn-sm" href="${link}">Отвори</a>` : ''}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function summaryHtml(alerts) {
+  const high = alerts.filter(a => a.severity === 'high').length;
+  const medium = alerts.length - high;
+  if (!alerts.length) {
+    return `<p class="hint" style="font-size:1rem;">✅ Няма открити финансови грешки или разминавания в момента.</p>`;
+  }
+  return `<p style="font-size:1rem;">Открити <strong>${alerts.length}</strong> сигнал(а) — ${high ? `<span style="color:var(--danger);font-weight:700;">${high} важни</span>` : ''}${high && medium ? ', ' : ''}${medium ? `<span style="color:var(--warn);font-weight:700;">${medium} за проверка</span>` : ''}.</p>`;
+}
+
+let ALL_ALERTS = [];
+let ACTIVE_CATEGORY = '';
+
+async function loadAlerts() {
+  const host = document.getElementById('alertsHost');
+  const summaryHost = document.getElementById('alertsSummary');
+  host.innerHTML = '<div class="loading">Анализ на финансовите данни…</div>';
+  try {
+    const { alerts } = await Api.get('/api/finance/alerts');
+    ALL_ALERTS = alerts;
+    summaryHost.innerHTML = summaryHtml(alerts);
+    renderTabs(alerts);
+    host.innerHTML = renderAlerts(alerts, ACTIVE_CATEGORY);
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+function renderTabs(alerts) {
+  const tabsHost = document.getElementById('categoryTabs');
+  const counts = {};
+  alerts.forEach(a => { counts[a.category] = (counts[a.category] || 0) + 1; });
+  const cats = ['cashier', 'bank', 'payroll', 'rental'];
+  tabsHost.innerHTML = `
+    <button type="button" class="btn ${!ACTIVE_CATEGORY ? 'btn-primary' : 'btn-ghost'} btn-sm" data-cat="">Всички (${alerts.length})</button>
+    ${cats.map(c => `<button type="button" class="btn ${ACTIVE_CATEGORY === c ? 'btn-primary' : 'btn-ghost'} btn-sm" data-cat="${c}">${CATEGORY_ICONS[c]} ${CATEGORY_LABELS[c]} (${counts[c] || 0})</button>`).join('')}
+  `;
+  tabsHost.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ACTIVE_CATEGORY = btn.dataset.cat;
+      renderTabs(ALL_ALERTS);
+      document.getElementById('alertsHost').innerHTML = renderAlerts(ALL_ALERTS, ACTIVE_CATEGORY);
+    });
+  });
+}
+
+async function init() {
+  const user = await mountShell();
+  if (!user) return;
+  if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+    document.getElementById('app-content').innerHTML = `<div class="error-box show">Нямате права да преглеждате финансовите сигнали.</div>`;
+    return;
+  }
+  document.getElementById('app-content').innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>Автоматичен анализ на финансови грешки</h2>
+        <button type="button" class="btn btn-ghost btn-sm" id="refreshBtn" style="margin-left:auto;">Обнови</button>
+      </div>
+      <p class="hint">Системата проверява автоматично за грешки и разминавания в 4 области: каса и портфейли, банково съгласуване, заплати и договори за наем. Табло, изчислено "на живо" — не праща имейли, само тук и с бадж в менюто.</p>
+      <div id="alertsSummary"></div>
+      <div id="categoryTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;"></div>
+      <div id="alertsHost" class="loading">Зареждане…</div>
+    </div>
+  `;
+  document.getElementById('refreshBtn').addEventListener('click', loadAlerts);
+  await loadAlerts();
+}
+init();
+</script>
+</body>
+</html>

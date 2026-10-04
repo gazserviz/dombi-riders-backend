@@ -498,6 +498,7 @@ async function initImportPanel() {
           }
           const res = await Api.post('/api/hr/payroll/import/apply', body);
           previewHost.innerHTML = `<p class="hint">Готово: записани ${res.written_entries} седмични записа, създадени ${res.created_profiles.length} нови профила, останали несъпоставени ${res.unmatched.length}.</p>`;
+          await loadPayrollImportHistory();
           if (selectedProfileId) await loadEntries();
         } catch (err) {
           errorBox.textContent = err.message;
@@ -514,6 +515,36 @@ async function initImportPanel() {
       previewBtn.disabled = false;
     }
   });
+}
+
+function payrollImportHistoryHtml(imports) {
+  if (!imports.length) return '<p class="hint">Няма качени отчети все още.</p>';
+  const platformLabel = { bolt: 'Bolt', glovo: 'Glovo', 'друг': '—' };
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Качено на</th><th>Платформа</th><th>Седмица(и)</th><th>Записи</th><th>Обща заработка</th><th></th></tr></thead>
+      <tbody>
+        ${imports.map(i => `
+          <tr>
+            <td>${fmtDateTime(i.created_at)}</td>
+            <td>${platformLabel[i.platform] || i.platform}</td>
+            <td>${i.week_count > 1 ? `${fmtDate(i.week_start_from)} — ${fmtDate(i.week_start_to)} (${i.week_count} седм.)` : fmtDate(i.week_start_from)}</td>
+            <td>${i.entry_count}</td>
+            <td>${fmtMoney(i.total_gross_earnings)}</td>
+            <td><a class="btn btn-ghost btn-sm" href="${i.file_url}" target="_blank">Файл</a></td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+async function loadPayrollImportHistory() {
+  const host = document.getElementById('importHistoryHost');
+  try {
+    const { imports } = await Api.get('/api/hr/payroll/import/history');
+    host.innerHTML = payrollImportHistoryHtml(imports);
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
 }
 
 async function initPayrollStatsPanel() {
@@ -715,6 +746,11 @@ async function init() {
       <div id="importPreviewHost" style="margin-top:14px;"></div>
     </div>
 
+    <div class="panel" id="importHistoryPanel">
+      <div class="panel-head"><h2>История на качванията</h2></div>
+      <div id="importHistoryHost" class="loading">Зареждане…</div>
+    </div>
+
     <div class="panel" id="statsPanel">
       <div class="panel-head"><h2>Статистика за периода (всички служители)</h2></div>
       <div id="statsPeriodPicker"></div>
@@ -738,6 +774,7 @@ async function init() {
     await initQuickPayPanel();
     await loadCorrectionRequests();
     await initImportPanel();
+    await loadPayrollImportHistory();
     await initPayrollStatsPanel();
     const select = document.getElementById('employeeSelect');
     select.addEventListener('change', async () => {

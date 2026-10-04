@@ -135,6 +135,7 @@ async function initImportPanel() {
           const res = await Api.post('/api/hr/bolt-stats/import/apply', body);
           previewHost.innerHTML = `<p class="hint">Готово: записани ${res.written_entries} записа за ${weekRangeLabel(importWeekStart.value, importWeekEnd.value)}, останали несъпоставени ${res.unmatched.length}.</p>`;
           await loadWeeksList();
+          await loadBoltStatsImportHistory();
           document.getElementById('bsDashWeek').value = importWeekStart.value;
           await loadDashboard();
         } catch (err) {
@@ -168,6 +169,39 @@ async function loadWeeksList() {
     return;
   }
   select.innerHTML = weeks.map(w => `<option value="${w.week_start}">${weekRangeLabel(w.week_start, w.week_end)}</option>`).join('');
+}
+
+function boltStatsImportHistoryHtml(imports) {
+  if (!imports.length) return '<p class="hint">Няма качени отчети все още.</p>';
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Качено на</th><th>Седмица</th><th>Записани</th><th>Несъпоставени</th><th>Файлове</th></tr></thead>
+      <tbody>
+        ${imports.map(i => `
+          <tr>
+            <td>${fmtDateTime(i.created_at)}</td>
+            <td>${weekRangeLabel(i.week_start, i.week_end)}</td>
+            <td>${i.written_count}</td>
+            <td>${i.unmatched_count}</td>
+            <td>
+              ${i.orders_file_url ? `<a href="${i.orders_file_url}" target="_blank">поръчки</a>` : ''}
+              ${i.activity_file_url ? ` · <a href="${i.activity_file_url}" target="_blank">активност</a>` : ''}
+              ${i.earnings_file_url ? ` · <a href="${i.earnings_file_url}" target="_blank">заработки</a>` : ''}
+              ${!i.orders_file_url && !i.activity_file_url && !i.earnings_file_url ? '—' : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+async function loadBoltStatsImportHistory() {
+  const host = document.getElementById('bsImportHistoryHost');
+  try {
+    const { imports } = await Api.get('/api/hr/bolt-stats/import/history');
+    host.innerHTML = boltStatsImportHistoryHtml(imports);
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
 }
 
 async function initDashboardPanel() {
@@ -254,6 +288,11 @@ async function init() {
       <div id="bsImportPreviewHost" style="margin-top:14px;"></div>
     </div>
 
+    <div class="panel" id="bsImportHistoryPanel">
+      <div class="panel-head"><h2>История на качванията</h2></div>
+      <div id="bsImportHistoryHost" class="loading">Зареждане…</div>
+    </div>
+
     <div class="panel" id="bsDashPanel">
       <div class="panel-head"><h2>Табло — активност на шофьорите</h2></div>
       <p class="hint">Цветните стрелки показват тенденцията спрямо предходната качена седмица за същия шофьор.</p>
@@ -268,6 +307,7 @@ async function init() {
   `;
 
   await initImportPanel();
+  await loadBoltStatsImportHistory();
   await initDashboardPanel();
 }
 init();
