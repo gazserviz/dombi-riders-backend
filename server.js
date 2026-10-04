@@ -1713,6 +1713,73 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---- Подробен седмичен финансов отчет ("всеки петък") — виж коментара
+    // над buildDetailedWeeklyFinancialReport в lib/db.js. Отделен от простото
+    // табло "Печалба" по-горе — този е поименно детайлен и се генерира
+    // автоматично от самия сървър (виж checkAndGenerateWeeklyFinancialReport
+    // по-долу), не само при отваряне на страница.
+    if (pathname === '/api/reports/weekly-financial' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'weekly_financial_report', 'view');
+      if (!user) return;
+      // пестим трафик при списъка — само числови обобщения, без пълните
+      // редове (виж /detail за цял отчет по избрана седмица)
+      const reports = db.listWeeklyFinancialReports().map(r => ({
+        id: r.id, week_start: r.week_start, week_end: r.week_end,
+        expense_week_start: r.data.expense_week_start, expense_week_end: r.data.expense_week_end,
+        generated_at: r.generated_at,
+        payouts_total: r.data.payouts_total, revenue_total: r.data.revenue_total,
+        total_profit: r.data.total_profit, accrual_profit: r.data.accrual_profit,
+        expenses_total: r.data.expenses.accrual_total,
+      }));
+      return sendJson(res, 200, { reports });
+    }
+    if (pathname === '/api/reports/weekly-financial/detail' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'weekly_financial_report', 'view');
+      if (!user) return;
+      if (!query.week_start) return sendJson(res, 400, { error: 'Липсва week_start' });
+      const report = db.getWeeklyFinancialReport(query.week_start);
+      if (!report) return sendJson(res, 404, { error: 'Няма отчет за тази седмица' });
+      return sendJson(res, 200, { report });
+    }
+    if (pathname === '/api/reports/weekly-financial/ensure-latest' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'weekly_financial_report', 'view');
+      if (!user) return;
+      try {
+        return sendJson(res, 200, { report: db.ensureLatestWeeklyFinancialReport(user.id) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (pathname === '/api/reports/weekly-financial/regenerate' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'weekly_financial_report', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      if (!body.week_start) return sendJson(res, 400, { error: 'Липсва week_start' });
+      try {
+        return sendJson(res, 200, { report: db.regenerateWeeklyFinancialReport(body.week_start, user.id) });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (pathname === '/api/reports/weekly-financial/export' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'weekly_financial_report', 'view');
+      if (!user) return;
+      if (!query.week_start) return sendJson(res, 400, { error: 'Липсва week_start' });
+      const report = db.getWeeklyFinancialReport(query.week_start);
+      if (!report) return sendJson(res, 404, { error: 'Няма отчет за тази седмица' });
+      try {
+        const buf = db.buildWeeklyFinancialReportWorkbook(report);
+        res.writeHead(200, {
+          'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'content-disposition': `attachment; filename="sedmichen-finansov-otchet-${report.week_start}.xlsx"`,
+          'content-length': buf.length,
+        });
+        return res.end(buf);
+      } catch (err) {
+        return sendJson(res, 500, { error: err.message });
+      }
+    }
+
     // ---- СЧЕТОВОДСТВО (общ финансов отчет + ръчна счетоводна книга) -------
     if (pathname === '/api/finance/report' && req.method === 'GET') {
       const user = requirePermission(req, res, 'finance', 'view');
@@ -3808,6 +3875,29 @@ const server = http.createServer((req, res) => {
   } catch (e) {
     console.error('Грешка при стартиране на автоматичните бекъпи:', e.message);
   }
+
+  // Подробен седмичен финансов отчет — "всеки петък", по изрично искане на
+  // потребителя (виж коментара над buildDetailedWeeklyFinancialReport в
+  // lib/db.js). Периодична проверка (не точен cron в петък в 00:00), защото
+  // Render може да приспи/рестартира инстанцията по всяко време — но
+  // latestReportableWeekStart() е "самолечебна": независимо КОГА точно се
+  // извика (петък, събота, следващия понеделник...), винаги изчислява
+  // СЪЩИТЕ дати за последната седмица, чийто разходен период вече е изтекъл,
+  // затова е безопасно да се пробва при всеки старт + на всеки 30 минути.
+  const WEEKLY_FINANCIAL_REPORT_CHECK_MS = 30 * 60 * 1000;
+  function checkAndGenerateWeeklyFinancialReport() {
+    try {
+      const report = db.ensureLatestWeeklyFinancialReport(null);
+      if (report && report.generated_at && (Date.now() - new Date(report.generated_at).getTime()) < 5000) {
+        console.log(`Автоматично генериран седмичен финансов отчет за ${report.week_start} — ${report.week_end}.`);
+      }
+    } catch (e) {
+      console.error('Грешка при автоматично генериране на седмичен финансов отчет:', e.message);
+    }
+  }
+  checkAndGenerateWeeklyFinancialReport();
+  const weeklyFinancialReportTimer = setInterval(checkAndGenerateWeeklyFinancialReport, WEEKLY_FINANCIAL_REPORT_CHECK_MS);
+  weeklyFinancialReportTimer.unref();
 
   server.listen(PORT, () => {
     console.log(`Dombi Riders backend слуша на http://localhost:${PORT}`);
