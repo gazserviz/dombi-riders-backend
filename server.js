@@ -225,6 +225,22 @@ function requireSuperAdmin(req, res) {
   return user;
 }
 
+// същото заключване като requireSuperAdmin, но изрично пуска и текущо
+// назначения касиер (db.getCashierProfileId()) — ползва се САМО за бързото
+// вписване на приход/разход в касата (POST /api/cashier/adjustments), по
+// изрично желание на супер администратора лицето, което физически държи
+// парите (касиерът), да може да ги записва директно, без да минава all
+// пъти през super_admin. Всичко останало по касата (избор на касиер,
+// ремонти, банкови движения) си остава само за super_admin.
+function requireCashierOrSuperAdmin(req, res) {
+  const user = requireAuth(req, res);
+  if (!user) return null;
+  const cashierId = db.getCashierProfileId();
+  if (user.role === 'super_admin' || (cashierId && user.id === cashierId)) return user;
+  sendJson(res, 403, { error: 'Само касиерът или супер администратор може да прави това' });
+  return null;
+}
+
 // достъп до кандидатура: админ вижда/оправлява всички; мениджър — само
 // изрично назначените му от админ (виж db.assignApplicationManager). Без
 // назначение (manager_id: null) кандидатурата е видима само за админ —
@@ -778,7 +794,14 @@ async function handleApi(req, res, pathname, query) {
       // за да построи sidebar-а, така и за да заключи самата страница, ако
       // потребителят стигне до нея по директен линк без да я вижда в менюто.
       const nav_access = user ? db.getNavAccessMap(user) : {};
-      return sendJson(res, 200, { user, nav_access });
+      // cashier_profile_id: кой е текущо назначеният касиер — ползва се от
+      // mountShell() в app.js, за да покаже бутона "Бърз запис в касата"
+      // (FAB) и на самия касиер, не само на super_admin (виж
+      // requireCashierOrSuperAdmin в server.js). Не е чувствителна стойност
+      // (самото ID вече е видимо на всеки с достъп до /api/cashier/settings
+      // или до страницата "Обща каса"), затова я връщаме на всеки влязъл.
+      const cashier_profile_id = db.getCashierProfileId();
+      return sendJson(res, 200, { user, nav_access, cashier_profile_id });
     }
 
     // ---- ПРАВА И ДОСТЪПИ (само супер администратор) ---------------------
@@ -1472,9 +1495,11 @@ async function handleApi(req, res, pathname, query) {
     // комисионни — виж коментара над CASHIER_TX_TYPES в lib/db.js. Наемът на
     // кола/удръжката по договор НЕ участват тук, а са чиста статистика (виж
     // /api/finance/non-cash-payroll-stats). Кой е касиерът се избира САМО от
-    // супер администратора; ръчните движения по касата също са заключени само
-    // за super_admin — нарочно НЕ минават през configurable permissions
-    // matrix, за да няма как да бъдат отворени за друга роля.
+    // супер администратора; повечето ръчни действия по касата също са
+    // заключени само за super_admin — нарочно НЕ минават през configurable
+    // permissions matrix, за да няма как да бъдат отворени за друга роля.
+    // Изключение: POST /api/cashier/adjustments (бързият приход/разход)
+    // пуска и текущо назначения касиер — вж. requireCashierOrSuperAdmin.
     if (pathname === '/api/cashier' && req.method === 'GET') {
       const user = requirePermission(req, res, 'cashier', 'view');
       if (!user) return;
@@ -1509,9 +1534,12 @@ async function handleApi(req, res, pathname, query) {
       }
     }
     // "Друго" — общ ръчен приход/разход по касата; описанието вече е
-    // ЗАДЪЛЖИТЕЛНО (по изрично изискване — трябва да има опис за какво е)
+    // ЗАДЪЛЖИТЕЛНО (по изрично изискване — трябва да има опис за какво е).
+    // Достъпно за super_admin И за текущо назначения касиер (вж.
+    // requireCashierOrSuperAdmin по-горе) — бутонът "Бърз запис в касата"
+    // (FAB) в app.js разчита точно на това заключване.
     if (pathname === '/api/cashier/adjustments' && req.method === 'POST') {
-      const user = requireSuperAdmin(req, res);
+      const user = requireCashierOrSuperAdmin(req, res);
       if (!user) return;
       const cashierId = db.getCashierProfileId();
       if (!cashierId) return sendJson(res, 400, { error: 'Няма избран касиер — задайте го от настройките на касата.' });
