@@ -1962,6 +1962,22 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---- ФИНАНСОВИ СИГНАЛИ — автоматичен анализ за финансови грешки/
+    // разминавания (каса, банка, заплати, договори за наем), изрично искане
+    // на потребителя: "системата сама трябва да прави анализ и да алармира
+    // за финансови грешки". Само в системата (без имейли) — виж
+    // db.getFinanceAlerts() + бадж в менюто (finance_alerts в app.js).
+    if (pathname === '/api/finance/alerts' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'finance_alerts', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { alerts: db.getFinanceAlerts() });
+    }
+    if (pathname === '/api/finance/alerts/count' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'finance_alerts', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { count: db.getFinanceAlerts().length });
+    }
+
     // ---- ЛИЧНИ ДОСИЕТА (HR картотека на документите) ---------------------
     // Служебна карта на служителя: лична карта, шофьорска книжка, трудови/
     // граждански договори, договори за наем и протоколи, на едно място +
@@ -2580,6 +2596,15 @@ async function handleApi(req, res, pathname, query) {
       });
     }
 
+    // история на качените Bolt/Glovo файлове за заплати (виж
+    // db.listPayrollImportHistory — групира съществуващите payroll_entries по
+    // архивирания файл, без нова колекция/миграция)
+    if (pathname === '/api/hr/payroll/import/history' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'payroll', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { imports: db.listPayrollImportHistory() });
+    }
+
     // ---- Bolt седмична статистика на шофьорите (активност/поръчки/баланси) --
     // Отделно табло от заплатите — чисто информативно, с тенденции ▲/▼ спрямо
     // предходната седмица за същия шофьор (виж lib/bolt-stats-import.js и
@@ -2659,6 +2684,14 @@ async function handleApi(req, res, pathname, query) {
       try { records = parseBoltStatsFiles(body); }
       catch (e) { return sendJson(res, 400, { error: e.message }); }
 
+      // архивираме оригиналните файлове (best-effort, не блокира импорта —
+      // огледално на bank-statement/payroll импортите по-горе) + пазим
+      // запис за историята на качванията (виж db.listBoltStatsImports)
+      let ordersFileUrl = null, activityFileUrl = null, earningsFileUrl = null;
+      try { if (body.orders_file_base64) ordersFileUrl = saveBase64File(body.orders_file_base64, 'bolt-stats-import-orders', 'xlsx').url; } catch (e) { /* best-effort */ }
+      try { if (body.activity_file_base64) activityFileUrl = saveBase64File(body.activity_file_base64, 'bolt-stats-import-activity', 'xlsx').url; } catch (e) { /* best-effort */ }
+      try { if (body.earnings_file_base64) earningsFileUrl = saveBase64File(body.earnings_file_base64, 'bolt-stats-import-earnings', 'xlsx').url; } catch (e) { /* best-effort */ }
+
       const driverProfiles = db.listUsers().filter(p => p.role === 'driver');
       const written = [];
       const unmatched = [];
@@ -2683,7 +2716,20 @@ async function handleApi(req, res, pathname, query) {
         });
         written.push(rec.id);
       }
+      try {
+        db.addBoltStatsImport({
+          week_start: weekStart, week_end: weekEnd,
+          orders_file_url: ordersFileUrl, activity_file_url: activityFileUrl, earnings_file_url: earningsFileUrl,
+          written_count: written.length, unmatched_count: unmatched.length, imported_by: user.id,
+        });
+      } catch (e) { /* историята е best-effort, не трябва да проваля самия импорт */ }
       return sendJson(res, 200, { written_entries: written.length, unmatched });
+    }
+
+    if (pathname === '/api/hr/bolt-stats/import/history' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'driver_stats', 'view');
+      if (!user) return;
+      return sendJson(res, 200, { imports: db.listBoltStatsImports() });
     }
 
     if (pathname === '/api/hr/bolt-stats' && req.method === 'GET') {
