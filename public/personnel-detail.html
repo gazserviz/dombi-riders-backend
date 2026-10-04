@@ -22,6 +22,15 @@ const EC_STATUS = {
 };
 function ecStatusBadge(s) { const [label, cls] = EC_STATUS[s] || [s, 'badge-muted']; return `<span class="badge ${cls}">${label}</span>`; }
 const EC_TYPE_LABELS = { labor: 'Трудов', civil: 'Граждански' };
+// статуси на договор за наем на кола — огледално на STATUS_LABELS в
+// contracts.html, за да съвпадат етикетите навсякъде в системата
+const RC_STATUS = {
+  draft: ['Чернова', 'badge-muted'],
+  active: ['Активен', 'badge-green'],
+  completed: ['Приключен', 'badge-muted'],
+  terminated: ['Прекратен', 'badge-danger'],
+};
+function rcStatusBadge(s) { const [label, cls] = RC_STATUS[s] || [s, 'badge-muted']; return `<span class="badge ${cls}">${label}</span>`; }
 // обобщение на удръжката за реда в таблицата с договори — процентна (с
 // опционален втори праг) или фиксирана сума, вж. computeContractDeduction в
 // lib/db.js за точната формула, която стои зад тези числа.
@@ -34,6 +43,31 @@ function deductionSummary(c) {
     return `${base} <span class="hint">от заработката</span>`;
   }
   return fmtMoney(c.weekly_deduction_amount);
+}
+
+// компактно обобщение "на какъв договор е служителят към момента" — изрично
+// искане на потребителя да се вижда директно в досието (не само ровене в
+// таблиците по-долу): активен трудов/граждански договор + активен наем на
+// кола (ако е Dombi куриер — наемът се удържа автоматично от заплатата, вж.
+// getDefaultPayrollDeductions в lib/db.js; за друг наемател/лично ползване —
+// плаща се отделно в брой).
+const RATE_PERIOD_DAYS = { day: 1, week: 7, month: 30 };
+const RATE_PERIOD_LABELS = { day: 'ден', week: 'седмица', month: 'месец' };
+function activeContractSummaries(employmentContracts, rentalContracts) {
+  const activeEc = (employmentContracts || []).find(c => c.status === 'active');
+  const ecLabel = activeEc
+    ? `${EC_TYPE_LABELS[activeEc.contract_type] || activeEc.contract_type}${activeEc.hours_per_day ? ' · ' + activeEc.hours_per_day + ' ч./ден' : ''} · Удръжка: ${deductionSummary(activeEc)}`
+    : '<span class="hint">Няма активен трудов/граждански договор</span>';
+
+  const activeRental = (rentalContracts || []).find(c => c.status === 'active');
+  let rentalLabel = '<span class="hint">Няма активен наем на кола</span>';
+  if (activeRental) {
+    const days = RATE_PERIOD_DAYS[activeRental.rate_period] || 7;
+    const weekly = Math.round((Number(activeRental.rate_amount || 0) / days) * 7 * 100) / 100;
+    const note = activeRental.renter_type === 'dombi_courier' ? 'удържа се от заплатата' : 'плаща се отделно в брой';
+    rentalLabel = `${activeRental.vehicle_plate_number || '—'} · ${fmtMoney(activeRental.rate_amount)} / ${RATE_PERIOD_LABELS[activeRental.rate_period] || activeRental.rate_period} <span class="hint">(≈ ${fmtMoney(weekly)}/седмица, ${note})</span>`;
+  }
+  return { ecLabel, rentalLabel };
 }
 
 function qs(name) { return new URLSearchParams(location.search).get(name); }
@@ -93,6 +127,7 @@ async function loadFile() {
   const { profile, manager, employment_contracts, rental_contracts, protocols, assignments } = await Api.get(`/api/hr/personnel/${TARGET_ID}`);
   CURRENT_EMPLOYMENT_CONTRACTS = employment_contracts;
   CURRENT_RENTAL_CONTRACTS = rental_contracts;
+  const contractSummaries = activeContractSummaries(employment_contracts, rental_contracts);
 
   document.getElementById('pageTitle') && (document.getElementById('pageTitle').textContent = profile.full_name);
 
@@ -125,6 +160,8 @@ async function loadFile() {
           ${profile.role === 'driver' ? `
           <tr><td><strong>Glovo ID</strong></td><td>${profile.external_ids && profile.external_ids.glovo_courier_id ? escapeHtml(profile.external_ids.glovo_courier_id) : '<span class="hint">—</span>'}</td></tr>
           <tr><td><strong>Bolt ID</strong></td><td>${profile.external_ids && profile.external_ids.bolt_courier_uid ? escapeHtml(profile.external_ids.bolt_courier_uid) : '<span class="hint">—</span>'}</td></tr>
+          <tr><td><strong>Текущ договор</strong></td><td>${contractSummaries.ecLabel} <a href="#employmentContracts" class="hint" style="margin-left:6px;">(промени по-долу)</a></td></tr>
+          <tr><td><strong>Наем на кола</strong></td><td>${contractSummaries.rentalLabel} <a href="#rentalContracts" class="hint" style="margin-left:6px;">(промени по-долу)</a></td></tr>
           ` : ''}
           <tr><td><strong>Адрес</strong></td><td>${profile.address || '<span class="hint">—</span>'}</td></tr>
           <tr><td><strong>Град</strong></td><td>${profile.city || '<span class="hint">—</span>'}</td></tr>
@@ -300,7 +337,7 @@ async function loadFile() {
       <div id="commissionStatsHost" style="margin-top:14px;"></div>
     </div>` : ''}
 
-    <div class="panel">
+    <div class="panel" id="employmentContracts">
       <div class="panel-head"><h2>Трудови / граждански договори</h2></div>
       ${employment_contracts.length ? `
       <div class="table-wrap"><table>
@@ -314,7 +351,7 @@ async function loadFile() {
               <td>${fmtDate(c.start_date)}</td>
               <td>${c.end_date ? fmtDate(c.end_date) : '—'}</td>
               <td><div class="stack">${deductionSummary(c)}
-                ${CAN_EDIT ? `<button type="button" class="btn btn-ghost btn-sm ec-deduction-toggle" data-id="${c.id}" style="padding:1px 6px;font-size:.65rem;align-self:flex-start;">Редакция</button>` : ''}</div>
+                ${CAN_EDIT ? `<button type="button" class="btn btn-ghost btn-sm ec-deduction-toggle" data-id="${c.id}" style="padding:1px 6px;font-size:.65rem;align-self:flex-start;">Редакция на всички параметри</button>` : ''}</div>
               </td>
               <td>${esignStatusBadge(c.signature_status)}</td>
               <td>
@@ -334,6 +371,23 @@ async function loadFile() {
             <tr class="ec-deduction-row" data-id="${c.id}" style="display:none;">
               <td colspan="10" style="background:var(--panel-2,rgba(255,255,255,.02));">
                 <form class="ec-deduction-form" data-id="${c.id}" style="padding:10px 4px;">
+                  <div class="field-row">
+                    <div class="field"><label>Вид договор</label>
+                      <select name="contract_type" class="ec-edit-type-select">
+                        <option value="labor" ${c.contract_type !== 'civil' ? 'selected' : ''}>Трудов</option>
+                        <option value="civil" ${c.contract_type === 'civil' ? 'selected' : ''}>Граждански</option>
+                      </select>
+                    </div>
+                    <div class="field ec-edit-hours-field" style="display:${c.contract_type === 'civil' ? 'none' : ''}"><label>Часове на ден</label>
+                      <select name="hours_per_day">
+                        ${[2, 4, 6, 8].map(h => `<option value="${h}" ${Number(c.hours_per_day) === h ? 'selected' : ''}>${h}</option>`).join('')}
+                      </select>
+                    </div>
+                  </div>
+                  <div class="field-row">
+                    <div class="field"><label>Начална дата</label><input name="start_date" type="date" value="${c.start_date || ''}"></div>
+                    <div class="field"><label>Крайна дата</label><input name="end_date" type="date" value="${c.end_date || ''}"></div>
+                  </div>
                   <div class="field"><label>Вид удръжка</label>
                     <select name="deduction_type" class="ec-deduction-type-select">
                       <option value="fixed" ${c.deduction_type !== 'percentage' ? 'selected' : ''}>Фиксирана сума</option>
@@ -407,15 +461,58 @@ async function loadFile() {
     </div>
 
     <div class="grid-2">
-      <div class="panel">
+      <div class="panel" id="rentalContracts">
         <div class="panel-head"><h2>Договори за наем на кола</h2></div>
         ${rental_contracts.length ? `
         <div class="table-wrap"><table>
-          <thead><tr><th>Номер</th><th>От</th><th>До</th><th>Статус</th><th></th></tr></thead>
+          <thead><tr><th>Номер</th><th>Кола</th><th>От</th><th>До</th><th>Наем</th><th>Статус</th><th></th></tr></thead>
           <tbody>
             ${rental_contracts.map(c => `
-              <tr><td>${c.contract_number}</td><td>${fmtDate(c.start_date)}</td><td>${c.end_date ? fmtDate(c.end_date) : '—'}</td>
-              <td>${c.status}</td><td><a class="btn btn-ghost btn-sm" href="/contract-print.html?id=${c.id}">Отвори →</a></td></tr>`).join('')}
+            <tr>
+              <td>${c.contract_number}</td>
+              <td>${c.vehicle_plate_number || '—'}</td>
+              <td>${fmtDate(c.start_date)}</td>
+              <td>${c.end_date ? fmtDate(c.end_date) : '—'}</td>
+              <td><div class="stack">${fmtMoney(c.rate_amount)} / ${RATE_PERIOD_LABELS[c.rate_period] || c.rate_period}
+                ${CAN_EDIT ? `<button type="button" class="btn btn-ghost btn-sm rc-edit-toggle" data-id="${c.id}" style="padding:1px 6px;font-size:.65rem;align-self:flex-start;">Редакция на всички параметри</button>` : ''}</div>
+              </td>
+              <td>${rcStatusBadge(c.status)}</td>
+              <td><a class="btn btn-ghost btn-sm" href="/contract-print.html?id=${c.id}">Отвори →</a></td>
+            </tr>
+            ${CAN_EDIT ? `
+            <tr class="rc-edit-row" data-id="${c.id}" style="display:none;">
+              <td colspan="7" style="background:var(--panel-2,rgba(255,255,255,.02));">
+                <form class="rc-edit-form" data-id="${c.id}" style="padding:10px 4px;">
+                  <div class="field-row">
+                    <div class="field"><label>Сума на наема (€)</label><input name="rate_amount" type="number" step="0.01" min="0" value="${c.rate_amount ?? ''}"></div>
+                    <div class="field"><label>Период</label>
+                      <select name="rate_period">
+                        <option value="day" ${c.rate_period === 'day' ? 'selected' : ''}>На ден</option>
+                        <option value="week" ${c.rate_period !== 'day' && c.rate_period !== 'month' ? 'selected' : ''}>На седмица</option>
+                        <option value="month" ${c.rate_period === 'month' ? 'selected' : ''}>На месец</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="field-row">
+                    <div class="field"><label>Депозит (€)</label><input name="deposit_amount" type="number" step="0.01" min="0" value="${c.deposit_amount ?? ''}"></div>
+                    <div class="field"><label>Статус</label>
+                      <select name="status">
+                        <option value="draft" ${c.status === 'draft' ? 'selected' : ''}>Чернова</option>
+                        <option value="active" ${c.status === 'active' ? 'selected' : ''}>Активен</option>
+                        <option value="completed" ${c.status === 'completed' ? 'selected' : ''}>Приключен</option>
+                        <option value="terminated" ${c.status === 'terminated' ? 'selected' : ''}>Прекратен</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="field-row">
+                    <div class="field"><label>Начална дата</label><input name="start_date" type="date" value="${c.start_date || ''}"></div>
+                    <div class="field"><label>Крайна дата</label><input name="end_date" type="date" value="${c.end_date || ''}"></div>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-sm">Запази</button>
+                  <button type="button" class="btn btn-ghost btn-sm rc-edit-cancel" data-id="${c.id}">Отказ</button>
+                </form>
+              </td>
+            </tr>` : ''}`).join('')}
           </tbody>
         </table></div>` : `<p class="hint">Няма договори за наем.</p>`}
       </div>
@@ -533,12 +630,30 @@ async function loadFile() {
     }
     sel.addEventListener('change', syncRow);
   });
+  // вид договор в реда за редакция (contract_type) — показва/крие часове на
+  // ден, огледално на ecTypeSelect/ecHoursField за формата "Нов договор"
+  document.querySelectorAll('.ec-edit-type-select').forEach(sel => {
+    function syncHours() {
+      const field = sel.closest('form').querySelector('.ec-edit-hours-field');
+      if (field) field.style.display = sel.value === 'labor' ? '' : 'none';
+    }
+    sel.addEventListener('change', syncHours);
+  });
   document.querySelectorAll('.ec-deduction-form').forEach(form => {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = form.dataset.id;
       const data = Object.fromEntries(new FormData(form).entries());
-      const patch = { deduction_type: data.deduction_type };
+      // пълна редакция на договора — изрично искане на потребителя "опция за
+      // промяна на всички параметри", не само удръжката (виж PUT
+      // /api/hr/employment-contracts/:id в server.js, приема произволен patch)
+      const patch = {
+        contract_type: data.contract_type,
+        end_date: data.end_date || null,
+        deduction_type: data.deduction_type,
+      };
+      if (data.start_date) patch.start_date = data.start_date; // началната дата си остава задължителна, не я нулираме
+      patch.hours_per_day = data.contract_type === 'labor' ? Number(data.hours_per_day) : null;
       if (data.deduction_type === 'percentage') {
         patch.deduction_percentage = data.deduction_percentage ? Number(data.deduction_percentage) : 0;
         patch.deduction_threshold_amount = data.deduction_threshold_amount ? Number(data.deduction_threshold_amount) : null;
@@ -551,6 +666,41 @@ async function loadFile() {
       }
       try {
         await Api.put(`/api/hr/employment-contracts/${id}`, patch);
+        await loadFile();
+      } catch (err) { alert('Грешка: ' + err.message); }
+    });
+  });
+
+  // редакция на наем на кола — разгъващ се ред под съответния запис,
+  // огледално на ec-deduction-row/ec-deduction-form по-горе (виж коментара
+  // там); PUT /api/contracts/:id приема произволен patch (db.updateContract)
+  document.querySelectorAll('.rc-edit-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = document.querySelector(`.rc-edit-row[data-id="${btn.dataset.id}"]`);
+      if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+    });
+  });
+  document.querySelectorAll('.rc-edit-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = document.querySelector(`.rc-edit-row[data-id="${btn.dataset.id}"]`);
+      if (row) row.style.display = 'none';
+    });
+  });
+  document.querySelectorAll('.rc-edit-form').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = form.dataset.id;
+      const data = Object.fromEntries(new FormData(form).entries());
+      const patch = {
+        rate_amount: data.rate_amount ? Number(data.rate_amount) : 0,
+        rate_period: data.rate_period,
+        deposit_amount: data.deposit_amount ? Number(data.deposit_amount) : 0,
+        status: data.status,
+        end_date: data.end_date || null,
+      };
+      if (data.start_date) patch.start_date = data.start_date;
+      try {
+        await Api.put(`/api/contracts/${id}`, patch);
         await loadFile();
       } catch (err) { alert('Грешка: ' + err.message); }
     });

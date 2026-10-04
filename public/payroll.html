@@ -67,20 +67,20 @@ function suggestedDeductionFor(contract, gross) {
 // 'manager' вижда записите, но промяна по вече записана седмица минава през
 // заявка за одобрение (вж. openCorrectionRequestForm по-долу).
 function canFinalizePayroll() { return ['admin', 'super_admin'].includes(CURRENT_USER.role); }
-function canRequestCorrection() { return CURRENT_USER.role === 'manager'; }
+// бекендът вече разрешава 'request_correction' и на admin (вж.
+// permissions-catalog.js, defaultRoles: ['admin','manager']) — бутонът тук
+// преди беше заключен само за manager, без причина; разширено по изрично
+// искане на потребителя "ако има нужда да се коригира да има възможност"
+function canRequestCorrection() { return ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role); }
 
-async function loadEntries() {
-  const host = document.getElementById('entriesHost');
-  const isAdmin = ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role);
-  const profileId = isAdmin ? selectedProfileId : CURRENT_USER.id;
-  if (!profileId) { host.innerHTML = `<p class="hint">Изберете служител.</p>`; return; }
-
-  const { entries, earnings_visible } = await Api.get(`/api/hr/payroll?profile_id=${profileId}`);
-  earningsVisible = earnings_visible !== false;
-
-  if (!entries.length) { host.innerHTML = `<p class="hint">Няма въведени седмици за този служител.</p>`; return; }
-
-  host.innerHTML = `
+// изваден от loadEntries() в самостоятелна функция, за да може СЪЩАТА таблица
+// (седмица/поръчки/заработка по платформа/удръжка/наем/нето + бутони за
+// подпис/плащане/корекция) да се използва и в разгъващ се ред под служителя
+// в "БЪРЗО ИЗПЛАЩАНЕ" (виж loadQuickPayDetail по-долу), не само в панела
+// "Седмици на избрания служител" най-долу на страницата
+function entriesTableHtml(entries, earningsVisible) {
+  if (!entries.length) return `<p class="hint">Няма въведени седмици за този служител.</p>`;
+  return `
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Седмица</th><th>Брой поръчки</th>
@@ -107,23 +107,40 @@ async function loadEntries() {
           </tr>`).join('')}
       </tbody>
     </table></div>
-    <div id="correctionFormHost"></div>`;
+    <div class="correctionFormHost"></div>`;
+}
 
-  host.querySelectorAll('.sign-btn').forEach(btn => {
-    btn.addEventListener('click', () => openSignDialog(btn.dataset.id));
+// wire-ва бутоните в HTML-а, върнат от entriesTableHtml() вътре в container;
+// onChange() се вика след плащане/подпис (реално променя записа) — ПРИ заявка
+// за корекция НЕ, защото тя сама по себе си не променя нищо до одобрение
+function wireEntriesTable(container, entries, onChange) {
+  container.querySelectorAll('.sign-btn').forEach(btn => {
+    btn.addEventListener('click', () => openSignDialog(btn.dataset.id, onChange));
   });
-  host.querySelectorAll('.mark-paid-btn').forEach(btn => {
+  container.querySelectorAll('.mark-paid-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      try { await Api.post(`/api/hr/payroll/${btn.dataset.id}/mark-paid`, { paid: true }); await loadEntries(); }
+      try { await Api.post(`/api/hr/payroll/${btn.dataset.id}/mark-paid`, { paid: true }); await onChange(); }
       catch (err) { alert(err.message); }
     });
   });
-  host.querySelectorAll('.request-correction-btn').forEach(btn => {
+  container.querySelectorAll('.request-correction-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const entry = entries.find(e => e.id === btn.dataset.id);
-      openCorrectionRequestForm(entry);
+      openCorrectionRequestForm(entry, container.querySelector('.correctionFormHost'), onChange);
     });
   });
+}
+
+async function loadEntries() {
+  const host = document.getElementById('entriesHost');
+  const isAdmin = ['admin', 'manager', 'super_admin'].includes(CURRENT_USER.role);
+  const profileId = isAdmin ? selectedProfileId : CURRENT_USER.id;
+  if (!profileId) { host.innerHTML = `<p class="hint">Изберете служител.</p>`; return; }
+
+  const { entries, earnings_visible } = await Api.get(`/api/hr/payroll?profile_id=${profileId}`);
+  earningsVisible = earnings_visible !== false;
+  host.innerHTML = entriesTableHtml(entries, earningsVisible);
+  wireEntriesTable(host, entries, loadEntries);
 }
 
 // ---------------------------------------------------------------------------
@@ -132,39 +149,45 @@ async function loadEntries() {
 // server.js). Показваме секция с опашка само ако има какво да се види —
 // за админ: чакащи за одобрение; за мениджър: собствените му заявки.
 // ---------------------------------------------------------------------------
-function openCorrectionRequestForm(entry) {
-  const host = document.getElementById('correctionFormHost');
+// host/onDone се подават изрично (вместо твърд document.getElementById('correctionFormHost'))
+// защото от 2026-10-04 формата може да се отвори и вътре в разгънат ред на
+// "БЪРЗО ИЗПЛАЩАНЕ" (виж loadQuickPayDetail по-долу) — там може да има
+// няколко разгънати служителя едновременно, затова елементите вътре се
+// адресират през host.querySelector, не през глобални id-та.
+function openCorrectionRequestForm(entry, host, onDone) {
+  onDone = onDone || loadEntries;
   if (!host || !entry) return;
   host.innerHTML = `
     <div class="panel" style="margin-top:10px;">
       <div class="panel-head"><h3>Заяви корекция — ${weekRangeLabel(entry.week_start, entry.week_end)}</h3></div>
       <p class="hint">Промяната НЕ се прилага веднага — изпраща се за одобрение от администратор.</p>
-      <div class="error-box" id="correctionError"></div>
+      <div class="error-box" data-role="correctionError"></div>
       <div class="field-row">
-        <div class="field"><label>Брой поръчки</label><input id="corrOrders" type="number" min="0" value="${entry.order_count}"></div>
-        <div class="field"><label>Заработка (€)</label><input id="corrGross" type="number" step="0.01" value="${entry.gross_earnings}"></div>
+        <div class="field"><label>Брой поръчки</label><input data-role="corrOrders" type="number" min="0" value="${entry.order_count}"></div>
+        <div class="field"><label>Заработка (€)</label><input data-role="corrGross" type="number" step="0.01" value="${entry.gross_earnings}"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Удръжка (€)</label><input id="corrDeduction" type="number" step="0.01" value="${entry.deduction_amount}"></div>
-        <div class="field"><label>Наем на кола (€)</label><input id="corrCarRent" type="number" step="0.01" value="${entry.car_rent_amount}"></div>
+        <div class="field"><label>Удръжка (€)</label><input data-role="corrDeduction" type="number" step="0.01" value="${entry.deduction_amount}"></div>
+        <div class="field"><label>Наем на кола (€)</label><input data-role="corrCarRent" type="number" step="0.01" value="${entry.car_rent_amount}"></div>
       </div>
-      <div class="field"><label>Причина за корекцията *</label><textarea id="corrReason" rows="2" placeholder="напр. грешно въведена заработка от файла"></textarea></div>
+      <div class="field"><label>Причина за корекцията *</label><textarea data-role="corrReason" rows="2" placeholder="напр. грешно въведена заработка от файла"></textarea></div>
       <div style="display:flex;gap:8px;">
-        <button type="button" class="btn btn-primary btn-sm" id="corrSubmitBtn">Изпрати заявка</button>
-        <button type="button" class="btn btn-ghost btn-sm" id="corrCancelBtn">Откажи</button>
+        <button type="button" class="btn btn-primary btn-sm" data-role="corrSubmitBtn">Изпрати заявка</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-role="corrCancelBtn">Откажи</button>
       </div>
     </div>`;
-  document.getElementById('corrCancelBtn').addEventListener('click', () => { host.innerHTML = ''; });
-  document.getElementById('corrSubmitBtn').addEventListener('click', async () => {
-    const errorBox = document.getElementById('correctionError');
+  const q = (role) => host.querySelector(`[data-role="${role}"]`);
+  q('corrCancelBtn').addEventListener('click', () => { host.innerHTML = ''; });
+  q('corrSubmitBtn').addEventListener('click', async () => {
+    const errorBox = q('correctionError');
     errorBox.classList.remove('show');
-    const reason = document.getElementById('corrReason').value.trim();
+    const reason = q('corrReason').value.trim();
     if (!reason) { errorBox.textContent = 'Въведете причина за корекцията.'; errorBox.classList.add('show'); return; }
     const changes = {
-      order_count: Number(document.getElementById('corrOrders').value),
-      gross_earnings: Number(document.getElementById('corrGross').value),
-      deduction_amount: Number(document.getElementById('corrDeduction').value),
-      car_rent_amount: Number(document.getElementById('corrCarRent').value),
+      order_count: Number(q('corrOrders').value),
+      gross_earnings: Number(q('corrGross').value),
+      deduction_amount: Number(q('corrDeduction').value),
+      car_rent_amount: Number(q('corrCarRent').value),
     };
     try {
       await Api.post('/api/hr/payroll/correction-requests', { payroll_entry_id: entry.id, requested_changes: changes, reason });
@@ -320,10 +343,11 @@ async function loadQuickPayReport() {
       </div>`;
     if (!rows.length) { host.innerHTML = `<p class="hint">Няма записи за избрания филтър.</p>`; return; }
     host.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th></th><th>Служител</th><th>Град</th><th>Мениджър</th><th>Седмици</th><th>Общо нето</th><th>Платено</th><th>Остава</th></tr></thead>
+      <thead><tr><th></th><th></th><th>Служител</th><th>Град</th><th>Мениджър</th><th>Седмици</th><th>Общо нето</th><th>Платено</th><th>Остава</th></tr></thead>
       <tbody>${rows.map(r => `
-        <tr>
+        <tr class="qp-main-row">
           <td>${r.unpaid_amount > 0.005 ? `<input type="checkbox" class="qp-row-check" data-unpaid="1" data-unpaid-amount="${r.unpaid_amount}" data-unpaid-ids='${JSON.stringify(r.unpaid_entry_ids)}'>` : ''}</td>
+          <td><button type="button" class="btn btn-ghost btn-sm qp-expand-toggle" data-id="${r.profile_id}" title="Заработки по седмици и платформи" style="padding:1px 7px;font-size:.72rem;">${QP_EXPANDED.has(r.profile_id) ? '▾' : '▸'}</button></td>
           <td><a class="employee-name-link" href="/personnel-detail.html?id=${r.profile_id}">${r.full_name}</a></td>
           <td>${r.city || '—'}</td>
           <td>${r.manager_name || '—'}</td>
@@ -331,10 +355,65 @@ async function loadQuickPayReport() {
           <td><strong>${fmtMoney(r.total_net)}</strong></td>
           <td>${fmtMoney(r.paid_amount)}</td>
           <td>${r.unpaid_amount > 0.005 ? `<strong style="color:var(--warn);">${fmtMoney(r.unpaid_amount)}</strong>` : fmtMoney(r.unpaid_amount)}</td>
+        </tr>
+        <tr class="qp-detail-row" data-profile="${r.profile_id}" style="display:${QP_EXPANDED.has(r.profile_id) ? '' : 'none'};">
+          <td colspan="9" style="background:var(--panel-2,rgba(255,255,255,.02));">
+            <div class="qp-detail-host" data-profile="${r.profile_id}">${QP_EXPANDED.has(r.profile_id) ? '<div class="loading">Зареждане…</div>' : ''}</div>
+          </td>
         </tr>`).join('')}
       </tbody></table></div>`;
     host.querySelectorAll('.qp-row-check').forEach(cb => cb.addEventListener('change', updateQuickPaySelection));
     updateQuickPaySelection();
+    host.querySelectorAll('.qp-expand-toggle').forEach(btn => {
+      btn.addEventListener('click', () => toggleQuickPayDetail(btn.dataset.id));
+    });
+    // презарежда вече разгънатите (напр. след плащане/одобрена корекция),
+    // за да не се налага администраторът да ги отваря наново всеки път
+    QP_EXPANDED.forEach(profileId => loadQuickPayDetail(profileId));
+  } catch (err) {
+    host.innerHTML = `<div class="error-box show">${err.message}</div>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Разгъващ се ред под служителя в "БЪРЗО ИЗПЛАЩАНЕ" — показва ВСИЧКИТЕ му
+// заработки по седмици и платформи (не само филтрирания период отгоре),
+// със същите бутони за подпис/плащане/заявка корекция като старата таблица
+// "Седмици на избрания служител" най-долу на страницата (вж.
+// entriesTableHtml/wireEntriesTable по-горе). По изрично искане на
+// потребителя (2026-10-04): "като се натисне на служителя да се разтегли и
+// от долу да му се видят всичките заработки по седмици и платформи... за
+// всеки ред задължение да може да се разплати, а ако има нужда да се
+// коригира да има възможност".
+// ---------------------------------------------------------------------------
+const QP_EXPANDED = new Set();
+
+function toggleQuickPayDetail(profileId) {
+  const row = document.querySelector(`.qp-detail-row[data-profile="${profileId}"]`);
+  const btn = document.querySelector(`.qp-expand-toggle[data-id="${profileId}"]`);
+  if (!row) return;
+  const opening = row.style.display === 'none';
+  row.style.display = opening ? '' : 'none';
+  if (btn) btn.textContent = opening ? '▾' : '▸';
+  if (opening) {
+    QP_EXPANDED.add(profileId);
+    loadQuickPayDetail(profileId);
+  } else {
+    QP_EXPANDED.delete(profileId);
+  }
+}
+
+async function loadQuickPayDetail(profileId) {
+  const host = document.querySelector(`.qp-detail-host[data-profile="${profileId}"]`);
+  if (!host) return;
+  host.innerHTML = `<div class="loading">Зареждане…</div>`;
+  try {
+    const { entries, earnings_visible } = await Api.get(`/api/hr/payroll?profile_id=${profileId}`);
+    host.innerHTML = entriesTableHtml(entries, earnings_visible !== false);
+    // при плащане/подпис тук презареждаме ЦЯЛОТО табло "Бързо изплащане"
+    // (не само този ред), защото действието променя и общите суми горе
+    // (платено/остава) и чекбокса "неплатени" за съответния служител
+    wireEntriesTable(host, entries, async () => { await loadQuickPayReport(); });
   } catch (err) {
     host.innerHTML = `<div class="error-box show">${err.message}</div>`;
   }
@@ -366,7 +445,8 @@ function setupSignatureCanvas(canvas) {
   };
 }
 
-function openSignDialog(entryId) {
+function openSignDialog(entryId, onDone) {
+  onDone = onDone || loadEntries;
   const modalHost = document.getElementById('signModalHost');
   modalHost.innerHTML = `
     <div class="panel" style="max-width:480px;margin:20px auto;">
@@ -393,7 +473,7 @@ function openSignDialog(entryId) {
       if (sig.hasSignature()) body.signature_image = sig.toDataUrl();
       await Api.post(`/api/hr/payroll/${entryId}/sign`, body);
       modalHost.innerHTML = '';
-      await loadEntries();
+      await onDone();
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.classList.add('show');
