@@ -233,7 +233,7 @@ async function init() {
           <div class="field-row">
             <div class="field"><label>Телефон</label><input name="phone"></div>
             <div class="field"><label>Роля *</label>
-              <select name="role">
+              <select name="role" id="addEmpRoleSelect">
                 <option value="driver">Шофьор</option>
                 <option value="manager">Мениджър</option>
                 <option value="admin">Администратор</option>
@@ -246,7 +246,64 @@ async function init() {
             <input name="password" minlength="4" placeholder="напр. име123">
             <p class="hint">По избор — ако оставите празно, ще се генерира автоматично и ще се покаже след създаване.</p>
           </div>
-          <button type="submit" class="btn btn-primary btn-sm">Създай служител</button>
+
+          <div id="addEmpDriverFields" style="display:none;">
+            <div class="field-row">
+              <div class="field"><label>Bolt ID</label><input name="bolt_id"></div>
+              <div class="field"><label>Glovo ID</label><input name="glovo_id"></div>
+            </div>
+            <div class="field"><label>Град</label>
+              <select name="city"><option value="">— няма —</option>${BG_CITIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+            </div>
+
+            <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:12px;">
+              <input type="checkbox" id="addEmpWithContract"> Създай трудов/граждански договор сега (става активен веднага)
+            </label>
+            <div id="addEmpContractFields" style="display:none;margin-top:8px;">
+              <div class="field-row">
+                <div class="field"><label>Вид</label>
+                  <select name="ec_contract_type" id="addEmpEcType">
+                    <option value="labor">Трудов</option>
+                    <option value="civil">Граждански</option>
+                  </select>
+                </div>
+                <div class="field" id="addEmpEcHoursField"><label>Часове на ден</label>
+                  <select name="ec_hours_per_day">
+                    <option value="2">2</option><option value="4">4</option><option value="6">6</option><option value="8">8</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field"><label>Начална дата</label><input name="ec_start_date" type="date"></div>
+                <div class="field"><label>Седмична удръжка (€)</label><input name="ec_weekly_deduction_amount" type="number" step="0.01" min="0" placeholder="по подразбиране от вида"></div>
+              </div>
+            </div>
+
+            <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:12px;">
+              <input type="checkbox" id="addEmpWithVehicle"> Зачисли нает автомобил сега (става активен веднага)
+            </label>
+            <div id="addEmpVehicleFields" style="display:none;margin-top:8px;">
+              <div class="field-row">
+                <div class="field"><label>Кола</label>
+                  <select name="rc_vehicle_id" id="addEmpVehicleSelect"><option value="">Зареждане…</option></select>
+                </div>
+                <div class="field"><label>Начална дата</label><input name="rc_start_date" type="date"></div>
+              </div>
+              <div class="field-row">
+                <div class="field"><label>Наем (€)</label><input name="rc_rate_amount" type="number" step="0.01" min="0"></div>
+                <div class="field"><label>Период</label>
+                  <select name="rc_rate_period">
+                    <option value="week">На седмица</option>
+                    <option value="month">На месец</option>
+                    <option value="day">На ден</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field"><label>Депозит (€)</label><input name="rc_deposit_amount" type="number" step="0.01" min="0" value="0"></div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-sm" style="margin-top:12px;">Създай служител</button>
         </form>
       </div>
       <div id="bulkAssignBar" class="panel" style="display:none;background:var(--bg-soft,rgba(255,255,255,.03));margin-bottom:14px;">
@@ -350,6 +407,50 @@ async function init() {
         if (show) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     }
+    // "Шофьор" отключва допълнителните полета (Bolt/Glovo ID, град, договор,
+    // нает автомобил) — за мениджър/админ няма смисъл от тях. По изрично
+    // искане на потребителя, за да не му се налага да създаде служителя и
+    // после отделно да обикаля досието/"Договори за наем", за да ги допълни.
+    const addEmpRoleSelect = document.getElementById('addEmpRoleSelect');
+    const addEmpDriverFields = document.getElementById('addEmpDriverFields');
+    function syncAddEmpDriverFields() {
+      addEmpDriverFields.style.display = addEmpRoleSelect.value === 'driver' ? '' : 'none';
+    }
+    if (addEmpRoleSelect) { addEmpRoleSelect.addEventListener('change', syncAddEmpDriverFields); syncAddEmpDriverFields(); }
+
+    const addEmpEcType = document.getElementById('addEmpEcType');
+    function syncAddEmpEcHours() {
+      document.getElementById('addEmpEcHoursField').style.display = addEmpEcType.value === 'labor' ? '' : 'none';
+    }
+    if (addEmpEcType) { addEmpEcType.addEventListener('change', syncAddEmpEcHours); syncAddEmpEcHours(); }
+
+    const addEmpWithContract = document.getElementById('addEmpWithContract');
+    if (addEmpWithContract) {
+      addEmpWithContract.addEventListener('change', () => {
+        document.getElementById('addEmpContractFields').style.display = addEmpWithContract.checked ? '' : 'none';
+      });
+    }
+
+    // колите се зареждат лениво — само при първото включване на чекбокса,
+    // за да не бавим отварянето на формата с ненужна заявка всеки път
+    let vehiclesLoadedForAddEmp = false;
+    const addEmpWithVehicle = document.getElementById('addEmpWithVehicle');
+    if (addEmpWithVehicle) {
+      addEmpWithVehicle.addEventListener('change', async () => {
+        document.getElementById('addEmpVehicleFields').style.display = addEmpWithVehicle.checked ? '' : 'none';
+        if (addEmpWithVehicle.checked && !vehiclesLoadedForAddEmp) {
+          vehiclesLoadedForAddEmp = true;
+          const select = document.getElementById('addEmpVehicleSelect');
+          try {
+            const { vehicles } = await Api.get('/api/vehicles');
+            select.innerHTML = '<option value="">— избери —</option>' + vehicles.map(v =>
+              `<option value="${v.id}">${v.plate_number} — ${v.make} ${v.model}${v.status !== 'available' ? ' (' + (VEHICLE_STATUS_LABELS[v.status] || [v.status])[0] + ')' : ''}</option>`
+            ).join('');
+          } catch (e) { select.innerHTML = '<option value="">(грешка при зареждане)</option>'; }
+        }
+      });
+    }
+
     const addEmployeeForm = document.getElementById('addEmployeeForm');
     if (addEmployeeForm) {
       addEmployeeForm.addEventListener('submit', async (e) => {
@@ -359,17 +460,65 @@ async function init() {
         const tempPwHost = document.getElementById('addEmployeeTempPwHost');
         errorBox.classList.remove('show'); successBox.classList.remove('show');
         tempPwHost.innerHTML = '';
-        const data = Object.fromEntries(new FormData(e.target).entries());
-        if (!data.password) delete data.password;
+        const raw = Object.fromEntries(new FormData(e.target).entries());
+        const isDriver = raw.role === 'driver';
+        const withContract = isDriver && addEmpWithContract && addEmpWithContract.checked;
+        const withVehicle = isDriver && addEmpWithVehicle && addEmpWithVehicle.checked;
+
+        const userData = { full_name: raw.full_name, email: raw.email, phone: raw.phone, role: raw.role };
+        if (raw.password) userData.password = raw.password;
+        if (isDriver) {
+          if (raw.bolt_id) userData.bolt_id = raw.bolt_id;
+          if (raw.glovo_id) userData.glovo_id = raw.glovo_id;
+          if (raw.city) userData.city = raw.city;
+        }
+
         try {
-          const res = await Api.post('/api/users', data);
-          successBox.textContent = 'Служителят е създаден.';
+          const res = await Api.post('/api/users', userData);
+          const createdId = res.user.id;
+          const warnings = [];
+
+          if (withContract) {
+            const ecData = {
+              profile_id: createdId,
+              contract_type: raw.ec_contract_type,
+              start_date: raw.ec_start_date || todayStr(),
+              status: 'active',
+            };
+            if (raw.ec_contract_type === 'labor') ecData.hours_per_day = Number(raw.ec_hours_per_day);
+            if (raw.ec_weekly_deduction_amount) ecData.weekly_deduction_amount = Number(raw.ec_weekly_deduction_amount);
+            try { await Api.post('/api/hr/employment-contracts', ecData); }
+            catch (err) { warnings.push('Договорът не се създаде: ' + err.message); }
+          }
+          if (withVehicle) {
+            if (!raw.rc_vehicle_id) {
+              warnings.push('Автомобилът не се зачисли: не е избрана кола.');
+            } else {
+              const rcData = {
+                vehicle_id: raw.rc_vehicle_id,
+                renter_type: 'dombi_courier',
+                renter_driver_id: createdId,
+                start_date: raw.rc_start_date || todayStr(),
+                rate_amount: Number(raw.rc_rate_amount || 0),
+                rate_period: raw.rc_rate_period,
+                deposit_amount: Number(raw.rc_deposit_amount || 0),
+                status: 'active',
+              };
+              try { await Api.post('/api/contracts', rcData); }
+              catch (err) { warnings.push('Автомобилът не се зачисли: ' + err.message); }
+            }
+          }
+
+          successBox.textContent = 'Служителят е създаден.' + (warnings.length ? ' Внимание: ' + warnings.join(' ') : '');
           successBox.classList.add('show');
           if (res.temp_password) {
-            tempPwHost.innerHTML = employeeTempPasswordBox(data.full_name, res.temp_password);
+            tempPwHost.innerHTML = employeeTempPasswordBox(raw.full_name, res.temp_password);
             wireEmployeeTempPasswordBox(tempPwHost);
           }
           e.target.reset();
+          syncAddEmpDriverFields();
+          document.getElementById('addEmpContractFields').style.display = 'none';
+          document.getElementById('addEmpVehicleFields').style.display = 'none';
           const { employees: refreshed } = await Api.get('/api/hr/personnel');
           ALL_EMPLOYEES = refreshed;
           document.getElementById('personnelManagerFilter').innerHTML = '<option value="">Всички</option><option value="none">Без мениджър</option>' + managerFilterOptions();

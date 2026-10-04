@@ -82,6 +82,9 @@ let TARGET_ID = null;
 let IS_SELF = false;
 let CAN_EDIT = false;
 let MANAGERS = [];
+// заредени еднократно в init() (CAN_EDIT) — за селектора "Кола" във формата
+// "Зачисли нает автомобил" по-долу; огледално на MANAGERS по-горе
+let ALL_VEHICLES = [];
 // запазени тук (от loadFile), за да могат initEarningsPanel/loadEarnings да
 // покажат "на какъв договор е" служителят в компактния обобщен изглед, без
 // да правят отделна заявка само за това
@@ -515,6 +518,34 @@ async function loadFile() {
             </tr>` : ''}`).join('')}
           </tbody>
         </table></div>` : `<p class="hint">Няма договори за наем.</p>`}
+
+        ${CAN_EDIT ? `
+        <h3 style="margin-top:20px;">Зачисли нает автомобил</h3>
+        <p class="hint">Създава директно активен договор за наем на кола на този служител — не е нужно да минавате през „Договори за наем“.</p>
+        <div class="error-box" id="rcNewError"></div>
+        <form id="rcNewForm">
+          <div class="field-row">
+            <div class="field"><label>Кола *</label>
+              <select name="vehicle_id" required>
+                <option value="">— избери —</option>
+                ${ALL_VEHICLES.map(v => `<option value="${v.id}">${v.plate_number} — ${v.make} ${v.model}${v.status !== 'available' ? ' (' + (VEHICLE_STATUS_LABELS[v.status] || [v.status])[0] + ')' : ''}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field"><label>Начална дата *</label><input name="start_date" type="date" required value="${todayStr()}"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Сума на наема (€) *</label><input name="rate_amount" type="number" step="0.01" min="0" required></div>
+            <div class="field"><label>Период</label>
+              <select name="rate_period">
+                <option value="week">На седмица</option>
+                <option value="month">На месец</option>
+                <option value="day">На ден</option>
+              </select>
+            </div>
+          </div>
+          <div class="field"><label>Депозит (€)</label><input name="deposit_amount" type="number" step="0.01" min="0" value="0"></div>
+          <button type="submit" class="btn btn-primary btn-sm">Зачисли колата</button>
+        </form>` : ''}
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Приемо-предавателни протоколи</h2></div>
@@ -705,6 +736,37 @@ async function loadFile() {
       } catch (err) { alert('Грешка: ' + err.message); }
     });
   });
+
+  // зачисляване на нов нает автомобил директно от досието — създава
+  // активен договор за наем (renter_type: 'dombi_courier') без да се минава
+  // през отделния екран "Нов договор" (вж. contract-new.html); изрично
+  // искане на потребителя "директно зачисляване на автомобил от... досието"
+  const rcNewForm = document.getElementById('rcNewForm');
+  if (rcNewForm) {
+    rcNewForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorBox = document.getElementById('rcNewError');
+      errorBox.classList.remove('show');
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      const patch = {
+        vehicle_id: data.vehicle_id,
+        renter_type: 'dombi_courier',
+        renter_driver_id: TARGET_ID,
+        start_date: data.start_date,
+        rate_amount: Number(data.rate_amount || 0),
+        rate_period: data.rate_period,
+        deposit_amount: Number(data.deposit_amount || 0),
+        status: 'active',
+      };
+      try {
+        await Api.post('/api/contracts', patch);
+        await loadFile();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      }
+    });
+  }
 
   const ecForm = document.getElementById('ecForm');
   if (ecForm) ecForm.addEventListener('submit', async (e) => {
@@ -1135,6 +1197,10 @@ async function init() {
       const { users } = await Api.get('/api/users');
       MANAGERS = users;
     } catch (e) { MANAGERS = []; }
+    try {
+      const { vehicles } = await Api.get('/api/vehicles');
+      ALL_VEHICLES = vehicles;
+    } catch (e) { ALL_VEHICLES = []; }
   }
 
   document.getElementById('app-content').innerHTML = `
