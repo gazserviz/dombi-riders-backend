@@ -529,6 +529,29 @@ async function initSettingsPanel() {
   });
 }
 
+async function initManualPaymentPanel() {
+  const form = document.getElementById('manualPaymentForm');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('manualPaymentError');
+    const successBox = document.getElementById('manualPaymentSuccess');
+    errorBox.classList.remove('show'); successBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(form).entries());
+    data.amount = Number(data.amount);
+    try {
+      await Api.post('/api/hr/payroll/manual-payment', data);
+      successBox.textContent = 'Записано като платено.';
+      successBox.classList.add('show');
+      form.reset();
+      if (selectedProfileId === data.profile_id) await loadEntries();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+
 async function initImportPanel() {
   const platformSelect = document.getElementById('importPlatform');
   const weekFields = document.getElementById('importWeekFields');
@@ -837,6 +860,37 @@ async function init() {
       </div>
     </div>
 
+    <div class="panel" id="manualPaymentPanel">
+      <div class="panel-head"><h2>Отбелязване на изплатена по-стара седмица</h2></div>
+      <p class="hint">За служители, които все още не са си взели парите за седмица отпреди текущата — отбелязва тази сума като изплатена за посочената платформа/седмица, без да е нужен пълен запис с брой поръчки. Ако вече има запис за същия служител/седмица, сумата се ДОБАВЯ към него (не го презаписва) — удобно за повече от едно плащане/платформа за една и съща седмица.</p>
+      <div class="error-box" id="manualPaymentError"></div>
+      <div class="success-box" id="manualPaymentSuccess"></div>
+      <form id="manualPaymentForm">
+        <div class="field"><label>Служител *</label>
+          <select name="profile_id" required>
+            <option value="">— избери —</option>
+            ${DIRECTORY.map(u => `<option value="${u.id}">${u.full_name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Начало на седмица *</label><input name="week_start" type="date" required></div>
+          <div class="field"><label>Край на седмица *</label><input name="week_end" type="date" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Платформа *</label>
+            <select name="platform" required>
+              <option value="bolt">Bolt</option>
+              <option value="glovo">Glovo</option>
+              <option value="other">Друго</option>
+            </select>
+          </div>
+          <div class="field"><label>Сума (€) *</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+        </div>
+        <div class="field"><label>Бележка (по избор)</label><input name="note" placeholder="напр. платено в брой на ръка"></div>
+        <button type="submit" class="btn btn-primary btn-sm">Отбележи платено</button>
+      </form>
+    </div>
+
     <div class="panel" id="importPanel">
       <div class="panel-head"><h2>Импорт от Bolt / Glovo (реален седмичен файл)</h2></div>
       <p class="hint">Качете оригиналния .xlsx експорт от Bolt Food или Glovo (Freestreets BG) за дадена седмица — системата ще опита да съпостави куриерите със съществуващи профили по телефон и ще предложи преглед преди запис. Заработката се изчислява като сумата, изкарана от шофьора вкл. бакшишите, без ДДС.</p>
@@ -887,6 +941,7 @@ async function init() {
     await initQuickPayPanel();
     await loadCorrectionRequests();
     await initSettingsPanel();
+    await initManualPaymentPanel();
     await initImportPanel();
     await loadPayrollImportHistory();
     await initPayrollStatsPanel();
