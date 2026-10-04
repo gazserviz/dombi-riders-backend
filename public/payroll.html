@@ -565,7 +565,7 @@ async function loadOutstandingDues() {
     }
     const total = dues.reduce((s, d) => s + Number(d.amount || 0), 0);
     host.innerHTML = `
-      <p class="hint">Общо чакащи: <strong>${fmtMoney(total)}</strong> (${dues.length} ${dues.length === 1 ? 'запис' : 'записа'})</p>
+      <p class="hint">Общо чакащи: <strong>${fmtMoney(total)}</strong> (${dues.length} ${dues.length === 1 ? 'запис' : 'записа'}). Сумата може да се коригира преди да се маркира като уредена, ако първоначално пренесената стойност е грешна — при "Отбележи уредено" точно въведената тук сума се записва и като разход в <a href="/cashier.html">общата каса</a>.</p>
       <table class="table">
         <thead><tr><th>Служител</th><th>Седмица</th><th>Сума</th><th>Поръчки</th><th></th></tr></thead>
         <tbody>
@@ -573,9 +573,12 @@ async function loadOutstandingDues() {
             <tr data-due-id="${d.id}">
               <td>${d.profile_name || d.profile_id}</td>
               <td>${d.week_start} — ${d.week_end}</td>
-              <td><strong>${fmtMoney(d.amount)}</strong></td>
+              <td><input type="number" step="0.01" min="0" class="due-amount-input" value="${Number(d.amount || 0).toFixed(2)}" style="width:90px;"></td>
               <td>${d.order_count ?? '—'}</td>
-              <td><button type="button" class="btn btn-ghost btn-sm settle-due-btn">Отбележи уредено</button></td>
+              <td><div class="stack">
+                <button type="button" class="btn btn-ghost btn-sm settle-due-btn">Отбележи уредено</button>
+                <button type="button" class="btn btn-ghost btn-sm delete-due-btn" style="color:var(--danger,#c33);">Изтрий</button>
+              </div></td>
             </tr>`).join('')}
         </tbody>
       </table>`;
@@ -583,9 +586,27 @@ async function loadOutstandingDues() {
       btn.addEventListener('click', async () => {
         const row = btn.closest('tr');
         const dueId = row.getAttribute('data-due-id');
+        const amount = row.querySelector('.due-amount-input').value;
         btn.disabled = true;
         try {
-          await Api.post(`/api/hr/outstanding-dues/${dueId}/settle`, {});
+          await Api.post(`/api/hr/outstanding-dues/${dueId}/settle`, { amount });
+          await loadOutstandingDues();
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.classList.add('show');
+          btn.disabled = false;
+        }
+      });
+    });
+    host.querySelectorAll('.delete-due-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('tr');
+        const dueId = row.getAttribute('data-due-id');
+        const name = row.children[0].textContent;
+        if (!confirm(`Да изтрия ли безвъзвратно дължимата сума за ${name}? Ако вече е маркирана като уредена, свързаният разход в касата също ще бъде премахнат.`)) return;
+        btn.disabled = true;
+        try {
+          await Api.del(`/api/hr/outstanding-dues/${dueId}`);
           await loadOutstandingDues();
         } catch (err) {
           errorBox.textContent = err.message;
