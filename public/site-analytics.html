@@ -25,6 +25,7 @@
 <body>
 <div id="app-shell" data-active="/site-analytics.html" data-title="Откъде ни намират"></div>
 
+<div class="wrap" id="saWrap" style="max-width:1100px;display:none;">
 <div class="panel" style="margin-bottom:16px;">
   <p class="hint" style="margin:0;">
     Пасивна статистика — показва откъде идват хората, БЕЗ да сме ги питали нищо (четем Referrer и utm_* параметрите,
@@ -64,6 +65,7 @@
   </p>
   <div class="sa-snippet" id="saSnippet"></div>
   <button type="button" class="btn" id="saCopyBtn" style="margin-top:10px;">Копирай кода</button>
+</div>
 </div>
 
 <script src="/js/app.js"></script>
@@ -179,6 +181,9 @@ document.getElementById('saCopyBtn').addEventListener('click', () => {
 (async function init() {
   CURRENT_USER = await mountShell();
   if (!CURRENT_USER) return;
+  const wrap = document.getElementById('saWrap');
+  document.getElementById('app-content').appendChild(wrap);
+  wrap.style.display = '';
   await loadStats();
 })();
 </script>
