@@ -83,7 +83,7 @@ function entriesTableHtml(entries, earningsVisible) {
   return `
     <div class="table-wrap"><table>
       <thead><tr>
-        <th>Седмица</th><th>Брой поръчки</th>
+        <th>Седмица</th><th>Брой поръчки</th><th>Оценъчен пробег</th>
         ${earningsVisible ? '<th>Заработка</th><th>Удръжка</th><th>Наем на кола</th><th>Нето</th>' : ''}
         <th>Потвърждение</th><th>Изплащане</th><th></th>
       </tr></thead>
@@ -92,6 +92,7 @@ function entriesTableHtml(entries, earningsVisible) {
           <tr>
             <td>${weekRangeLabel(e.week_start, e.week_end)}</td>
             <td><strong>${e.order_count}</strong></td>
+            <td>${e.estimated_km != null ? `${e.estimated_km} км` : '—'}</td>
             ${earningsVisible ? `
             <td><div class="stack">${fmtMoney(e.gross_earnings)}${platformBreakdownLine(e)}</div></td>
             <td><div class="stack">${fmtMoney(e.deduction_amount)}${deductionRateLine(e)}</div></td>
@@ -506,6 +507,28 @@ function renderImportRows(rows, { matched }) {
     </tbody></table></div>`;
 }
 
+async function initSettingsPanel() {
+  const form = document.getElementById('settingsForm');
+  if (!form) return;
+  try {
+    const { settings } = await Api.get('/api/settings');
+    document.getElementById('avgKmInput').value = settings.avg_km_per_order ?? '';
+  } catch (err) { /* не е критично — полето просто остава празно, формата пак работи */ }
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('settingsError');
+    errorBox.classList.remove('show');
+    const data = Object.fromEntries(new FormData(form).entries());
+    try {
+      const { settings } = await Api.put('/api/settings', { avg_km_per_order: data.avg_km_per_order });
+      document.getElementById('avgKmInput').value = settings.avg_km_per_order ?? '';
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.classList.add('show');
+    }
+  });
+}
+
 async function initImportPanel() {
   const platformSelect = document.getElementById('importPlatform');
   const weekFields = document.getElementById('importWeekFields');
@@ -773,6 +796,16 @@ async function init() {
     <details id="advancedToolsDetails">
       <summary class="panel-head" style="cursor:pointer;"><h2 style="display:inline;">Разширени инструменти — ръчно въвеждане, импорт, пълна статистика</h2></summary>
 
+    <div class="panel" id="settingsPanel">
+      <div class="panel-head"><h2>Настройки — оценъчен пробег</h2></div>
+      <p class="hint">Средна стойност километри на поръчка, по която се изчислява „Оценъчен пробег“ в седмичните протоколи — пробегът НЕ е от одометър/GPS, а оценка по формулата брой поръчки × тази стойност. Използва се, за да могат подписаните от шофьорите седмични протоколи да служат като документална база за фактурите по гориво и части.</p>
+      <div class="error-box" id="settingsError"></div>
+      <form id="settingsForm" class="field-row">
+        <div class="field"><label>Км на поръчка</label><input name="avg_km_per_order" type="number" step="0.1" min="0" id="avgKmInput"></div>
+        <div class="field" style="align-self:flex-end;"><button type="submit" class="btn btn-primary btn-sm">Запази</button></div>
+      </form>
+    </div>
+
     <div class="grid-2">
       <div class="panel">
         <div class="panel-head"><h2>Избери служител</h2></div>
@@ -853,6 +886,7 @@ async function init() {
   if (isAdmin) {
     await initQuickPayPanel();
     await loadCorrectionRequests();
+    await initSettingsPanel();
     await initImportPanel();
     await loadPayrollImportHistory();
     await initPayrollStatsPanel();
