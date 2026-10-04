@@ -2414,6 +2414,25 @@ async function handleApi(req, res, pathname, query) {
       return sendJson(res, 200, { entry: rec });
     }
 
+    // ръчно отбелязване на ВЕЧЕ ИЗПЛАТЕНА сума за по-стара седмица по
+    // платформа (Bolt/Glovo/Друго) — вж. db.recordManualPayrollPayment за
+    // пълния контекст; изрично искане на потребителя за хора, които все още
+    // не са си взели парите за седмици отпреди изчистването на таблиците
+    if (pathname === '/api/hr/payroll/manual-payment' && req.method === 'POST') {
+      const user = requirePermission(req, res, 'payroll', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      try {
+        const rec = db.recordManualPayrollPayment({
+          profile_id: body.profile_id, week_start: body.week_start, week_end: body.week_end,
+          platform: body.platform, amount: body.amount, note: body.note, created_by: user.id,
+        });
+        return sendJson(res, 200, { entry: rec });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // еднократно/при нужда преизчисляване на удръжка по договор + наем на
     // кола за СЪЩЕСТВУВАЩИ седмични записи, по ТЕКУЩО зададените параметри
     // (активни трудови/граждански договори + активни договори за наем на
@@ -2923,6 +2942,22 @@ async function handleApi(req, res, pathname, query) {
       const body = await readJsonBody(req);
       const rec = db.markPayrollPaid(payrollPaidMatch[1], body.paid !== false, user.id);
       return sendJson(res, 200, { entry: rec });
+    }
+
+    // твърдо изтриване на седмичен запис — заключено за super_admin (не
+    // просто payroll.finalize), защото е необратимо и не е част от обичайния
+    // работен процес; изрично искане на потребителя за еднократно изчистване
+    // на таблиците до само една седмица
+    const payrollDeleteMatch = pathname.match(/^\/api\/hr\/payroll\/([\w-]+)$/);
+    if (payrollDeleteMatch && req.method === 'DELETE') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      try {
+        const rec = db.deletePayrollEntry(payrollDeleteMatch[1]);
+        return sendJson(res, 200, { entry: rec });
+      } catch (err) {
+        return sendJson(res, 404, { error: err.message });
+      }
     }
 
     // ---- ОТПУСКИ (Leave) --------------------------------------------------
