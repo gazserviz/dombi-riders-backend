@@ -490,6 +490,10 @@ const PUBLIC_CORS_PATHS = new Set([
   // съдържанието на новия рент-а-кар сайт (отделен произход/домейн) — GET
   // без сесия, четено от rent-a-car-site/index.html
   '/api/rentacar-site-content',
+  // пасивно засичане на посещения (referrer/utm) — POST без сесия, вика се от
+  // trackSiteVisit() в public/js/app.js (apply.html) и евентуално от
+  // отделните публични сайтове, ако там се добави същия снипет
+  '/api/public/track-visit',
 ]);
 
 async function handleApi(req, res, pathname, query) {
@@ -507,6 +511,41 @@ async function handleApi(req, res, pathname, query) {
     // ---- ВИТРИНА НА МАРКЕТИНГ САЙТА (публично, без сесия) ----------------
     if (pathname === '/api/public/fleet-showcase' && req.method === 'GET') {
       return sendJson(res, 200, { cars: db.getPublicFleetShowcase() });
+    }
+
+    // ---- ПАСИВНО ЗАСИЧАНЕ НА ПОСЕЩЕНИЯ (откъде идва посетителят) ---------
+    // публично, без сесия — вика се от trackSiteVisit() в public/js/app.js.
+    // Нарочно "best effort": при лош вход просто не записваме нищо, никога не
+    // връщаме грешка (не бива тракването да развали зареждането на страницата
+    // за посетителя), и ограничаваме по IP срещу спам запълване на базата.
+    if (pathname === '/api/public/track-visit' && req.method === 'POST') {
+      if (rateLimited(`track-visit:${clientIp(req)}`, { max: 60, windowMs: 10 * 60 * 1000 })) {
+        return sendJson(res, 204, {});
+      }
+      const body = await readJsonBody(req).catch(() => ({}));
+      const clip = (v, n) => (v ? String(v).slice(0, n) : null);
+      try {
+        db.recordSiteVisit({
+          site: clip(body.site, 40) || 'unknown',
+          path: clip(body.landing_path, 200),
+          referrer: clip(body.referrer, 500),
+          utm_source: clip(body.utm_source, 100),
+          utm_medium: clip(body.utm_medium, 100),
+          utm_campaign: clip(body.utm_campaign, 100),
+          utm_term: clip(body.utm_term, 100),
+          utm_content: clip(body.utm_content, 100),
+          user_agent: clip(req.headers['user-agent'], 300),
+        });
+      } catch (e) { /* никога не разваляме отговора заради тракването */ }
+      return sendJson(res, 204, {});
+    }
+
+    // статистика за посещенията (admin/manager) — агрегирана, за да се вижда
+    // откъде реално идва трафикът и да може да се оптимизира маркетингът
+    if (pathname === '/api/site-visits/stats' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'site_analytics', 'view');
+      if (!user) return;
+      return sendJson(res, 200, db.getSiteVisitStats({ from: query.from, to: query.to, site: query.site }));
     }
 
     // ---- СЪДЪРЖАНИЕ НА НАЧАЛНАТА СТРАНИЦА (dombi.bg) ----------------------
@@ -3570,6 +3609,15 @@ async function handleApi(req, res, pathname, query) {
         protection_status_photo_url: photos.protection_status_photo_url,
         residence_permit_photo_url: photos.residence_permit_photo_url,
         nap_certificate_photo_url: photos.nap_certificate_photo_url,
+        // откъде идва кандидатът — попълнено автоматично от JS
+        // (collectTrafficSource() в app.js), БЕЗ да сме го питали нищо
+        source_referrer: body.source_referrer ? escapeHtml(String(body.source_referrer).slice(0, 500)) : null,
+        source_landing_path: body.source_landing_path ? escapeHtml(String(body.source_landing_path).slice(0, 200)) : null,
+        source_utm_source: body.source_utm_source ? escapeHtml(String(body.source_utm_source).slice(0, 100)) : null,
+        source_utm_medium: body.source_utm_medium ? escapeHtml(String(body.source_utm_medium).slice(0, 100)) : null,
+        source_utm_campaign: body.source_utm_campaign ? escapeHtml(String(body.source_utm_campaign).slice(0, 100)) : null,
+        source_utm_term: body.source_utm_term ? escapeHtml(String(body.source_utm_term).slice(0, 100)) : null,
+        source_utm_content: body.source_utm_content ? escapeHtml(String(body.source_utm_content).slice(0, 100)) : null,
       });
       return sendJson(res, 201, { application: { id: rec.id, status: rec.status } });
     }
