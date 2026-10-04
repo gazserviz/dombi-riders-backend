@@ -305,10 +305,14 @@ async function mountShell() {
   }).join('');
 
   // "бърз запис в касата" (вж. CSS .quick-cash-fab/.sheet-* и wiring по-долу)
-  // — огледално на /api/cashier/adjustments на бекенда, който приема само
-  // super_admin; не показваме бутона на роли, за които така или иначе би
-  // отговорил с 403.
-  const canQuickCash = user.role === 'super_admin';
+  // — огледално на /api/cashier/adjustments на бекенда (вж.
+  // requireCashierOrSuperAdmin в server.js): винаги за super_admin, а освен
+  // това и за потребителя, който в момента е назначен за касиер (напр.
+  // Виктор) — именно той физически държи парите и трябва да може да ги
+  // записва директно. me.cashier_profile_id идва от /api/me. За всички
+  // останали роли не показваме бутона, за да не отговаря сървърът с 403.
+  const canQuickCash = user.role === 'super_admin'
+    || (me.cashier_profile_id && user.id === me.cashier_profile_id);
 
   mountPoint.outerHTML = `
     <div class="app-shell">
