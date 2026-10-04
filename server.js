@@ -2453,7 +2453,32 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const body = await readJsonBody(req).catch(() => ({}));
       try {
-        const rec = db.settleOutstandingDue(settleDueMatch[1], { settled_by: user.id, note: body && body.note });
+        // body.amount: по изрично искане на потребителя — при самото
+        // уреждане сумата може да се коригира (ако първоначално пренесената
+        // стойност е грешна); ако е подадена, точно тя се записва и като
+        // реален касов разход (виж db.syncOutstandingDuePayoutKasaEntry).
+        const rec = db.settleOutstandingDue(settleDueMatch[1], {
+          settled_by: user.id, note: body && body.note, amount: body && body.amount,
+        });
+        return sendJson(res, 200, { due: rec });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // Трайно изтриване на запис от "Дължими суми отпреди старта" — изрично
+    // искане на потребителя: записи, които останат (грешно пренесени,
+    // дублирани, вече не се дължат), трябва да могат да се трият. Вж.
+    // db.deleteOutstandingDue — ако записът вече е бил уреден, трие се и
+    // свързаното касово движение. Необратимо финансово действие — заключено
+    // само за super_admin, не просто payroll.finalize (огледално на DELETE
+    // /api/hr/payroll/:id по-долу).
+    const deleteDueMatch = pathname.match(/^\/api\/hr\/outstanding-dues\/([\w-]+)$/);
+    if (deleteDueMatch && req.method === 'DELETE') {
+      const user = requireSuperAdmin(req, res);
+      if (!user) return;
+      try {
+        const rec = db.deleteOutstandingDue(deleteDueMatch[1]);
         return sendJson(res, 200, { due: rec });
       } catch (err) {
         return sendJson(res, 404, { error: err.message });
