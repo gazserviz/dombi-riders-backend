@@ -2133,7 +2133,13 @@ async function handleApi(req, res, pathname, query) {
       const body = await readJsonBody(req);
       const allowed = ['egn', 'address', 'city', 'manager_id', 'full_name', 'phone', 'status',
         'id_card_number', 'id_card_expiry', 'driver_license_number', 'driver_license_expiry',
-        'start_date', 'end_date'];
+        'start_date', 'end_date',
+        // за Приложение 1 (ГДПР декларация) и "Декларация за осигуряване" към
+        // гражданския договор „Реклама и пренос на стока“ — вж. lib/pdf-builder.js
+        // buildCivilAdContractPdf/Docx и изричното искане на потребителя за
+        // пълно внедряване на реалния шаблон с приложения
+        'id_card_issue_date', 'id_card_issued_by',
+        'insurance_status', 'insurance_gross_amount'];
       // смяна на роля и имейл — само admin/super_admin (по-чувствителни полета)
       if (isAdminOrAbove(user)) allowed.push('role', 'email');
       const patch = {};
