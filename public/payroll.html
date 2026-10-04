@@ -552,6 +552,55 @@ async function initManualPaymentPanel() {
   });
 }
 
+async function loadOutstandingDues() {
+  const host = document.getElementById('outstandingDuesHost');
+  const errorBox = document.getElementById('outstandingDuesError');
+  if (!host) return;
+  errorBox.classList.remove('show');
+  try {
+    const { dues } = await Api.get('/api/hr/outstanding-dues?settled=false');
+    if (!dues.length) {
+      host.innerHTML = '<p class="hint">Няма чакащи дължими суми.</p>';
+      return;
+    }
+    const total = dues.reduce((s, d) => s + Number(d.amount || 0), 0);
+    host.innerHTML = `
+      <p class="hint">Общо чакащи: <strong>${fmtMoney(total)}</strong> (${dues.length} ${dues.length === 1 ? 'запис' : 'записа'})</p>
+      <table class="table">
+        <thead><tr><th>Служител</th><th>Седмица</th><th>Сума</th><th>Поръчки</th><th></th></tr></thead>
+        <tbody>
+          ${dues.map(d => `
+            <tr data-due-id="${d.id}">
+              <td>${d.profile_name || d.profile_id}</td>
+              <td>${d.week_start} — ${d.week_end}</td>
+              <td><strong>${fmtMoney(d.amount)}</strong></td>
+              <td>${d.order_count ?? '—'}</td>
+              <td><button type="button" class="btn btn-ghost btn-sm settle-due-btn">Отбележи уредено</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    host.querySelectorAll('.settle-due-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('tr');
+        const dueId = row.getAttribute('data-due-id');
+        btn.disabled = true;
+        try {
+          await Api.post(`/api/hr/outstanding-dues/${dueId}/settle`, {});
+          await loadOutstandingDues();
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.classList.add('show');
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.add('show');
+    host.innerHTML = '';
+  }
+}
+
 async function initImportPanel() {
   const platformSelect = document.getElementById('importPlatform');
   const weekFields = document.getElementById('importWeekFields');
@@ -891,6 +940,13 @@ async function init() {
       </form>
     </div>
 
+    <div class="panel" id="outstandingDuesPanel">
+      <div class="panel-head"><h2>Дължими суми отпреди старта</h2></div>
+      <p class="hint">Седмици, за които не е било отбелязано "платено" към момента на финансовия рестарт на системата — пренесени тук автоматично, извън обичайните седмични броячи/справки, докато не бъдат изрично отбелязани като уредени.</p>
+      <div class="error-box" id="outstandingDuesError"></div>
+      <div id="outstandingDuesHost"><p class="hint">Зарежда се…</p></div>
+    </div>
+
     <div class="panel" id="importPanel">
       <div class="panel-head"><h2>Импорт от Bolt / Glovo (реален седмичен файл)</h2></div>
       <p class="hint">Качете оригиналния .xlsx експорт от Bolt Food или Glovo (Freestreets BG) за дадена седмица — системата ще опита да съпостави куриерите със съществуващи профили по телефон и ще предложи преглед преди запис. Заработката се изчислява като сумата, изкарана от шофьора вкл. бакшишите, без ДДС.</p>
@@ -942,6 +998,7 @@ async function init() {
     await loadCorrectionRequests();
     await initSettingsPanel();
     await initManualPaymentPanel();
+    await loadOutstandingDues();
     await initImportPanel();
     await loadPayrollImportHistory();
     await initPayrollStatsPanel();
