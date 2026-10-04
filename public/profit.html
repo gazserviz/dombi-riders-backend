@@ -177,6 +177,13 @@ async function init() {
   mountPeriodPicker(document.getElementById('periodPickerHost'), fromInput, toInput, {
     useMonthPreset: true,
     onApply: (start, end) => render(start, end),
+    // fromInput/toInput тук са обикновени {value} обекти, не реални <input>
+    // елементи (вижте декларацията им по-горе) — wireWeekEnd по подразбиране
+    // опитва startInput.addEventListener('change', ...), което хвърля грешка
+    // за такъв обект (открито при живата проверка на деплоя с подробния
+    // седмичен финансов отчет). Самата функционалност не е нужна тук и така
+    // или иначе — няма видим <input>, само бутоните/избора на mountPeriodPicker.
+    wireWeekEnd: false,
   });
   render(fromInput.value, toInput.value);
 }
