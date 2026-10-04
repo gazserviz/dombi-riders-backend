@@ -270,8 +270,25 @@ async function loadFile() {
           <div class="field"><label>Валидна до</label><input name="id_card_expiry" type="date" value="${profile.id_card_expiry || ''}"></div>
         </div>
         <div class="field-row">
+          <div class="field"><label>Дата на издаване на лична карта</label><input name="id_card_issue_date" type="date" value="${profile.id_card_issue_date || ''}"></div>
+          <div class="field"><label>Издадена от (МВР – град)</label><input name="id_card_issued_by" value="${profile.id_card_issued_by || ''}" placeholder="напр. МВР София"></div>
+        </div>
+        <div class="field-row">
           <div class="field"><label>Номер на шофьорска книжка</label><input name="driver_license_number" value="${profile.driver_license_number || ''}"></div>
           <div class="field"><label>Валидна до</label><input name="driver_license_expiry" type="date" value="${profile.driver_license_expiry || ''}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Осигурителен статус (за декларация за осигуряване)</label>
+            <select name="insurance_status">
+              <option value="">— не е зададен —</option>
+              <option value="осигурен на друго основание" ${profile.insurance_status === 'осигурен на друго основание' ? 'selected' : ''}>Осигурен на друго основание</option>
+              <option value="неосигурен" ${profile.insurance_status === 'неосигурен' ? 'selected' : ''}>Неосигурен</option>
+              <option value="самоосигуряващо се лице" ${profile.insurance_status === 'самоосигуряващо се лице' ? 'selected' : ''}>Самоосигуряващо се лице</option>
+              <option value="студент/учащ" ${profile.insurance_status === 'студент/учащ' ? 'selected' : ''}>Студент/учащ</option>
+              <option value="пенсионер" ${profile.insurance_status === 'пенсионер' ? 'selected' : ''}>Пенсионер</option>
+            </select>
+          </div>
+          <div class="field"><label>Брутна сума (€, по декларация)</label><input name="insurance_gross_amount" type="number" step="0.01" min="0" value="${profile.insurance_gross_amount ?? ''}"></div>
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Запази промените</button>
       </form>
@@ -445,6 +462,59 @@ async function loadFile() {
                     <div class="field"><label>Праг на седмичната заработка (€)</label><input name="deduction_threshold_amount" type="number" step="0.01" min="0" value="${c.deduction_threshold_amount ?? ''}"></div>
                     <div class="field"><label>Процент при/над прага (%)</label><input name="deduction_percentage_above_threshold" type="number" step="0.01" min="0" max="100" value="${c.deduction_percentage_above_threshold ?? ''}"></div>
                   </div>
+                  <div class="ec-edit-civil-fields" style="display:${c.contract_type === 'civil' ? '' : 'none'}">
+                    <h4 style="margin:14px 0 6px;font-size:.85rem;color:var(--hint,#888);">Данни за граждански договор „Реклама и пренос на стока“</h4>
+                    <div class="field-row">
+                      <div class="field"><label>Такса на км (€)</label><input name="rate_per_km" type="number" step="0.001" min="0" value="${c.rate_per_km ?? ''}" placeholder="0.01"></div>
+                      <div class="field"><label>Такса на доставка (€)</label><input name="rate_per_delivery" type="number" step="0.01" min="0" value="${c.rate_per_delivery ?? ''}" placeholder="0.40"></div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field"><label>Таван километри</label><input name="cap_km" type="number" min="0" value="${c.cap_km ?? ''}" placeholder="10000"></div>
+                      <div class="field"><label>Таван доставки</label><input name="cap_deliveries" type="number" min="0" value="${c.cap_deliveries ?? ''}" placeholder="1000"></div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field"><label>Срок (години)</label><input name="term_years" type="number" min="1" value="${c.term_years ?? ''}" placeholder="1"></div>
+                      <div class="field"><label>Предизвестие (месеци)</label><input name="notice_period_months" type="number" min="0" value="${c.notice_period_months ?? ''}" placeholder="2"></div>
+                      <div class="field"><label>Депозит (€)</label><input name="deposit_amount" type="number" step="0.01" min="0" value="${c.deposit_amount ?? ''}" placeholder="50"></div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field"><label>Оборудване 1 — наименование</label><input name="equipment_name_1" value="${(c.equipment && c.equipment[0] && c.equipment[0].name) || 'Раница'}"></div>
+                      <div class="field"><label>Стойност (€)</label><input name="equipment_value_1" type="number" step="0.01" value="${(c.equipment && c.equipment[0] && c.equipment[0].value) ?? 50}"></div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field"><label>Оборудване 2 — наименование</label><input name="equipment_name_2" value="${(c.equipment && c.equipment[1] && c.equipment[1].name) || 'Рекламна табела'}"></div>
+                      <div class="field"><label>Стойност (€)</label><input name="equipment_value_2" type="number" step="0.01" value="${(c.equipment && c.equipment[1] && c.equipment[1].value) ?? 1}"></div>
+                    </div>
+                    <h4 style="margin:14px 0 6px;font-size:.85rem;color:var(--hint,#888);">Собствено превозно средство (за Приложение 1 — ГДПР)</h4>
+                    <div class="field-row">
+                      <div class="field"><label>Вид</label>
+                        <select name="own_vehicle_type">
+                          <option value="automobile" ${(!c.own_vehicle || c.own_vehicle.type === 'automobile') ? 'selected' : ''}>Автомобил</option>
+                          <option value="bicycle" ${c.own_vehicle && c.own_vehicle.type === 'bicycle' ? 'selected' : ''}>Велосипед</option>
+                          <option value="scooter" ${c.own_vehicle && c.own_vehicle.type === 'scooter' ? 'selected' : ''}>Скутер</option>
+                          <option value="motorcycle" ${c.own_vehicle && c.own_vehicle.type === 'motorcycle' ? 'selected' : ''}>Мотор</option>
+                        </select>
+                      </div>
+                      <div class="field"><label>Електрическо</label>
+                        <select name="own_vehicle_electric">
+                          <option value="" ${!(c.own_vehicle && c.own_vehicle.electric) ? 'selected' : ''}>Не</option>
+                          <option value="1" ${c.own_vehicle && c.own_vehicle.electric ? 'selected' : ''}>Да</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field"><label>Марка</label><input name="own_vehicle_make" value="${(c.own_vehicle && c.own_vehicle.make) || ''}"></div>
+                      <div class="field"><label>Модел</label><input name="own_vehicle_model" value="${(c.own_vehicle && c.own_vehicle.model) || ''}"></div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field"><label>Рег. номер</label><input name="own_vehicle_plate" value="${(c.own_vehicle && c.own_vehicle.plate) || ''}"></div>
+                      <div class="field"><label>Година на първа рег.</label><input name="own_vehicle_reg_year" value="${(c.own_vehicle && c.own_vehicle.reg_year) || ''}"></div>
+                    </div>
+                    <div class="field-row">
+                      <div class="field"><label>Гориво</label><input name="own_vehicle_fuel" value="${(c.own_vehicle && c.own_vehicle.fuel) || ''}" placeholder="Бензин/Дизел/..."></div>
+                      <div class="field"><label>Разход (л/100км)</label><input name="own_vehicle_consumption" type="number" step="0.1" value="${(c.own_vehicle && c.own_vehicle.consumption) || ''}"></div>
+                    </div>
+                  </div>
                   <button type="submit" class="btn btn-primary btn-sm">Запази удръжката</button>
                   <button type="button" class="btn btn-ghost btn-sm ec-deduction-cancel" data-id="${c.id}">Отказ</button>
                 </form>
@@ -493,6 +563,56 @@ async function loadFile() {
         <div class="field-row" id="ecPercentageThresholdFields" style="display:none;">
           <div class="field"><label>Праг на седмичната заработка (€, по избор)</label><input name="deduction_threshold_amount" type="number" step="0.01" min="0"></div>
           <div class="field"><label>Процент при/над прага (%, по избор)</label><input name="deduction_percentage_above_threshold" type="number" step="0.01" min="0" max="100"></div>
+        </div>
+        <div id="ecCivilFields" style="display:none;">
+          <h4 style="margin:14px 0 6px;font-size:.85rem;color:var(--hint,#888);">Данни за граждански договор „Реклама и пренос на стока“ (оставете празно за стойността по подразбиране)</h4>
+          <div class="field-row">
+            <div class="field"><label>Такса на км (€)</label><input name="rate_per_km" type="number" step="0.001" min="0" placeholder="0.01"></div>
+            <div class="field"><label>Такса на доставка (€)</label><input name="rate_per_delivery" type="number" step="0.01" min="0" placeholder="0.40"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Таван километри</label><input name="cap_km" type="number" min="0" placeholder="10000"></div>
+            <div class="field"><label>Таван доставки</label><input name="cap_deliveries" type="number" min="0" placeholder="1000"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Срок (години)</label><input name="term_years" type="number" min="1" placeholder="1"></div>
+            <div class="field"><label>Предизвестие (месеци)</label><input name="notice_period_months" type="number" min="0" placeholder="2"></div>
+            <div class="field"><label>Депозит (€)</label><input name="deposit_amount" type="number" step="0.01" min="0" placeholder="50"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Оборудване 1 — наименование</label><input name="equipment_name_1" value="Раница"></div>
+            <div class="field"><label>Стойност (€)</label><input name="equipment_value_1" type="number" step="0.01" value="50"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Оборудване 2 — наименование</label><input name="equipment_name_2" value="Рекламна табела"></div>
+            <div class="field"><label>Стойност (€)</label><input name="equipment_value_2" type="number" step="0.01" value="1"></div>
+          </div>
+          <h4 style="margin:14px 0 6px;font-size:.85rem;color:var(--hint,#888);">Собствено превозно средство (за Приложение 1 — ГДПР декларация)</h4>
+          <div class="field-row">
+            <div class="field"><label>Вид</label>
+              <select name="own_vehicle_type">
+                <option value="automobile">Автомобил</option>
+                <option value="bicycle">Велосипед</option>
+                <option value="scooter">Скутер</option>
+                <option value="motorcycle">Мотор</option>
+              </select>
+            </div>
+            <div class="field"><label>Електрическо</label>
+              <select name="own_vehicle_electric"><option value="">Не</option><option value="1">Да</option></select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Марка</label><input name="own_vehicle_make"></div>
+            <div class="field"><label>Модел</label><input name="own_vehicle_model"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Рег. номер</label><input name="own_vehicle_plate"></div>
+            <div class="field"><label>Година на първа рег.</label><input name="own_vehicle_reg_year"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Гориво</label><input name="own_vehicle_fuel" placeholder="Бензин/Дизел/..."></div>
+            <div class="field"><label>Разход (л/100км)</label><input name="own_vehicle_consumption" type="number" step="0.1"></div>
+          </div>
         </div>
         <div class="field"><label>Скенер на подписан договор (по избор)</label><input type="file" id="ecScanFile" accept="image/*,application/pdf"></div>
         <div class="hint" id="ecScanMsg"></div>
@@ -722,8 +842,47 @@ async function loadFile() {
 
   const ecTypeSelect = document.getElementById('ecTypeSelect');
   const ecHoursField = document.getElementById('ecHoursField');
-  function syncHoursField() { if (ecHoursField) ecHoursField.style.display = ecTypeSelect.value === 'labor' ? '' : 'none'; }
+  const ecCivilFields = document.getElementById('ecCivilFields');
+  function syncHoursField() {
+    if (ecHoursField) ecHoursField.style.display = ecTypeSelect.value === 'labor' ? '' : 'none';
+    if (ecCivilFields) ecCivilFields.style.display = ecTypeSelect.value === 'civil' ? '' : 'none';
+  }
   if (ecTypeSelect) { ecTypeSelect.addEventListener('change', syncHoursField); syncHoursField(); }
+
+  // Събира плоските own_vehicle_*/equipment_*_N полета от формата в
+  // own_vehicle обект и equipment масив, както ги очакват
+  // buildCivilAdContractPdf/Docx (lib/pdf-builder.js, lib/doc-builder.js) —
+  // FormData не поддържа вложени структури, затова сглобяваме ръчно тук.
+  function collectCivilFields(data) {
+    const ov = {};
+    if (data.own_vehicle_type) ov.type = data.own_vehicle_type;
+    if (data.own_vehicle_make) ov.make = data.own_vehicle_make;
+    if (data.own_vehicle_model) ov.model = data.own_vehicle_model;
+    if (data.own_vehicle_plate) ov.plate = data.own_vehicle_plate;
+    if (data.own_vehicle_reg_year) ov.reg_year = data.own_vehicle_reg_year;
+    if (data.own_vehicle_fuel) ov.fuel = data.own_vehicle_fuel;
+    if (data.own_vehicle_consumption) ov.consumption = data.own_vehicle_consumption;
+    ov.electric = !!data.own_vehicle_electric;
+    delete data.own_vehicle_type; delete data.own_vehicle_make; delete data.own_vehicle_model;
+    delete data.own_vehicle_plate; delete data.own_vehicle_reg_year; delete data.own_vehicle_fuel;
+    delete data.own_vehicle_consumption; delete data.own_vehicle_electric;
+    if (Object.keys(ov).length) data.own_vehicle = ov;
+
+    const equipment = [];
+    for (let i = 1; i <= 2; i++) {
+      const name = data[`equipment_name_${i}`];
+      const value = data[`equipment_value_${i}`];
+      delete data[`equipment_name_${i}`]; delete data[`equipment_value_${i}`];
+      if (name) equipment.push({ name, value: value ? Number(value) : 0 });
+    }
+    if (equipment.length) data.equipment = equipment;
+
+    ['rate_per_km', 'rate_per_delivery', 'cap_km', 'cap_deliveries', 'term_years', 'notice_period_months', 'deposit_amount'].forEach(k => {
+      if (data[k] === '') delete data[k];
+      else if (data[k] != null) data[k] = Number(data[k]);
+    });
+    return data;
+  }
 
   const ecDeductionTypeSelect = document.getElementById('ecDeductionTypeSelect');
   function syncEcDeductionFields() {
@@ -762,8 +921,11 @@ async function loadFile() {
   // ден, огледално на ecTypeSelect/ecHoursField за формата "Нов договор"
   document.querySelectorAll('.ec-edit-type-select').forEach(sel => {
     function syncHours() {
-      const field = sel.closest('form').querySelector('.ec-edit-hours-field');
+      const form = sel.closest('form');
+      const field = form.querySelector('.ec-edit-hours-field');
       if (field) field.style.display = sel.value === 'labor' ? '' : 'none';
+      const civilFields = form.querySelector('.ec-edit-civil-fields');
+      if (civilFields) civilFields.style.display = sel.value === 'civil' ? '' : 'none';
     }
     sel.addEventListener('change', syncHours);
   });
@@ -791,6 +953,11 @@ async function loadFile() {
         patch.deduction_percentage = null;
         patch.deduction_threshold_amount = null;
         patch.deduction_percentage_above_threshold = null;
+      }
+      if (data.contract_type === 'civil') {
+        const civilData = collectCivilFields({ ...data });
+        ['rate_per_km', 'rate_per_delivery', 'cap_km', 'cap_deliveries', 'term_years', 'notice_period_months', 'deposit_amount', 'equipment', 'own_vehicle']
+          .forEach(k => { if (civilData[k] !== undefined) patch[k] = civilData[k]; });
       }
       try {
         await Api.put(`/api/hr/employment-contracts/${id}`, patch);
@@ -876,6 +1043,14 @@ async function loadFile() {
     if (data.contract_type !== 'labor') delete data.hours_per_day;
     else data.hours_per_day = Number(data.hours_per_day);
     if (!data.end_date) delete data.end_date;
+    if (data.contract_type === 'civil') {
+      collectCivilFields(data);
+    } else {
+      ['rate_per_km', 'rate_per_delivery', 'cap_km', 'cap_deliveries', 'term_years', 'notice_period_months', 'deposit_amount',
+        'own_vehicle_type', 'own_vehicle_make', 'own_vehicle_model', 'own_vehicle_plate', 'own_vehicle_reg_year',
+        'own_vehicle_fuel', 'own_vehicle_consumption', 'own_vehicle_electric',
+        'equipment_name_1', 'equipment_value_1', 'equipment_name_2', 'equipment_value_2'].forEach(k => delete data[k]);
+    }
     if (data.deduction_type === 'percentage') {
       delete data.weekly_deduction_amount;
       data.deduction_percentage = data.deduction_percentage ? Number(data.deduction_percentage) : 0;
