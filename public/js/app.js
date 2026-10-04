@@ -102,6 +102,7 @@ const NAV = [
     { href: '/finance.html', icon: '💰', label: 'Счетоводство', roles: ['admin','manager'] },
     { href: '/cashier.html', icon: '🏦', label: 'Обща каса', roles: ['admin','manager'] },
     { href: '/finance-alerts.html', icon: '🚨', label: 'Финансови сигнали', roles: ['admin','manager'], badgeKey: 'finance_alerts' },
+    { href: '/finance-weekly-report.html', icon: '🗞️', label: 'Седмичен отчет', roles: ['admin','manager'] },
   ]},
   { group: 'Поща', items: [
     { href: '/mail.html', icon: '📧', label: 'Пощенска кутия', roles: ['admin'], badgeKey: 'mail' },
