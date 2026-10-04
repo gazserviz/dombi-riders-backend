@@ -2340,6 +2340,24 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---- НАСТРОЙКИ ----------------------------------------------------------
+    // Засега само avg_km_per_order (вж. db.getSettings/updateSettings) —
+    // средна стойност км/поръчка за изчисляване на оценъчния пробег в
+    // седмичните протоколи за заплати (buildPayrollConfirmationPdf), които
+    // служат и като документална база за фактурите по гориво/части.
+    if (pathname === '/api/settings' && req.method === 'GET') {
+      const user = requireAuth(req, res);
+      if (!user) return;
+      return sendJson(res, 200, { settings: db.getSettings() });
+    }
+    if (pathname === '/api/settings' && req.method === 'PUT') {
+      const user = requirePermission(req, res, 'payroll', 'manage');
+      if (!user) return;
+      const body = await readJsonBody(req);
+      const settings = db.updateSettings(body);
+      return sendJson(res, 200, { settings });
+    }
+
     // ---- СЕДМИЧНИ ЗАПЛАТИ (Payroll) ---------------------------------------
     // ⚠️ Разписването тук потвърждава ИЗРИЧНО САМО броя поръчки за седмицата —
     // никога паричната стойност (виж buildPayrollConfirmationPdf в
@@ -2365,7 +2383,11 @@ async function handleApi(req, res, pathname, query) {
           ...e, gross_earnings: null, deduction_amount: null, car_rent_amount: null, net_amount: null,
         }));
       }
-      return sendJson(res, 200, { entries, earnings_visible: !viewingOwnWithoutEarnings });
+      // оценъчен пробег (не е парична сума — показва се винаги, вкл. на
+      // самия шофьор; вж. buildPayrollConfirmationPdf за пълния контекст)
+      const avgKmPerOrder = db.getSettings().avg_km_per_order;
+      entries = entries.map(e => ({ ...e, estimated_km: Math.round(Number(e.order_count || 0) * avgKmPerOrder) }));
+      return sendJson(res, 200, { entries, earnings_visible: !viewingOwnWithoutEarnings, avg_km_per_order: avgKmPerOrder });
     }
     if (pathname === '/api/hr/payroll' && req.method === 'POST') {
       const user = requirePermission(req, res, 'payroll', 'manage');
@@ -2879,6 +2901,7 @@ async function handleApi(req, res, pathname, query) {
 
       const docBuffer = await pdfBuilder.buildPayrollConfirmationPdf({
         entry, employeeName: employee ? employee.full_name : entry.profile_id,
+        avgKmPerOrder: db.getSettings().avg_km_per_order,
       });
       const result = esign.recordInPersonSignature({
         documentBuffer: docBuffer,
