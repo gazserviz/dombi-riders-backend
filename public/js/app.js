@@ -101,6 +101,7 @@ const NAV = [
     { href: '/profit.html', icon: '📈', label: 'Печалба', roles: ['admin','manager'] },
     { href: '/finance.html', icon: '💰', label: 'Счетоводство', roles: ['admin','manager'] },
     { href: '/cashier.html', icon: '🏦', label: 'Обща каса', roles: ['admin','manager'] },
+    { href: '/finance-alerts.html', icon: '🚨', label: 'Финансови сигнали', roles: ['admin','manager'], badgeKey: 'finance_alerts' },
   ]},
   { group: 'Поща', items: [
     { href: '/mail.html', icon: '📧', label: 'Пощенска кутия', roles: ['admin'], badgeKey: 'mail' },
@@ -450,6 +451,10 @@ const NOTIFICATION_BADGE_CHECKS = {
   applications: async () => {
     const { applications } = await Api.get('/api/hr/applications?status=pending');
     return (applications || []).length;
+  },
+  finance_alerts: async () => {
+    const { count } = await Api.get('/api/finance/alerts/count');
+    return count || 0;
   },
 };
 let notificationBadgeTimer = null;
