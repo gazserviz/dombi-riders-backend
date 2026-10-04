@@ -131,6 +131,12 @@ async function loadFile() {
   CURRENT_EMPLOYMENT_CONTRACTS = employment_contracts;
   CURRENT_RENTAL_CONTRACTS = rental_contracts;
   const contractSummaries = activeContractSummaries(employment_contracts, rental_contracts);
+  // текущите активни договор/наем — за бързите полета "Договор и кола" във
+  // формата "Редактиране на документи" по-долу (изрично искане на
+  // потребителя да може да смени таксата/вида/колата точно оттам, без да се
+  // налага да скролва до отделните таблици с договори)
+  const activeEc = (employment_contracts || []).find(c => c.status === 'active');
+  const activeRental = (rental_contracts || []).find(c => c.status === 'active');
 
   document.getElementById('pageTitle') && (document.getElementById('pageTitle').textContent = profile.full_name);
 
@@ -228,6 +234,37 @@ async function loadFile() {
             ${MANAGERS.filter(m => m.id !== profile.id).map(m => `<option value="${m.id}" ${profile.manager_id === m.id ? 'selected' : ''}>${m.full_name} (${ROLE_LABELS[m.role] || m.role})</option>`).join('')}
           </select>
         </div>
+        ${profile.role === 'driver' ? `
+        <h3 style="margin-top:16px;margin-bottom:2px;">Договор и кола</h3>
+        <p class="hint" style="margin-top:0;">Прилага се върху текущия активен договор/наем, или създава нов — ако искате пълен контрол над удръжката (процентна, прагове и др.) или наема (депозит, период), използвайте „Редакция на всички параметри“ в таблиците по-долу.</p>
+        <div class="field-row">
+          <div class="field"><label>Тип договор</label>
+            <select name="ec_contract_type" id="editEcType">
+              <option value="">— без промяна —</option>
+              <option value="labor" ${activeEc && activeEc.contract_type === 'labor' ? 'selected' : ''}>Трудов</option>
+              <option value="civil" ${activeEc && activeEc.contract_type === 'civil' ? 'selected' : ''}>Граждански</option>
+            </select>
+          </div>
+          <div class="field" id="editEcHoursField" style="display:${activeEc && activeEc.contract_type !== 'civil' ? '' : 'none'}"><label>Часове на ден</label>
+            <select name="ec_hours_per_day">
+              ${[2, 4, 6, 8].map(h => `<option value="${h}" ${activeEc && Number(activeEc.hours_per_day) === h ? 'selected' : ''}>${h}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Седмична такса / удръжка (€)</label><input name="ec_weekly_deduction_amount" type="number" step="0.01" min="0" value="${activeEc && activeEc.deduction_type !== 'percentage' ? (activeEc.weekly_deduction_amount ?? '') : ''}" placeholder="оставете празно за без промяна"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Нает автомобил</label>
+            <select name="rc_vehicle_id" id="editRcVehicle">
+              <option value="">— без промяна —</option>
+              <option value="__none__">— няма / прекрати наема —</option>
+              ${ALL_VEHICLES.map(v => `<option value="${v.id}" ${activeRental && activeRental.vehicle_id === v.id ? 'selected' : ''}>${v.plate_number} — ${v.make} ${v.model}${v.status !== 'available' && !(activeRental && activeRental.vehicle_id === v.id) ? ' (' + (VEHICLE_STATUS_LABELS[v.status] || [v.status])[0] + ')' : ''}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Наем (€ / седмица)</label><input name="rc_rate_amount" type="number" step="0.01" min="0" value="${activeRental ? (activeRental.rate_amount ?? '') : ''}" placeholder="при нова/сменена кола"></div>
+        </div>
+        ` : ''}
         <div class="field-row">
           <div class="field"><label>Номер на лична карта</label><input name="id_card_number" value="${profile.id_card_number || ''}"></div>
           <div class="field"><label>Валидна до</label><input name="id_card_expiry" type="date" value="${profile.id_card_expiry || ''}"></div>
@@ -562,6 +599,12 @@ async function loadFile() {
     </div>
   `;
 
+  const editEcType = document.getElementById('editEcType');
+  const editEcHoursField = document.getElementById('editEcHoursField');
+  if (editEcType) editEcType.addEventListener('change', () => {
+    if (editEcHoursField) editEcHoursField.style.display = editEcType.value === 'civil' ? 'none' : '';
+  });
+
   const editForm = document.getElementById('editForm');
   if (editForm) editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -570,11 +613,65 @@ async function loadFile() {
     errorBox.classList.remove('show'); successBox.classList.remove('show');
     const data = Object.fromEntries(new FormData(e.target).entries());
     if (!data.manager_id) data.manager_id = null;
+    // полетата "Договор и кола" не са профилни полета — извадени отделно и
+    // обработени след запазването на профила (изрично искане на потребителя
+    // да може да смени таксата/вида на договора и зачисления автомобил
+    // директно от тази форма, без да се налага да скролва/кръстосва менюта)
+    const ecType = data.ec_contract_type || ''; delete data.ec_contract_type;
+    const ecHours = data.ec_hours_per_day || ''; delete data.ec_hours_per_day;
+    const ecDeduction = data.ec_weekly_deduction_amount || ''; delete data.ec_weekly_deduction_amount;
+    const rcVehicle = data.rc_vehicle_id || ''; delete data.rc_vehicle_id;
+    const rcRate = data.rc_rate_amount || ''; delete data.rc_rate_amount;
     try {
       await Api.put(`/api/hr/personnel/${TARGET_ID}`, data);
+      const warnings = [];
+
+      if (ecType || ecDeduction) {
+        const curEc = CURRENT_EMPLOYMENT_CONTRACTS.find(c => c.status === 'active');
+        try {
+          if (curEc) {
+            const patch = {};
+            if (ecType) patch.contract_type = ecType;
+            const effectiveType = ecType || curEc.contract_type;
+            if (effectiveType === 'labor' && ecHours) patch.hours_per_day = Number(ecHours);
+            if (effectiveType === 'civil') patch.hours_per_day = null;
+            if (ecDeduction !== '') patch.weekly_deduction_amount = Number(ecDeduction);
+            await Api.put(`/api/hr/employment-contracts/${curEc.id}`, patch);
+          } else if (ecType) {
+            const ecData = { profile_id: TARGET_ID, contract_type: ecType, start_date: todayStr(), status: 'active' };
+            if (ecType === 'labor') ecData.hours_per_day = Number(ecHours || 8);
+            if (ecDeduction) ecData.weekly_deduction_amount = Number(ecDeduction);
+            await Api.post('/api/hr/employment-contracts', ecData);
+          }
+        } catch (err) { warnings.push('Договорът не се обнови: ' + err.message); }
+      }
+
+      if (rcVehicle) {
+        const curRental = CURRENT_RENTAL_CONTRACTS.find(c => c.status === 'active');
+        try {
+          if (rcVehicle === '__none__') {
+            if (curRental) await Api.put(`/api/contracts/${curRental.id}`, { status: 'terminated' });
+          } else if (curRental && curRental.vehicle_id === rcVehicle) {
+            if (rcRate) await Api.put(`/api/contracts/${curRental.id}`, { rate_amount: Number(rcRate) });
+          } else {
+            if (curRental) await Api.put(`/api/contracts/${curRental.id}`, { status: 'terminated' });
+            await Api.post('/api/contracts', {
+              vehicle_id: rcVehicle,
+              renter_type: 'dombi_courier',
+              renter_driver_id: TARGET_ID,
+              start_date: todayStr(),
+              rate_amount: Number(rcRate || 0),
+              rate_period: 'week',
+              deposit_amount: 0,
+              status: 'active',
+            });
+          }
+        } catch (err) { warnings.push('Колата не се обнови: ' + err.message); }
+      }
+
       await loadFile();
       const sb = document.getElementById('editSuccess');
-      sb.textContent = 'Запазено успешно.';
+      sb.textContent = 'Запазено успешно.' + (warnings.length ? ' Внимание: ' + warnings.join(' ') : '');
       sb.classList.add('show');
     } catch (err) {
       errorBox.textContent = err.message;
