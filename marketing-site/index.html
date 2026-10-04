@@ -376,6 +376,27 @@
 </style>
 </head>
 <body>
+<script>
+(function(){
+  try {
+    var p = new URLSearchParams(location.search);
+    var payload = {
+      site: 'dombi.bg',
+      referrer: document.referrer || '',
+      landing_path: location.pathname,
+      utm_source: p.get('utm_source') || (p.get('fbclid') ? 'facebook' : (p.get('gclid') ? 'google' : '')),
+      utm_medium: p.get('utm_medium') || '',
+      utm_campaign: p.get('utm_campaign') || '',
+      utm_term: p.get('utm_term') || '',
+      utm_content: p.get('utm_content') || '',
+    };
+    fetch('https://dombi-riders-backend.onrender.com/api/public/track-visit', {
+      method: 'POST', headers: {'content-type':'application/json'},
+      body: JSON.stringify(payload), keepalive: true, mode: 'cors',
+    }).catch(function(){});
+  } catch (e) {}
+})();
+</script>
 <div class="site-bg" aria-hidden="true"></div>
 
 <!-- ============ HEADER ============ -->
