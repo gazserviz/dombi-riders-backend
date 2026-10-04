@@ -485,6 +485,10 @@ async function init() {
   await loadCashier();
   await loadBankMovements();
 }
+// ако потребителят ползва глобалния "Бърз запис в касата" (вж. app.js
+// mountShell) докато вече е на тази страница, нека балансът/списъкът се
+// опреснят веднага, вместо да чакат ръчно презареждане
+window.onQuickCashSaved = () => { loadSummary(); loadCashier(); };
 init();
 </script>
 </body>

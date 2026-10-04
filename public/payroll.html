@@ -566,7 +566,7 @@ async function loadOutstandingDues() {
     const total = dues.reduce((s, d) => s + Number(d.amount || 0), 0);
     host.innerHTML = `
       <p class="hint">Общо чакащи: <strong>${fmtMoney(total)}</strong> (${dues.length} ${dues.length === 1 ? 'запис' : 'записа'}). Сумата може да се коригира преди да се маркира като уредена, ако първоначално пренесената стойност е грешна — при "Отбележи уредено" точно въведената тук сума се записва и като разход в <a href="/cashier.html">общата каса</a>.</p>
-      <table class="table">
+      <div class="table-wrap"><table class="table">
         <thead><tr><th>Служител</th><th>Седмица</th><th>Сума</th><th>Поръчки</th><th></th></tr></thead>
         <tbody>
           ${dues.map(d => `
@@ -581,7 +581,7 @@ async function loadOutstandingDues() {
               </div></td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table></div>`;
     host.querySelectorAll('.settle-due-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const row = btn.closest('tr');
