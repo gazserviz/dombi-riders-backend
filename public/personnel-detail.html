@@ -85,6 +85,14 @@ let MANAGERS = [];
 // заредени еднократно в init() (CAN_EDIT) — за селектора "Кола" във формата
 // "Зачисли нает автомобил" по-долу; огледално на MANAGERS по-горе
 let ALL_VEHICLES = [];
+// кой в момента държи дадена кола (вж. зареждането в init() по-долу) —
+// обединява активните зачисления (vehicle_assignments) И самостоятелните
+// активни договори за наем без assignment_id (вж. коментара над
+// assignmentsTab във vehicle-detail.html за същия модел/бъг), за да хванем
+// И колите, заети направо през тази форма от друго досие. Ползва се в
+// бързото поле "Нает автомобил" по-долу, за да предупредим администратора,
+// ако избере кола, вече заета от друг, вместо тихо да я прехвърлим.
+let VEHICLE_HOLDER_BY_ID = {};
 // запазени тук (от loadFile), за да могат initEarningsPanel/loadEarnings да
 // покажат "на какъв договор е" служителят в компактния обобщен изглед, без
 // да правят отделна заявка само за това
@@ -261,8 +269,14 @@ async function loadFile() {
               <option value="__none__">— няма / прекрати наема —</option>
               ${ALL_VEHICLES.map(v => `<option value="${v.id}" ${activeRental && activeRental.vehicle_id === v.id ? 'selected' : ''}>${v.plate_number} — ${v.make} ${v.model}${v.status !== 'available' && !(activeRental && activeRental.vehicle_id === v.id) ? ' (' + (VEHICLE_STATUS_LABELS[v.status] || [v.status])[0] + ')' : ''}</option>`).join('')}
             </select>
+            <div class="hint" id="editRcVehicleHint" style="display:none;margin-top:4px;color:var(--warn, #b8860b);"></div>
           </div>
           <div class="field"><label>Наем (€ / седмица)</label><input name="rc_rate_amount" type="number" step="0.01" min="0" value="${activeRental ? (activeRental.rate_amount ?? '') : ''}" placeholder="при нова/сменена кола"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Начална дата на наема</label><input name="rc_start_date" type="date" value="${todayStr()}">
+            <div class="hint">Прилага се само при нова/сменена кола по-горе.</div>
+          </div>
         </div>
         ` : ''}
         <div class="field-row">
@@ -725,6 +739,22 @@ async function loadFile() {
     if (editEcHoursField) editEcHoursField.style.display = editEcType.value === 'civil' ? 'none' : '';
   });
 
+  // предупреждава веднага при избор на кола, вече заета от ДРУГ служител —
+  // вж. VEHICLE_HOLDER_BY_ID по-горе; само информативно тук, реалното
+  // потвърждение е при самото запазване (editForm submit по-долу), за да не
+  // се налага да преизбира колата, ако просто размисли.
+  const editRcVehicle = document.getElementById('editRcVehicle');
+  const editRcVehicleHint = document.getElementById('editRcVehicleHint');
+  if (editRcVehicle && editRcVehicleHint) editRcVehicle.addEventListener('change', () => {
+    const holder = VEHICLE_HOLDER_BY_ID[editRcVehicle.value];
+    if (holder && holder.driverId !== TARGET_ID) {
+      editRcVehicleHint.textContent = `⚠ Тази кола в момента е зачислена на ${holder.name} от ${fmtDate(holder.since)}. При запазване ще бъдете попитани дали да прекратите предишното зачисление/договор.`;
+      editRcVehicleHint.style.display = '';
+    } else {
+      editRcVehicleHint.style.display = 'none';
+    }
+  });
+
   const editForm = document.getElementById('editForm');
   if (editForm) editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -742,6 +772,25 @@ async function loadFile() {
     const ecDeduction = data.ec_weekly_deduction_amount || ''; delete data.ec_weekly_deduction_amount;
     const rcVehicle = data.rc_vehicle_id || ''; delete data.rc_vehicle_id;
     const rcRate = data.rc_rate_amount || ''; delete data.rc_rate_amount;
+    const rcStartDate = data.rc_start_date || todayStr(); delete data.rc_start_date;
+
+    // Ако избраната кола в момента е зачислена/наета на ДРУГ служител, питаме
+    // изрично преди да продължим, вместо тихо да отнемем колата от него
+    // (изрично искане на потребителя: при заета кола да излезе съобщение на
+    // кой и от коя дата е назначена, и да пита дали да прекрати предишния
+    // договор). При отказ пропускаме САМО частта за колата — останалите
+    // промени по досието пак се запазват.
+    let skipVehicleChange = false;
+    let holderToTerminate = null;
+    if (rcVehicle && rcVehicle !== '__none__') {
+      const holder = VEHICLE_HOLDER_BY_ID[rcVehicle];
+      if (holder && holder.driverId !== TARGET_ID) {
+        const vLabel = (ALL_VEHICLES.find(v => v.id === rcVehicle) || {}).plate_number || 'Колата';
+        const ok = confirm(`${vLabel} в момента е зачислена на ${holder.name} от ${fmtDate(holder.since)}.\n\nДа прекратя ли предишното зачисление/договор и да я прехвърля на ${data.full_name || 'този служител'}?`);
+        if (ok) holderToTerminate = holder;
+        else skipVehicleChange = true;
+      }
+    }
     try {
       await Api.put(`/api/hr/personnel/${TARGET_ID}`, data);
       const warnings = [];
@@ -766,7 +815,9 @@ async function loadFile() {
         } catch (err) { warnings.push('Договорът не се обнови: ' + err.message); }
       }
 
-      if (rcVehicle) {
+      if (rcVehicle && skipVehicleChange) {
+        warnings.push('Смяната на кола беше отменена — колата остава при предишния държач.');
+      } else if (rcVehicle) {
         const curRental = CURRENT_RENTAL_CONTRACTS.find(c => c.status === 'active');
         try {
           if (rcVehicle === '__none__') {
@@ -775,11 +826,21 @@ async function loadFile() {
             if (rcRate) await Api.put(`/api/contracts/${curRental.id}`, { rate_amount: Number(rcRate) });
           } else {
             if (curRental) await Api.put(`/api/contracts/${curRental.id}`, { status: 'terminated' });
+            // прекратяваме и зачислението/договора на ПРЕДИШНИЯ държач на тази
+            // кола, ако администраторът потвърди прехвърлянето по-горе —
+            // иначе колата би останала с ДВЕ едновременно активни зачисления.
+            if (holderToTerminate) {
+              if (holderToTerminate.source === 'assignment') {
+                await Api.post(`/api/assignments/${holderToTerminate.recordId}/end`, {});
+              } else {
+                await Api.put(`/api/contracts/${holderToTerminate.recordId}`, { status: 'terminated' });
+              }
+            }
             await Api.post('/api/contracts', {
               vehicle_id: rcVehicle,
               renter_type: 'dombi_courier',
               renter_driver_id: TARGET_ID,
-              start_date: todayStr(),
+              start_date: rcStartDate,
               rate_amount: Number(rcRate || 0),
               rate_period: 'week',
               deposit_amount: 0,
@@ -1473,6 +1534,28 @@ async function init() {
       const { vehicles } = await Api.get('/api/vehicles');
       ALL_VEHICLES = vehicles;
     } catch (e) { ALL_VEHICLES = []; }
+    try {
+      // /api/wallet/directory — за разлика от /api/users (на обикновен
+      // мениджър показва само неговия пряк екип), връща ВСИЧКИ активни
+      // потребители с име, за да можем да покажем точно кой държи колата,
+      // дори ако е от екипа на друг мениджър.
+      const [{ assignments }, { contracts }, { users: directory }] = await Promise.all([
+        Api.get('/api/assignments'), Api.get('/api/contracts'), Api.get('/api/wallet/directory'),
+      ]);
+      const nameById = Object.fromEntries(directory.map(u => [u.id, u.full_name]));
+      VEHICLE_HOLDER_BY_ID = {};
+      assignments.filter(a => a.status === 'active').forEach(a => {
+        VEHICLE_HOLDER_BY_ID[a.vehicle_id] = {
+          name: a.driver_id ? (nameById[a.driver_id] || a.driver_id) : (a.external_name || '—'),
+          driverId: a.driver_id || null, since: a.start_date, recordId: a.id, source: 'assignment',
+        };
+      });
+      contracts.filter(c => c.status === 'active' && !c.assignment_id && !VEHICLE_HOLDER_BY_ID[c.vehicle_id]).forEach(c => {
+        VEHICLE_HOLDER_BY_ID[c.vehicle_id] = {
+          name: c.renter_name || '—', driverId: c.renter_driver_id || null, since: c.start_date, recordId: c.id, source: 'contract',
+        };
+      });
+    } catch (e) { VEHICLE_HOLDER_BY_ID = {}; }
   }
 
   document.getElementById('app-content').innerHTML = `
