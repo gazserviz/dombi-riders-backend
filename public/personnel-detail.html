@@ -274,8 +274,8 @@ async function loadFile() {
           <div class="field"><label>Наем (€ / седмица)</label><input name="rc_rate_amount" type="number" step="0.01" min="0" value="${activeRental ? (activeRental.rate_amount ?? '') : ''}" placeholder="при нова/сменена кола"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Начална дата на наема</label><input name="rc_start_date" type="date" value="${todayStr()}">
-            <div class="hint">Прилага се само при нова/сменена кола по-горе.</div>
+          <div class="field"><label>Начална дата на наема</label><input name="rc_start_date" type="date" value="${activeRental ? (activeRental.start_date || todayStr()) : todayStr()}">
+            <div class="hint">При нова/сменена кола — от кога започва наемът. При същата кола — коригира началната дата на текущия договор (напр. назад във времето, ако е пропусната по-рано).</div>
           </div>
         </div>
         ` : ''}
@@ -823,7 +823,17 @@ async function loadFile() {
           if (rcVehicle === '__none__') {
             if (curRental) await Api.put(`/api/contracts/${curRental.id}`, { status: 'terminated' });
           } else if (curRental && curRental.vehicle_id === rcVehicle) {
-            if (rcRate) await Api.put(`/api/contracts/${curRental.id}`, { rate_amount: Number(rcRate) });
+            // същата кола — позволяваме и корекция на началната дата на вече
+            // съществуващия активен договор (напр. назад във времето, ако е
+            // била пропусната/грешна при самото зачисляване); преди тази
+            // поправка полето се игнорираше тук и администраторът нямаше
+            // начин да коригира датата на вече зачислена кола (изрично
+            // съобщен проблем от потребителя: "не ми дава назначаване със
+            // задна дата")
+            const patch = {};
+            if (rcRate) patch.rate_amount = Number(rcRate);
+            if (rcStartDate && rcStartDate !== curRental.start_date) patch.start_date = rcStartDate;
+            if (Object.keys(patch).length) await Api.put(`/api/contracts/${curRental.id}`, patch);
           } else {
             if (curRental) await Api.put(`/api/contracts/${curRental.id}`, { status: 'terminated' });
             // прекратяваме и зачислението/договора на ПРЕДИШНИЯ държач на тази
