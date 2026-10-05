@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dombi.bg/sitemap.xml
+Sitemap: https://www.dombi.bg/sitemap.xml
