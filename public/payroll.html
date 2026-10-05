@@ -264,6 +264,16 @@ async function decideCorrection(id, approve) {
 // старата статистика и да се избира служител по един, за да се провери/
 // изплати (вж. оплакването на потребителя за "прекалено много скролване").
 // ---------------------------------------------------------------------------
+// Четирите града, в които Dombi Riders реално работи (вж. VALID_CITIES в
+// server.js / CITY_LABELS в applications.html) — показваме ги във филтъра
+// ВИНАГИ, не само когато вече има служител с точно такъв град в профила си,
+// иначе Пловдив/Варна/Бургас изчезват от падащото меню, докато не бъде нает
+// първият служител там (открито и потвърдено от потребителя: искаше да ги
+// вижда предварително, за да филтрира и подготвя справки за тях отрано).
+// Обединяваме с реално срещаните градове по профилите (sort по-долу), за да
+// не изчезне и някой друг град, въведен ръчно през пълния списък BG_CITIES
+// в досието на служител.
+const QUICK_PAY_OFFICIAL_CITIES = ['София', 'Пловдив', 'Варна', 'Бургас'];
 let QUICK_PAY_CITIES = [];
 let QUICK_PAY_MANAGERS = [];
 
@@ -281,11 +291,19 @@ async function initQuickPayPanel() {
   to.value = todayStr();
   mountPeriodPicker(document.getElementById('qpPeriodPicker'), from, to, { useMonthPreset: true, onApply: loadQuickPayReport });
 
+  QUICK_PAY_CITIES = [...QUICK_PAY_OFFICIAL_CITIES];
   try {
     const { employees } = await Api.get('/api/hr/personnel');
-    QUICK_PAY_CITIES = [...new Set(employees.map(e => e.city).filter(Boolean))].sort();
+    const employeeCities = new Set(employees.map(e => e.city).filter(Boolean));
+    QUICK_PAY_CITIES = [...new Set([...QUICK_PAY_OFFICIAL_CITIES, ...employeeCities])].sort((a, b) => {
+      const ai = QUICK_PAY_OFFICIAL_CITIES.indexOf(a), bi = QUICK_PAY_OFFICIAL_CITIES.indexOf(b);
+      if (ai !== -1 && bi !== -1) return ai - bi; // официалните 4 винаги в същия ред
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.localeCompare(b, 'bg');
+    });
     QUICK_PAY_MANAGERS = employees.filter(e => ['manager', 'admin', 'super_admin'].includes(e.role));
-  } catch (e) { /* незадължително — филтрите просто остават празни */ }
+  } catch (e) { /* незадължително — филтрите остават поне с официалните 4 града */ }
   populateQuickPayFilters();
 
   ['qpCity', 'qpManager', 'qpStatus'].forEach(id => document.getElementById(id).addEventListener('change', loadQuickPayReport));
