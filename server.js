@@ -4171,6 +4171,17 @@ const server = http.createServer((req, res) => {
   }
 
   try {
+    // вж. normalizeProfileCityNames в lib/db.js — поправя служителски профили,
+    // одобрени преди да започнем да превеждаме английския ключ на града от
+    // кандидатурата ("sofia") към кирилското му име ("София"), за да не се
+    // дублират градовете във филтрите (напр. "Заплати" → Град).
+    const cityFixedCount = db.normalizeProfileCityNames();
+    if (cityFixedCount) console.log(`Коригирано градско име в профила на ${cityFixedCount} служители (английски ключ → кирилско име).`);
+  } catch (e) {
+    console.error('Грешка при нормализация на градовете в профилите:', e.message);
+  }
+
+  try {
     // наемът на кола вече не е касово движение (виж коментара над
     // CASHIER_TX_TYPES в lib/db.js) — почистваме старите автоматични записи
     const obsoleteCarRentTxCount = db.cleanupObsoleteCarRentCashierEntries();
