@@ -248,6 +248,19 @@ async function init() {
           ? { name: nameById[a.driver_id] || a.driver_id, external: false }
           : { name: a.external_name || '—', external: true };
       });
+      // някои коли се зачисляват директно през бързите полета "Договор и
+      // кола" в досието на служител (personnel-detail.html) — там се
+      // създава САМО договор за наем (rental_contracts), без запис във
+      // зачисленията (вж. коментара над assignmentsTab в vehicle-detail.html
+      // за същия бъг) — горният цикъл не хваща тези, затова допълваме и от
+      // активните договори без assignment_id. Изисква права "contracts" —
+      // ако потребителят няма достъп (напр. роля "driver"), просто пропускат.
+      try {
+        const { contracts } = await Api.get('/api/contracts');
+        contracts.filter(c => c.status === 'active' && !c.assignment_id && !DRIVER_BY_VEHICLE[c.vehicle_id]).forEach(c => {
+          DRIVER_BY_VEHICLE[c.vehicle_id] = { name: c.renter_name || '—', external: c.renter_type !== 'dombi_courier' };
+        });
+      } catch (e) { /* незадължително, права или друга грешка */ }
     } catch (e) { /* незадължително */ }
 
     document.getElementById('tableHost').innerHTML = renderTable(vehicles);

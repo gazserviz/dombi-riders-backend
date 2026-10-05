@@ -372,8 +372,40 @@ function equipmentTab(items) {
     </div>`;
 }
 
-function assignmentsTab(list) {
+// Колата може да стане "Зачислена"/"Отдадена под наем" по ДВА пътя (вж.
+// syncVehicleStatus в lib/db.js): (1) обикновеното зачисляване през
+// assignments.html — създава едновременно зачисление + договор + протокол,
+// или (2) бързите полета "Договор и кола" в досието на служител
+// (personnel-detail.html) — създават САМО договор за наем, без отделен запис
+// "зачисление". Статусът на колата коректно отразява и двата пътя, но тази
+// история показваше само (1) — за коли, зачислени по път (2), таблицата
+// излизаше напълно празна, въпреки че колата личеше като заета (открит и
+// потвърден бъг: "Зачислена", но никъде не пише от кого/от кога). Поправено
+// чрез сливане на двата източника тук — договорите, създадени през (1), вече
+// си имат assignment_id (сочещ към реда в списъка по-долу), затова ги
+// изключваме, за да не се дублира редът; показваме само "самостоятелните"
+// договори (assignment_id: null) от път (2).
+function assignmentsTab(list, contracts) {
   const canWrite = canEdit();
+  const standaloneContracts = (contracts || []).filter(c => !c.assignment_id);
+  const merged = [
+    ...list.map(a => ({
+      start_date: a.start_date, end_date: a.end_date,
+      who: a.driver_id ? (a.driver_name || a.driver_id) : (a.external_name ? a.external_name + ' (външен)' : '—'),
+      purpose: PURPOSE_LABELS[a.purpose] || a.purpose,
+      isActive: a.status === 'active',
+      odoStart: a.start_odometer_km, odoEnd: a.end_odometer_km,
+      fromContract: false,
+    })),
+    ...standaloneContracts.map(c => ({
+      start_date: c.start_date, end_date: c.end_date,
+      who: c.renter_name || '—',
+      purpose: PURPOSE_LABELS[c.renter_type] || c.renter_type,
+      isActive: c.status === 'active',
+      odoStart: c.start_odometer_km, odoEnd: c.end_odometer_km,
+      fromContract: true,
+    })),
+  ].sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
   return `
     <div class="tab-panel" id="tab-assignments">
       <div class="panel">
@@ -383,17 +415,18 @@ function assignmentsTab(list) {
             ${canWrite ? `<a class="btn btn-ghost btn-sm" href="/assignments.html?vehicle_id=${vehicleId}">Управление на зачисления →</a>` : ''}
           </div>
         </div>
+        ${standaloneContracts.length ? `<p class="hint">📄 = създадено направо като договор за наем от досието на служител, без отделен запис "зачисление".</p>` : ''}
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Период</th><th>Шофьор</th><th>Цел</th><th>Статус</th><th>Пробег нач./кр.</th></tr></thead>
+            <thead><tr><th>Период</th><th>Шофьор / Наемател</th><th>Цел</th><th>Статус</th><th>Пробег нач./кр.</th></tr></thead>
             <tbody>
-              ${list.length ? list.map(a => `
+              ${merged.length ? merged.map(r => `
                 <tr>
-                  <td>${fmtDate(a.start_date)} — ${a.end_date ? fmtDate(a.end_date) : 'сега'}</td>
-                  <td>${a.driver_id ? (a.driver_name || a.driver_id) : (a.external_name + ' (външен)')}</td>
-                  <td>${PURPOSE_LABELS[a.purpose]||a.purpose}</td>
-                  <td>${a.status === 'active' ? '<span class="badge badge-green">Активно</span>' : '<span class="badge badge-muted">Приключено</span>'}</td>
-                  <td>${a.start_odometer_km||'—'} / ${a.end_odometer_km||'—'}</td>
+                  <td>${fmtDate(r.start_date)} — ${r.end_date ? fmtDate(r.end_date) : 'сега'}</td>
+                  <td>${r.fromContract ? '📄 ' : ''}${r.who}</td>
+                  <td>${r.purpose}</td>
+                  <td>${r.isActive ? '<span class="badge badge-green">Активно</span>' : '<span class="badge badge-muted">Приключено</span>'}</td>
+                  <td>${r.odoStart||'—'} / ${r.odoEnd||'—'}</td>
                 </tr>`).join('')
               : `<tr><td colspan="5" class="empty-state">Няма история на зачисления.</td></tr>`}
             </tbody>
@@ -605,12 +638,18 @@ async function init() {
       Api.get(`/api/vehicles/${vehicleId}/odometer`),
       Api.get(`/api/vehicles/${vehicleId}/inspections`),
     ];
-    if (['admin','manager','super_admin'].includes(CURRENT_USER.role)) {
+    const canSeeContracts = ['admin','manager','super_admin'].includes(CURRENT_USER.role);
+    if (canSeeContracts) {
       promises.push(Api.get(`/api/vehicles/${vehicleId}/recurring-costs`));
+      // вж. коментара над assignmentsTab по-долу — някои коли се зачисляват
+      // САМО през договор за наем (без отделен запис "зачисление"), затова
+      // дърпаме и договорите тук, за да ги покажем в общата история.
+      promises.push(Api.get(`/api/contracts?vehicle_id=${vehicleId}`));
     }
-    const [{ vehicle }, { records }, { equipment }, { assignments }, { protocols }, odo, { inspections }, costsRes] = await Promise.all(promises);
+    const [{ vehicle }, { records }, { equipment }, { assignments }, { protocols }, odo, { inspections }, costsRes, contractsRes] = await Promise.all(promises);
     VEHICLE = vehicle;
     vehicle._recurringCosts = costsRes ? costsRes.costs : [];
+    const contracts = contractsRes ? contractsRes.contracts : [];
 
     let usersById = {};
     let managerUsers = [];
@@ -633,7 +672,7 @@ async function init() {
       ${serviceTab(vehicle, records)}
       ${odometerTab(vehicle, odo)}
       ${equipmentTab(equipment)}
-      ${assignmentsTab(assignments)}
+      ${assignmentsTab(assignments, contracts)}
       ${protocolsTab(protocols)}
       ${inspectionsTab(inspections, managerUsers, usersById)}
       ${talonTab(vehicle)}
