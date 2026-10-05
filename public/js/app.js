@@ -339,7 +339,7 @@ async function mountShell() {
           <button class="btn btn-ghost btn-sm" id="burgerBtn" aria-label="Меню">☰</button>
           <div>
             <div class="breadcrumb">Dombi Riders · Вътрешна система</div>
-            <h1 style="margin:0;">${title}</h1>
+            <h1 id="pageTitleH1" style="margin:0;">${title}</h1>
           </div>
         </div>
         <div class="content" id="app-content"></div>
