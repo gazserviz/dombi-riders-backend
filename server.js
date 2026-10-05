@@ -2266,13 +2266,31 @@ async function handleApi(req, res, pathname, query) {
         // buildCivilAdContractPdf/Docx и изричното искане на потребителя за
         // пълно внедряване на реалния шаблон с приложения
         'id_card_issue_date', 'id_card_issued_by',
-        'insurance_status', 'insurance_gross_amount'];
+        'insurance_status', 'insurance_gross_amount',
+        // Glovo/Bolt ID на куриера — обикновено се попълват автоматично при
+        // съпоставяне с качен отчет за заработки (вж. lib/earnings-import.js,
+        // lib/bolt-stats-import.js), но за куриер, който никога не се е
+        // появявал в такъв отчет, полето остава празно и трябва да може да
+        // се въведе ръчно от досието (изрично съобщен проблем от потребителя)
+        'external_ids'];
       // смяна на роля и имейл — само admin/super_admin (по-чувствителни полета)
       if (isAdminOrAbove(user)) allowed.push('role', 'email');
       const patch = {};
       allowed.forEach(k => { if (k in body) patch[k] = body[k]; });
       if (patch.email && db.listUsers().some(u => u.id !== personnelMatch[1] && u.email.toLowerCase() === String(patch.email).toLowerCase())) {
         return sendJson(res, 400, { error: 'Вече има потребител с този имейл' });
+      }
+      // external_ids трябва да е обикновен обект само с тези два ключа — не
+      // приемаме нищо друго от клиента тук (вж. allowed по-горе за защитата
+      // на останалите чувствителни полета по същия модел)
+      if (patch.external_ids) {
+        if (typeof patch.external_ids !== 'object' || Array.isArray(patch.external_ids)) {
+          return sendJson(res, 400, { error: 'external_ids трябва да е обект' });
+        }
+        patch.external_ids = {
+          glovo_courier_id: patch.external_ids.glovo_courier_id ? String(patch.external_ids.glovo_courier_id).trim() : null,
+          bolt_courier_uid: patch.external_ids.bolt_courier_uid ? String(patch.external_ids.bolt_courier_uid).trim() : null,
+        };
       }
       try {
         const updated = db.updateUser(personnelMatch[1], patch);
