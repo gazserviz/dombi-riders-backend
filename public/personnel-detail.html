@@ -146,7 +146,12 @@ async function loadFile() {
   const activeEc = (employment_contracts || []).find(c => c.status === 'active');
   const activeRental = (rental_contracts || []).find(c => c.status === 'active');
 
-  document.getElementById('pageTitle') && (document.getElementById('pageTitle').textContent = profile.full_name);
+  // заглавието горе е "залепено" (sticky) при скрол (виж .topbar в app.css) —
+  // слагаме името на служителя в него, за да се вижда чие досие се
+  // попълва, докато се скролва надолу по дългата форма (изрично искане на
+  // потребителя)
+  const pageTitleH1 = document.getElementById('pageTitleH1');
+  if (pageTitleH1) pageTitleH1.textContent = `Досие на служител — ${profile.full_name}`;
 
   host.innerHTML = `
     <div class="grid-2">
@@ -233,6 +238,10 @@ async function loadFile() {
           </div>
         </div>
         <div class="field-row">
+          <div class="field"><label>Glovo ID</label><input name="ext_glovo_id" value="${(profile.external_ids && profile.external_ids.glovo_courier_id) || ''}" placeholder="напр. G1000000004613108"></div>
+          <div class="field"><label>Bolt ID</label><input name="ext_bolt_id" value="${(profile.external_ids && profile.external_ids.bolt_courier_uid) || ''}" placeholder="ако не се е генерирало автоматично"></div>
+        </div>
+        <div class="field-row">
           <div class="field"><label>Начало на работа</label><input name="start_date" type="date" value="${profile.start_date || ''}"></div>
           <div class="field"><label>Край на работа</label><input name="end_date" type="date" value="${profile.end_date || ''}"></div>
         </div>
@@ -305,6 +314,8 @@ async function loadFile() {
           <div class="field"><label>Брутна сума (€, по декларация)</label><input name="insurance_gross_amount" type="number" step="0.01" min="0" value="${profile.insurance_gross_amount ?? ''}"></div>
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Запази промените</button>
+        <div class="success-box" id="editSuccessBottom" style="margin-top:10px;"></div>
+        <div class="error-box" id="editErrorBottom" style="margin-top:10px;"></div>
       </form>
       <div class="field-row" style="margin-top:16px;">
         <div>
@@ -773,6 +784,20 @@ async function loadFile() {
     const rcVehicle = data.rc_vehicle_id || ''; delete data.rc_vehicle_id;
     const rcRate = data.rc_rate_amount || ''; delete data.rc_rate_amount;
     const rcStartDate = data.rc_start_date || todayStr(); delete data.rc_start_date;
+    // Glovo/Bolt ID — обединяваме с текущите стойности (вместо да презапишем
+    // целия external_ids обект), за да не изтрием едното, докато редактираме
+    // другото; updateUser прави плитко сливане на полетата, не дълбоко (вж.
+    // lib/db.js), затова мерджваме тук, на клиента. Изрично искане на
+    // потребителя: "не мога да добавям ID, на някой не се е генерирало" —
+    // преди тази поправка нямаше никакво поле за ръчно въвеждане тук.
+    const extGlovoId = (data.ext_glovo_id || '').trim(); delete data.ext_glovo_id;
+    const extBoltId = (data.ext_bolt_id || '').trim(); delete data.ext_bolt_id;
+    const curExternalIds = profile.external_ids || {};
+    const newGlovoId = extGlovoId || null;
+    const newBoltId = extBoltId || null;
+    if (newGlovoId !== (curExternalIds.glovo_courier_id || null) || newBoltId !== (curExternalIds.bolt_courier_uid || null)) {
+      data.external_ids = { ...curExternalIds, glovo_courier_id: newGlovoId, bolt_courier_uid: newBoltId };
+    }
 
     // Ако избраната кола в момента е зачислена/наета на ДРУГ служител, питаме
     // изрично преди да продължим, вместо тихо да отнемем колата от него
@@ -861,12 +886,20 @@ async function loadFile() {
       }
 
       await loadFile();
-      const sb = document.getElementById('editSuccess');
-      sb.textContent = 'Запазено успешно.' + (warnings.length ? ' Внимание: ' + warnings.join(' ') : '');
-      sb.classList.add('show');
+      // съобщението "Запазено успешно" по подразбиране излиза горе в панела,
+      // а бутонът "Запази промените" е най-долу след дълга форма — показваме
+      // го и там, до бутона, за да не се налага скрол нагоре, за да се
+      // потвърди, че е проработило (изрично искане на потребителя)
+      const msg = 'Запазено успешно.' + (warnings.length ? ' Внимание: ' + warnings.join(' ') : '');
+      ['editSuccess', 'editSuccessBottom'].forEach(id => {
+        const box = document.getElementById(id);
+        if (box) { box.textContent = msg; box.classList.add('show'); }
+      });
     } catch (err) {
-      errorBox.textContent = err.message;
-      errorBox.classList.add('show');
+      ['editError', 'editErrorBottom'].forEach(id => {
+        const box = document.getElementById(id);
+        if (box) { box.textContent = err.message; box.classList.add('show'); }
+      });
     }
   });
 
