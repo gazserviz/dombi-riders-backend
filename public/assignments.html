@@ -16,6 +16,11 @@
 <script>
 const params = new URLSearchParams(location.search);
 const preselectedVehicle = params.get('vehicle_id');
+// за бутона "Истинско зачисляване" от досието на служител (personnel-detail.html) —
+// предварително избира шофьора, дори ако вече има активно зачисление на
+// друга кола (вж. freeDrivers по-долу), за да може админът да го презачисли
+// направо оттук, без да се налага първо ръчно да търси/прекратява старото
+const preselectedDriver = params.get('driver_id');
 let CURRENT_USER = null;
 const PURPOSE_LABELS = { dombi_courier:'Куриер на Dombi Riders', other_platform:'Друга платформа', personal_use:'Лично ползване' };
 
@@ -43,7 +48,7 @@ function newFormHtml(vehicles, drivers) {
           <label>Шофьор (от HR модула, само свободни)</label>
           <select name="driver_id">
             <option value="">— избери служител —</option>
-            ${drivers.map(d => `<option value="${d.id}">${d.full_name} (${d.phone||'няма тел.'})</option>`).join('')}
+            ${drivers.map(d => `<option value="${d.id}" ${d.id===preselectedDriver?'selected':''}>${d.full_name} (${d.phone||'няма тел.'})${d.id===preselectedDriver && d._alreadyAssigned ? ' — вече зачислен другаде, ще бъде прехвърлен' : ''}</option>`).join('')}
           </select>
           ${!drivers.length ? '<div class="hint">В момента няма свободни шофьори.</div>' : ''}
         </div>
@@ -191,7 +196,15 @@ async function init() {
   const activeAssignments = assignments.filter(a => a.status === 'active');
   const assignedDriverIds = new Set(activeAssignments.filter(a => a.driver_id).map(a => a.driver_id));
   const allActiveDrivers = users.filter(u => u.role === 'driver' && u.status === 'active');
-  const freeDrivers = allActiveDrivers.filter(d => !assignedDriverIds.has(d.id));
+  let freeDrivers = allActiveDrivers.filter(d => !assignedDriverIds.has(d.id));
+  // ако сме дошли от бутон "Истинско зачисляване" от досието на конкретен
+  // служител (personnel-detail.html), пазим го в списъка дори ако вече има
+  // активно зачисление другаде — иначе падащото меню просто няма да го
+  // показва и админът не би могъл да го презачисли направо оттук
+  if (preselectedDriver && !freeDrivers.some(d => d.id === preselectedDriver)) {
+    const already = allActiveDrivers.find(d => d.id === preselectedDriver) || users.find(u => u.id === preselectedDriver);
+    if (already) freeDrivers = [{ ...already, _alreadyAssigned: true }, ...freeDrivers];
+  }
 
   let availableVehicles = vehicles.filter(v => v.status === 'available');
   // ако сме дошли от бутон на конкретна кола (напр. "Зачисли с 1 клик" от

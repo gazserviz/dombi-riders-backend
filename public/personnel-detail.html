@@ -252,8 +252,9 @@ async function loadFile() {
           </select>
         </div>
         ${profile.role === 'driver' ? `
-        <h3 style="margin-top:16px;margin-bottom:2px;">Договор и кола</h3>
-        <p class="hint" style="margin-top:0;">Прилага се върху текущия активен договор/наем, или създава нов — ако искате пълен контрол над удръжката (процентна, прагове и др.) или наема (депозит, период), използвайте „Редакция на всички параметри“ в таблиците по-долу.</p>
+        <h3 style="margin-top:16px;margin-bottom:2px;">Договор и кола (бърза корекция)</h3>
+        <p class="hint" style="margin-top:0;">За корекция на вече зачислена кола (напр. грешна/липсваща дата, пробег или наем) — НЕ минава през приемо-предавателен протокол. За ново, истинско зачисляване на кола (с договор и протокол за приемане/предаване) ползвайте бутона по-долу.</p>
+        <a class="btn btn-ghost btn-sm" href="/assignments.html?driver_id=${profile.id}" target="_blank" style="margin-bottom:12px;">🚗 Истинско зачисляване на кола (договор + протокол) →</a>
         <div class="field-row">
           <div class="field"><label>Тип договор</label>
             <select name="ec_contract_type" id="editEcType">
@@ -285,6 +286,9 @@ async function loadFile() {
         <div class="field-row">
           <div class="field"><label>Начална дата на наема</label><input name="rc_start_date" type="date" value="${activeRental ? (activeRental.start_date || todayStr()) : todayStr()}">
             <div class="hint">При нова/сменена кола — от кога започва наемът. При същата кола — коригира началната дата на текущия договор (напр. назад във времето, ако е пропусната по-рано).</div>
+          </div>
+          <div class="field"><label>Пробег при предаване (км)</label><input name="rc_start_odometer_km" type="number" min="0" value="${activeRental ? (activeRental.start_odometer_km ?? '') : ''}" placeholder="по избор">
+            <div class="hint">По избор — за протокол с реален пробег ползвайте бутона за истинско зачисляване по-горе.</div>
           </div>
         </div>
         ` : ''}
@@ -784,6 +788,7 @@ async function loadFile() {
     const rcVehicle = data.rc_vehicle_id || ''; delete data.rc_vehicle_id;
     const rcRate = data.rc_rate_amount || ''; delete data.rc_rate_amount;
     const rcStartDate = data.rc_start_date || todayStr(); delete data.rc_start_date;
+    const rcOdometer = data.rc_start_odometer_km || ''; delete data.rc_start_odometer_km;
     // Glovo/Bolt ID — обединяваме с текущите стойности (вместо да презапишем
     // целия external_ids обект), за да не изтрием едното, докато редактираме
     // другото; updateUser прави плитко сливане на полетата, не дълбоко (вж.
@@ -858,6 +863,7 @@ async function loadFile() {
             const patch = {};
             if (rcRate) patch.rate_amount = Number(rcRate);
             if (rcStartDate && rcStartDate !== curRental.start_date) patch.start_date = rcStartDate;
+            if (rcOdometer !== '' && Number(rcOdometer) !== curRental.start_odometer_km) patch.start_odometer_km = Number(rcOdometer);
             if (Object.keys(patch).length) await Api.put(`/api/contracts/${curRental.id}`, patch);
           } else {
             if (curRental) await Api.put(`/api/contracts/${curRental.id}`, { status: 'terminated' });
@@ -871,7 +877,7 @@ async function loadFile() {
                 await Api.put(`/api/contracts/${holderToTerminate.recordId}`, { status: 'terminated' });
               }
             }
-            await Api.post('/api/contracts', {
+            const newContract = {
               vehicle_id: rcVehicle,
               renter_type: 'dombi_courier',
               renter_driver_id: TARGET_ID,
@@ -880,7 +886,9 @@ async function loadFile() {
               rate_period: 'week',
               deposit_amount: 0,
               status: 'active',
-            });
+            };
+            if (rcOdometer !== '') newContract.start_odometer_km = Number(rcOdometer);
+            await Api.post('/api/contracts', newContract);
           }
         } catch (err) { warnings.push('Колата не се обнови: ' + err.message); }
       }
