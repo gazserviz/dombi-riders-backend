@@ -131,8 +131,23 @@ function applyPersonnelFilters() {
     if (blacklist === 'yes' && !e.blacklisted) return false;
     if (blacklist === 'no' && e.blacklisted) return false;
     if (q) {
-      const hay = `${e.full_name || ''} ${e.email || ''}`.toLowerCase();
-      if (!hay.includes(q)) return false;
+      // търсим и по телефон/ID — телефонните номера/ID-тата съдържат тирета/
+      // интервали/плюс, затова ги изчистваме преди сравнение (напр. потребител
+      // въвежда ID без интервали или Glovo/Bolt ID); за телефона допълнително
+      // сравняваме последните 9 цифри, за да съвпадне "0888485524" с номер,
+      // запазен като "+359888485524" (същата нормализация като normPhone() в
+      // lib/earnings-import.js, ползвана при съпоставяне на заплати).
+      const digitsQ = q.replace(/[^0-9a-zа-я]/gi, '');
+      const last9Q = digitsQ.replace(/^0+/, '').slice(-9);
+      const hay = [
+        e.full_name, e.email, e.id,
+        e.external_ids && e.external_ids.glovo_courier_id,
+        e.external_ids && e.external_ids.bolt_courier_uid,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const hayDigits = hay.replace(/[^0-9a-zа-я]/gi, '');
+      const phoneDigits = (e.phone || '').replace(/\D/g, '').replace(/^0+/, '').slice(-9);
+      const phoneMatch = last9Q.length >= 3 && phoneDigits && phoneDigits.includes(last9Q);
+      if (!hay.includes(q) && !(digitsQ && hayDigits.includes(digitsQ)) && !phoneMatch) return false;
     }
     if (phoneQ && !(e.phone || '').toLowerCase().includes(phoneQ)) return false;
     if (cityFilter && e.city !== cityFilter) return false;
@@ -318,7 +333,7 @@ async function init() {
         <div class="error-box" id="bulkAssignError"></div>
       </div>
       <div class="field-row" style="align-items:flex-end;">
-        <div class="field" style="flex:2;"><label>Търсене (име или имейл)</label><input type="text" id="personnelSearch" placeholder="напр. Иван Иванов"></div>
+        <div class="field" style="flex:2;"><label>Търсене (име, имейл, ID или телефон)</label><input type="text" id="personnelSearch" placeholder="напр. Иван Иванов, телефон или Glovo/Bolt ID"></div>
         <div class="field"><label>Статус</label>
           <select id="personnelStatusFilter">
             <option value="">Всички</option>
