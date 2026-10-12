@@ -264,11 +264,16 @@ async function init() {
 
           <div id="addEmpDriverFields" style="display:none;">
             <div class="field-row">
-              <div class="field"><label>Bolt ID</label><input name="bolt_id"></div>
-              <div class="field"><label>Glovo ID</label><input name="glovo_id"></div>
+              <div class="field"><label>Bolt ID</label><input name="ext_bolt_id" placeholder="ако не се е генерирало автоматично"></div>
+              <div class="field"><label>Glovo ID</label><input name="ext_glovo_id" placeholder="напр. G1000000004613108"></div>
             </div>
-            <div class="field"><label>Град</label>
-              <select name="city"><option value="">— няма —</option>${BG_CITIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+            <div class="field-row">
+              <div class="field"><label>Град</label>
+                <select name="city"><option value="">— няма —</option>${BG_CITIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+              </div>
+              <div class="field"><label>Начало на работа</label><input name="start_date" type="date">
+                <p class="hint" style="margin-top:4px;">Независимо от началната дата на договор/наем по-долу — записва се директно в досието на служителя.</p>
+              </div>
             </div>
 
             <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:12px;">
@@ -483,9 +488,27 @@ async function init() {
         const userData = { full_name: raw.full_name, email: raw.email, phone: raw.phone, role: raw.role };
         if (raw.password) userData.password = raw.password;
         if (isDriver) {
-          if (raw.bolt_id) userData.bolt_id = raw.bolt_id;
-          if (raw.glovo_id) userData.glovo_id = raw.glovo_id;
+          // Glovo/Bolt ID се пазят в profile.external_ids.{glovo_courier_id,
+          // bolt_courier_uid} — СЪЩАТА структура, която чете навсякъде
+          // другаде (досие, таблицата "Всички служители", съпоставянето при
+          // импорт на заплати, виж driverIdLine в app.js). По-рано тук се
+          // пращаха като отделни bolt_id/glovo_id полета, които никой не
+          // чете — служителят изглеждаше създаден без ID, въпреки че
+          // администраторът го е въвел (изрично съобщен проблем).
+          if (raw.ext_bolt_id || raw.ext_glovo_id) {
+            userData.external_ids = {
+              glovo_courier_id: raw.ext_glovo_id || null,
+              bolt_courier_uid: raw.ext_bolt_id || null,
+            };
+          }
           if (raw.city) userData.city = raw.city;
+          // "Начало на работа" (profile.start_date) — отделно поле от
+          // досието, НЕЗАВИСИМО от началната дата на труд./граждански
+          // договор (ec_start_date) или на наема на кола (rc_start_date) по-
+          // долу; досега липсваше изцяло от формата за създаване и се
+          // налагаше да се допълва на ръка от досието след това (изрично
+          // съобщен проблем).
+          if (raw.start_date) userData.start_date = raw.start_date;
         }
 
         try {
