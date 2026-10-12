@@ -7,6 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app.css">
+<style>
+  .driver-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);
+    border:1.5px solid var(--line);border-radius:10px;max-height:240px;overflow-y:auto;z-index:50;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);}
+  .driver-combo-item{padding:9px 13px;cursor:pointer;font-size:.95em;}
+  .driver-combo-item:hover{background:var(--panel-2);}
+  .driver-combo-empty{padding:9px 13px;color:var(--muted);font-size:.9em;}
+</style>
 <script>(function(){try{if(localStorage.getItem('dombi_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();</script>
 </head>
 <body>
@@ -23,6 +31,61 @@ const preselectedVehicle = params.get('vehicle_id');
 const preselectedDriver = params.get('driver_id');
 let CURRENT_USER = null;
 const PURPOSE_LABELS = { dombi_courier:'Куриер на Dombi Riders', other_platform:'Друга платформа', personal_use:'Лично ползване' };
+
+// подрежда шофьорите по азбучен ред на името (българска локализация), ползва
+// се навсякъде, където показваме списъка със свободни шофьори за зачисляване
+function sortDrivers(list) {
+  return [...list].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'bg'));
+}
+function driverLabel(d) {
+  return `${d.full_name} (${d.phone || 'няма тел.'})${d._alreadyAssigned ? ' — вече зачислен другаде, ще бъде прехвърлен' : ''}`;
+}
+// търсачка (комбобокс) за избор на шофьор вместо дълъг падащ списък — текстово
+// поле за филтриране + скрито поле driver_id, което реално влиза във formData
+function driverComboHtml(drivers, selectedId) {
+  const selectedDriver = selectedId ? drivers.find(d => d.id === selectedId) : null;
+  return `
+    <div class="driver-combo" style="position:relative;">
+      <input type="text" id="driverSearchInput" autocomplete="off" placeholder="Търсене по име или телефон…"
+        value="${selectedDriver ? driverLabel(selectedDriver).replace(/"/g, '&quot;') : ''}">
+      <input type="hidden" name="driver_id" id="driverIdInput" value="${selectedId || ''}">
+      <div id="driverDropdown" class="driver-dropdown" style="display:none;"></div>
+    </div>
+    ${!drivers.length ? '<div class="hint">В момента няма свободни шофьори.</div>' : ''}`;
+}
+// закача логиката по търсене/избор към полетата, генерирани от driverComboHtml
+// по-горе — вика се веднъж след всяко (пре)рендиране на формата
+function wireDriverCombo(driversSorted) {
+  const searchInput = document.getElementById('driverSearchInput');
+  const idInput = document.getElementById('driverIdInput');
+  const dropdown = document.getElementById('driverDropdown');
+  if (!searchInput || !idInput || !dropdown) return;
+
+  function renderList(filterText) {
+    const q = (filterText || '').trim().toLowerCase();
+    const filtered = q
+      ? driversSorted.filter(d => (d.full_name || '').toLowerCase().includes(q) || (d.phone || '').includes(q))
+      : driversSorted;
+    dropdown.innerHTML = filtered.length
+      ? filtered.map(d => `<div class="driver-combo-item" data-id="${d.id}">${driverLabel(d)}</div>`).join('')
+      : `<div class="driver-combo-empty">Няма съвпадения</div>`;
+  }
+  searchInput.addEventListener('focus', () => { renderList(searchInput.value); dropdown.style.display = 'block'; });
+  searchInput.addEventListener('input', () => {
+    idInput.value = ''; // започва ново търсене — старият избор вече не важи, докато не изберат отново
+    renderList(searchInput.value);
+    dropdown.style.display = 'block';
+  });
+  searchInput.addEventListener('blur', () => { dropdown.style.display = 'none'; });
+  dropdown.addEventListener('mousedown', (e) => { e.preventDefault(); }); // да не губи фокус преди click-а по-долу
+  dropdown.addEventListener('click', (e) => {
+    const item = e.target.closest('.driver-combo-item');
+    if (!item) return;
+    const d = driversSorted.find(x => x.id === item.dataset.id);
+    if (d) { idInput.value = d.id; searchInput.value = driverLabel(d); }
+    dropdown.style.display = 'none';
+  });
+}
 
 function newFormHtml(vehicles, drivers) {
   return `
@@ -46,11 +109,7 @@ function newFormHtml(vehicles, drivers) {
 
         <div id="internalDriverField" class="field">
           <label>Шофьор (от HR модула, само свободни)</label>
-          <select name="driver_id">
-            <option value="">— избери служител —</option>
-            ${drivers.map(d => `<option value="${d.id}" ${d.id===preselectedDriver?'selected':''}>${d.full_name} (${d.phone||'няма тел.'})${d.id===preselectedDriver && d._alreadyAssigned ? ' — вече зачислен другаде, ще бъде прехвърлен' : ''}</option>`).join('')}
-          </select>
-          ${!drivers.length ? '<div class="hint">В момента няма свободни шофьори.</div>' : ''}
+          ${driverComboHtml(drivers, preselectedDriver)}
         </div>
 
         <div id="externalDriverFields" style="display:none;">
@@ -159,7 +218,7 @@ async function refreshAssignOptions() {
   const vehiclesById = Object.fromEntries(vehicles.map(v => [v.id, v]));
   const activeAssignments = assignments.filter(a => a.status === 'active');
   const assignedDriverIds = new Set(activeAssignments.filter(a => a.driver_id).map(a => a.driver_id));
-  const freeDrivers = users.filter(u => u.role === 'driver' && u.status === 'active' && !assignedDriverIds.has(u.id));
+  const freeDrivers = sortDrivers(users.filter(u => u.role === 'driver' && u.status === 'active' && !assignedDriverIds.has(u.id)));
   const availableVehicles = vehicles.filter(v => v.status === 'available');
 
   const vehicleSelect = document.querySelector('#assignForm select[name="vehicle_id"]');
@@ -167,10 +226,10 @@ async function refreshAssignOptions() {
     vehicleSelect.innerHTML = `<option value="">— избери —</option>` +
       availableVehicles.map(v => `<option value="${v.id}">${v.plate_number} — ${v.make} ${v.model}</option>`).join('');
   }
-  const driverSelect = document.querySelector('#assignForm select[name="driver_id"]');
-  if (driverSelect) {
-    driverSelect.innerHTML = `<option value="">— избери служител —</option>` +
-      freeDrivers.map(d => `<option value="${d.id}">${d.full_name} (${d.phone||'няма тел.'})</option>`).join('');
+  const driverField = document.getElementById('internalDriverField');
+  if (driverField) {
+    driverField.innerHTML = `<label>Шофьор (от HR модула, само свободни)</label>${driverComboHtml(freeDrivers, '')}`;
+    wireDriverCombo(freeDrivers);
   }
   return vehiclesById;
 }
@@ -196,7 +255,7 @@ async function init() {
   const activeAssignments = assignments.filter(a => a.status === 'active');
   const assignedDriverIds = new Set(activeAssignments.filter(a => a.driver_id).map(a => a.driver_id));
   const allActiveDrivers = users.filter(u => u.role === 'driver' && u.status === 'active');
-  let freeDrivers = allActiveDrivers.filter(d => !assignedDriverIds.has(d.id));
+  let freeDrivers = sortDrivers(allActiveDrivers.filter(d => !assignedDriverIds.has(d.id)));
   // ако сме дошли от бутон "Истинско зачисляване" от досието на конкретен
   // служител (personnel-detail.html), пазим го в списъка дори ако вече има
   // активно зачисление другаде — иначе падащото меню просто няма да го
@@ -214,6 +273,7 @@ async function init() {
   }
 
   content.innerHTML = `${newFormHtml(availableVehicles, freeDrivers)}<div id="listHost"></div>`;
+  wireDriverCombo(freeDrivers);
 
   document.getElementById('purposeSelect').addEventListener('change', (e) => {
     const isInternal = e.target.value === 'dombi_courier';
