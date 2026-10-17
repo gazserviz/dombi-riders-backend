@@ -76,6 +76,20 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+// Позволени Content-Type стойности за прикачени файлове от входящи имейли
+// (виж GET /api/mail/message/:id/attachment/:idx по-долу) — всичко извън
+// този списък пада към application/octet-stream, вместо да се подава
+// необработен низ от писмо на подателя директно в HTTP response заглавката.
+const MAIL_ATTACHMENT_CONTENT_TYPES = new Set([
+  'application/pdf', 'application/msword', 'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/zip', 'application/x-zip-compressed',
+  'application/octet-stream', 'application/json', 'text/plain', 'text/csv',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/heic', 'image/heif',
+]);
+
 // ---------------------------------------------------------------------------
 // помощни функции
 // ---------------------------------------------------------------------------
@@ -1730,8 +1744,37 @@ async function handleApi(req, res, pathname, query) {
       const reconciliation = body.statement_closing_balance != null
         ? db.getBankBalanceReconciliation(body.statement_closing_balance)
         : null;
+      // ПРЕДУПРЕЖДЕНИЕ ЗА РИСК ОТ ПОВТОРНО КАЧВАНЕ, когато банката/извлечението
+      // не дава референтни номера (external_ref) — защитата по-горе (duplicate
+      // по external_ref) тогава изобщо не сработва, и администраторът няма
+      // никакъв сигнал, ако случайно качи СЪЩОТО извлечение втори път (напр.
+      // презареди грешен файл) — всичко просто се записва двойно без грешка
+      // (открито и потвърдено при пълния одит на системата, 2026-10-17).
+      // Нарочно НЕ блокираме автоматично (датите на две легитимни отделни
+      // извлечения също може съвсем нормално да се застъпват с 1 ден в
+      // края/началото на периода) — само предупреждаваме, администраторът
+      // преценява.
+      let duplicateRiskWarning = null;
+      const goodRows = rows.filter(r => !r.error);
+      const hasAnyExternalRef = goodRows.some(r => r.external_ref);
+      if (!hasAnyExternalRef && goodRows.length) {
+        const dates = goodRows.map(r => r.date).filter(Boolean).sort();
+        const minDate = dates[0], maxDate = dates[dates.length - 1];
+        if (minDate && maxDate) {
+          const bankName = body.bank_name || 'Пощенска банка';
+          const overlapping = db.listBankStatementImports().filter(imp =>
+            (imp.bank_name || 'Пощенска банка') === bankName &&
+            imp.period_from && imp.period_to &&
+            imp.period_from <= maxDate && imp.period_to >= minDate
+          );
+          if (overlapping.length) {
+            duplicateRiskWarning = `Това извлечение (${minDate} – ${maxDate}) няма референтни номера за автоматично откриване на вече качени транзакции, а периодът му се застъпва с ${overlapping.length} по-ранно качване (${overlapping.map(o => `${o.period_from} – ${o.period_to}`).join(', ')}). Проверете внимателно дали случайно не качвате същото извлечение повторно, преди да натиснете "Запиши".`;
+          }
+        }
+      }
       return sendJson(res, 200, {
         headers: parsed.headers, detected: parsed.detected, errors: parsed.errors, rows, reconciliation,
+        duplicate_risk_warning: duplicateRiskWarning,
       });
     }
     if (pathname === '/api/cashier/bank-statement/apply' && req.method === 'POST') {
@@ -2087,7 +2130,7 @@ async function handleApi(req, res, pathname, query) {
         const message = await mail.getMessage(mailMessageMatch[1], folder);
         return sendJson(res, 200, { message });
       } catch (err) {
-        const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : 502);
+        const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : (err.code === 'MAIL_TOO_LARGE' ? 413 : 502));
         return sendJson(res, status, { error: err.message });
       }
     }
@@ -2116,13 +2159,24 @@ async function handleApi(req, res, pathname, query) {
       try {
         const folder = query.folder || 'INBOX';
         const att = await mail.getAttachment(mailAttachmentMatch[1], parseInt(mailAttachmentMatch[2], 10), folder);
+        // att.contentType идва директно от MIME заглавката на ВХОДЯЩОТО писмо
+        // (виж lib/mail.js) — тоест е под контрола на ПОДАТЕЛЯ, не на нашата
+        // система, и се подаваше директно в HTTP response заглавката без
+        // никаква проверка (открито и потвърдено при пълния одит на
+        // системата, 2026-10-17). Content-Disposition вече е "attachment"
+        // (принудително сваляне, не inline показване), но пропускаме само
+        // познат/безопасен набор от типове — всичко друго (вкл. евентуално
+        // злонамерено форматиран низ) пада към безопасния универсален тип.
+        const rawContentType = String(att.contentType || '');
+        const baseContentType = rawContentType.split(';')[0].trim().toLowerCase();
+        const safeContentType = MAIL_ATTACHMENT_CONTENT_TYPES.has(baseContentType) ? baseContentType : 'application/octet-stream';
         res.writeHead(200, {
-          'content-type': att.contentType,
+          'content-type': safeContentType,
           'content-disposition': `attachment; filename="${att.filename.replace(/"/g, '')}"`,
         });
         return res.end(att.content);
       } catch (err) {
-        const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : 502);
+        const status = err.code === 'MAIL_NOT_CONFIGURED' ? 503 : (err.code === 'MAIL_NOT_FOUND' ? 404 : (err.code === 'MAIL_TOO_LARGE' ? 413 : 502));
         return sendJson(res, status, { error: err.message });
       }
     }
