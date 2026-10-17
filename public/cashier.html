@@ -152,11 +152,12 @@ function bankImportHistoryHtml(imports) {
 }
 
 function bankStatementPreviewHtml(result) {
-  const { headers, detected, errors, rows, reconciliation } = result;
+  const { headers, detected, errors, rows, reconciliation, duplicate_risk_warning } = result;
   const goodRows = rows.filter(r => !r.error);
   const badRows = rows.filter(r => r.error);
   return `
     ${errors.length ? `<div class="error-box show">${errors.join('<br>')} <br><span class="hint">Разпознати заглавия в файла: ${headers.join(', ')}</span></div>` : ''}
+    ${duplicate_risk_warning ? `<div class="error-box show" style="background:var(--warn-bg,#fff3cd);color:var(--warn-text,#856404);border-color:var(--warn-border,#ffe69c);">⚠ ${duplicate_risk_warning}</div>` : ''}
     ${reconciliation ? `<div class="stat-grid" style="margin-bottom:14px;">
       <div class="stat-card"><div class="label">Изчислено салдо (след това качване)</div><div class="value">${fmtMoney(reconciliation.computed_balance)}</div></div>
       <div class="stat-card"><div class="label">Салдо по извлечението</div><div class="value">${fmtMoney(reconciliation.statement_closing_balance)}</div></div>
