@@ -267,9 +267,13 @@ async function init() {
   }
 
   document.getElementById('app-content').innerHTML = `
+    <div class="hint" style="background:var(--warn-soft,#fdf3e2);border:1px solid var(--warn,#b7791f);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.95em;">
+      ⚠️ <strong>Тази страница НЕ плаща заплати.</strong> Каквото качите тук, отива само в таблото за активност/тенденции по-долу — НЕ създава или променя суми в „Заплати“.
+      За да влязат заработките на шофьорите в заплатите (за да може да им се плати), качете седмичния Bolt/Glovo файл в <a href="/payroll.html" style="font-weight:600;">Заплати → Разширени инструменти → Импорт от Bolt/Glovo</a>.
+    </div>
     <div class="panel" id="bsImportPanel">
-      <div class="panel-head"><h2>Качване на седмичен отчет от Bolt</h2></div>
-      <p class="hint">Качете 1 до 3 от седмичните Bolt Food партньорски отчета (courier_orders, courier_activity_periods, fleet_courier_earnings_and_balances) — системата ще съпостави куриерите със съществуващи профили по телефон и ще покаже преглед преди запис. Данните тук са само статистика за активността — заплатите се въвеждат отделно в „Заплати“.</p>
+      <div class="panel-head"><h2>Качване на седмичен отчет от Bolt (само статистика)</h2></div>
+      <p class="hint">Качете 1 до 3 от седмичните Bolt Food партньорски отчета (courier_orders, courier_activity_periods, fleet_courier_earnings_and_balances) — системата ще съпостави куриерите със съществуващи профили по телефон и ще покаже преглед преди запис. Данните тук са само статистика за активността — заплатите се въвеждат отделно в „Заплати“ (вижте предупреждението най-горе).</p>
       <div class="error-box" id="bsImportError"></div>
       <div id="bsImportUnavailable" class="hint" style="display:none;color:var(--warn,#c99);">Импортът не е наличен в момента (липсва пакетът за четене на Excel файлове в тази среда).</div>
       <div id="bsImportControls">

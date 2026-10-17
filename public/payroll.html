@@ -658,6 +658,36 @@ async function loadOutstandingDues() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Следене за липсващи качени седмични Bolt/Glovo отчети (изрично искане на
+// потребителя: "да се следи за липсващи качени таблици от Болт и Гловo за
+// заплати") — вижда директно в payroll_entries дали за всяка от последните
+// няколко ПРИКЛЮЧЕНИ седмици има принос от Bolt и от Glovo (вж.
+// db.getRecentImportCoverage); НЕ проверява bolt-stats.html — тая страница е
+// отделна, чисто информативна статистика и НЕ захранва заплатите (вижте
+// предупреждението в самия bolt-stats.html — изрично объркване, което
+// потребителят съобщи: качен файл там не променя нищо тук).
+async function loadImportCoverage() {
+  const banner = document.getElementById('importCoverageBanner');
+  if (!banner) return;
+  try {
+    const { weeks } = await Api.get('/api/hr/payroll/import/coverage');
+    const missing = weeks.filter(w => !w.has_bolt || !w.has_glovo);
+    if (!missing.length) { banner.innerHTML = ''; return; }
+    banner.innerHTML = `<div class="hint" style="background:var(--warn-soft,#fdf3e2);border:1px solid var(--warn,#b7791f);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+      ⚠️ Липсва качен отчет за ${missing.length} ${missing.length === 1 ? 'седмица' : 'седмици'}:
+      <ul style="margin:6px 0 0;padding-left:20px;">
+        ${missing.map(w => `<li>${weekRangeLabel(w.week_start, w.week_end)} —
+          ${!w.has_bolt ? '<strong>Bolt</strong>' : ''}${!w.has_bolt && !w.has_glovo ? ' и ' : ''}${!w.has_glovo ? '<strong>Glovo</strong>' : ''}
+          ${w.entries_count ? '' : '(няма никакви записи за тази седмица)'}</li>`).join('')}
+      </ul>
+      <a href="#importPanel" id="importCoverageBannerLink" style="font-weight:600;display:inline-block;margin-top:6px;">Качи липсващия отчет тук ↓</a>
+    </div>`;
+    const details = document.getElementById('advancedToolsDetails');
+    if (details) details.open = true;
+  } catch (e) { /* незадължително предупреждение — мълчим при грешка, за да не пречим на основната страница */ }
+}
+
 async function initImportPanel() {
   const platformSelect = document.getElementById('importPlatform');
   const weekFields = document.getElementById('importWeekFields');
@@ -731,6 +761,13 @@ async function initImportPanel() {
           const res = await Api.post('/api/hr/payroll/import/apply', body);
           previewHost.innerHTML = `<p class="hint">Готово: записани ${res.written_entries} седмични записа, създадени ${res.created_profiles.length} нови профила, останали несъпоставени ${res.unmatched.length}.</p>`;
           await loadPayrollImportHistory();
+          // Главната таблица "⚡ Бързо изплащане" горе и банерът за липсващи
+          // отчети НЕ се опресняват сами — без това администраторът вижда
+          // "Готово" тук, но при качването горе таблицата остава със старите
+          // (стари) суми, докато не натисне ръчно "Обнови" — точно обърканото
+          // усещане "качих го, но никъде не се вижда", изрично съобщено.
+          await loadQuickPayReport();
+          await loadImportCoverage();
           if (selectedProfileId) await loadEntries();
         } catch (err) {
           errorBox.textContent = err.message;
@@ -892,6 +929,7 @@ async function init() {
       <div class="panel-head"><h2>⚡ Бързо изплащане и справка</h2></div>
       <p class="hint">Филтрирай по период/град/мениджър, маркирай и изплати с едно копче — заместя нуждата да се избира служител по един.</p>
       <div id="outstandingDuesBanner"></div>
+      <div id="importCoverageBanner"></div>
       <div id="qpPeriodPicker"></div>
       <div class="field-row">
         <div class="field"><label>От (седмица, начало)</label><input type="date" id="qpFrom"></div>
@@ -1007,7 +1045,7 @@ async function init() {
 
     <div class="panel" id="importPanel">
       <div class="panel-head"><h2>Импорт от Bolt / Glovo (реален седмичен файл)</h2></div>
-      <p class="hint">Качете оригиналния .xlsx експорт от Bolt Food или Glovo (Freestreets BG) за дадена седмица — системата ще опита да съпостави куриерите със съществуващи профили по телефон и ще предложи преглед преди запис. Заработката се изчислява като сумата, изкарана от шофьора вкл. бакшишите, без ДДС.</p>
+      <p class="hint"><strong>Това е мястото, което определя заплатите</strong> — качете оригиналния .xlsx експорт от Bolt Food или Glovo (Freestreets BG) за дадена седмица — системата ще опита да съпостави куриерите със съществуващи профили по телефон и ще предложи преглед преди запис. Заработката се изчислява като сумата, изкарана от шофьора вкл. бакшишите, без ДДС. (Статистиката за активност в „Bolt статистика“ е отделна страница и не влияе на тази таблица.)</p>
       <div class="error-box" id="importError"></div>
       <div id="importUnavailable" class="hint" style="display:none;color:var(--warn,#c99);">Импортът не е наличен в момента (липсва пакетът за четене на Excel файлове в тази среда).</div>
       <div id="importControls" class="field-row">
@@ -1057,6 +1095,7 @@ async function init() {
     await initSettingsPanel();
     await initManualPaymentPanel();
     await loadOutstandingDues();
+    await loadImportCoverage();
     await initImportPanel();
     await loadPayrollImportHistory();
     await initPayrollStatsPanel();
