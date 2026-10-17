@@ -1996,6 +1996,14 @@ async function handleApi(req, res, pathname, query) {
         // предпазен бекъп на ТЕКУЩОТО състояние точно преди да го презапишем
         backup.writeBackup(db.readDb(), { reason: 'pre-restore' });
         db.writeDb(parsed.data);
+        // КРИТИЧНО: writeDb() в Postgres режим е fire-and-forget по подразбиране
+        // (виж коментара над flushPendingWrite в lib/db.js) — без това изчакване
+        // възстановяването можеше да върне "успешно" на администратора, докато
+        // реалният запис в Postgres още чака на опашка; рестарт на процеса точно
+        // в този прозорец би изгубил възстановяването БЕЗ ГРЕШКА, следващото
+        // зареждане би показало старите (невъзстановени) данни — открито при
+        // пълния одит на системата, 2026-10-17.
+        await db.flushPendingWrite();
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
@@ -3694,6 +3702,14 @@ async function handleApi(req, res, pathname, query) {
     // ЕГН/адрес/избор на договор върху СЪЩИЯ вече съществуващ запис.
     const applyDetailsMatch = pathname.match(/^\/api\/apply\/details\/([a-f0-9]+)$/);
     if (applyDetailsMatch && req.method === 'GET') {
+      // без лимит тук GET-ът позволява брутфорс претърсване на валидни токени
+      // (24 байта, но пространството за опити иначе е неограничено) — връща
+      // ЕГН/адрес/номера на документи без вход в системата (открито и
+      // потвърдено при пълния одит на системата, 2026-10-17); POST вариантът
+      // по-долу вече имаше тази защита, GET-ът я нямаше.
+      if (rateLimited(`apply-details-get:${clientIp(req)}`, { max: 30, windowMs: 10 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много опити от този адрес. Опитайте по-късно.' });
+      }
       const app = db.getJobApplicationByToken(applyDetailsMatch[1]);
       if (!app) return sendJson(res, 404, { error: 'Невалиден, изтекъл или вече обработен линк.' });
       return sendJson(res, 200, {
@@ -3758,6 +3774,12 @@ async function handleApi(req, res, pathname, query) {
     // си ЛК/книжка/ЕГН/адрес/телефон — без вход в системата.
     const personnelDetailsMatch = pathname.match(/^\/api\/personnel-details\/([a-f0-9]+)$/);
     if (personnelDetailsMatch && req.method === 'GET') {
+      // същата причина като при apply-details-get по-горе: GET без лимит
+      // позволява брутфорс на токена, връщайки ЕГН/адрес/снимки на лична
+      // карта без вход (открито и потвърдено при пълния одит, 2026-10-17).
+      if (rateLimited(`personnel-details-get:${clientIp(req)}`, { max: 30, windowMs: 10 * 60 * 1000 })) {
+        return sendJson(res, 429, { error: 'Твърде много опити от този адрес. Опитайте по-късно.' });
+      }
       const profile = db.getUserByPersonnelToken(personnelDetailsMatch[1]);
       if (!profile) return sendJson(res, 404, { error: 'Невалиден линк.' });
       return sendJson(res, 200, {
