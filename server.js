@@ -840,6 +840,11 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 403, { error: 'Акаунтът не е активен — свържете се с администратор' });
       }
       const token = db.createSession(user.id);
+      // сесиите вече се пазят трайно (вж. коментара над createSession в
+      // lib/db.js) — изчакваме реален запис, за да не изгуби"изведнъж
+      // влезлия" потребител сесията си при рестарт точно в секундите след
+      // login, преди да е стигнала до Postgres
+      await db.flushPendingWrite();
       const secureFlag = IS_PROD ? '; Secure' : '';
       res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800${secureFlag}`);
       const { password: _pw, ...safe } = user;
