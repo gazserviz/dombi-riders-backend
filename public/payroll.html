@@ -573,15 +573,33 @@ async function initManualPaymentPanel() {
 async function loadOutstandingDues() {
   const host = document.getElementById('outstandingDuesHost');
   const errorBox = document.getElementById('outstandingDuesError');
+  const banner = document.getElementById('outstandingDuesBanner');
   if (!host) return;
   errorBox.classList.remove('show');
   try {
     const { dues } = await Api.get('/api/hr/outstanding-dues?settled=false');
     if (!dues.length) {
       host.innerHTML = '<p class="hint">Няма чакащи дължими суми.</p>';
+      if (banner) banner.innerHTML = '';
       return;
     }
     const total = dues.reduce((s, d) => s + Number(d.amount || 0), 0);
+    // Тия суми НЕ влизат в таблицата/сумите на "Бързо изплащане" по-горе (тя
+    // чете само payroll_entries, а тук пренесените от финансовия рестарт
+    // записи живеят в отделен списък outstanding_dues) — administратор, който
+    // гледа само горната таблица, може изобщо да не разбере, че тук долу,
+    // скрито в "Разширени инструменти", има чакащи пари за истински хора.
+    // Затова: видим банер веднага горе + автоматично разгъване на секцията,
+    // вместо тихо мълчание (изрично съобщен проблем: "не се показват и не
+    // мога да ги изплатя").
+    if (banner) {
+      banner.innerHTML = `<div class="hint" style="background:var(--warn-soft,#fdf3e2);border:1px solid var(--warn,#b7791f);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+        ⚠️ Има <strong>${dues.length}</strong> стари дължими суми (отпреди финансовия рестарт) на обща стойност <strong>${fmtMoney(total)}</strong> —
+        НЕ са част от таблицата по-долу. <a href="#outstandingDuesPanel" style="font-weight:600;">Виж ги и ги изплати тук ↓</a>
+      </div>`;
+    }
+    const details = document.getElementById('advancedToolsDetails');
+    if (details) details.open = true;
     host.innerHTML = `
       <p class="hint">Общо чакащи: <strong>${fmtMoney(total)}</strong> (${dues.length} ${dues.length === 1 ? 'запис' : 'записа'}). Сумата може да се коригира преди да се маркира като уредена, ако първоначално пренесената стойност е грешна — при "Отбележи уредено" точно въведената тук сума се записва и като разход в <a href="/cashier.html">общата каса</a>.</p>
       <div class="table-wrap"><table class="table">
@@ -873,6 +891,7 @@ async function init() {
     <div class="panel" id="quickPayPanel">
       <div class="panel-head"><h2>⚡ Бързо изплащане и справка</h2></div>
       <p class="hint">Филтрирай по период/град/мениджър, маркирай и изплати с едно копче — заместя нуждата да се избира служител по един.</p>
+      <div id="outstandingDuesBanner"></div>
       <div id="qpPeriodPicker"></div>
       <div class="field-row">
         <div class="field"><label>От (седмица, начало)</label><input type="date" id="qpFrom"></div>
