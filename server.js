@@ -2591,6 +2591,7 @@ async function handleApi(req, res, pathname, query) {
         source: body.source || 'manual',
         created_by: user.id,
       });
+      await db.flushPendingWrite();
       return sendJson(res, 200, { entry: rec });
     }
 
@@ -2607,6 +2608,7 @@ async function handleApi(req, res, pathname, query) {
           profile_id: body.profile_id, week_start: body.week_start, week_end: body.week_end,
           platform: body.platform, amount: body.amount, note: body.note, created_by: user.id,
         });
+        await db.flushPendingWrite();
         return sendJson(res, 200, { entry: rec });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
@@ -2640,6 +2642,7 @@ async function handleApi(req, res, pathname, query) {
         const rec = db.settleOutstandingDue(settleDueMatch[1], {
           settled_by: user.id, note: body && body.note, amount: body && body.amount,
         });
+        await db.flushPendingWrite();
         return sendJson(res, 200, { due: rec });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
@@ -2659,6 +2662,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       try {
         const rec = db.deleteOutstandingDue(deleteDueMatch[1]);
+        await db.flushPendingWrite();
         return sendJson(res, 200, { due: rec });
       } catch (err) {
         return sendJson(res, 404, { error: err.message });
@@ -2676,6 +2680,7 @@ async function handleApi(req, res, pathname, query) {
       const user = requireSuperAdmin(req, res);
       if (!user) return;
       const result = db.resetPayrollForFinancialStart({ created_by: user.id });
+      await db.flushPendingWrite();
       return sendJson(res, 200, result);
     }
 
@@ -2712,7 +2717,18 @@ async function handleApi(req, res, pathname, query) {
           deduction_amount: rec.deduction_amount, car_rent_amount: rec.car_rent_amount, net_amount: rec.net_amount,
         });
       }
+      await db.flushPendingWrite();
       return sendJson(res, 200, { updated_count: updated.length, updated });
+    }
+
+    // ---- Следене за липсващи качени седмични Bolt/Glovo отчети ----------
+    // вж. db.getRecentImportCoverage за пълния контекст (изрично искане на
+    // потребителя: администратор качва файл, мисли че е записан, но не е).
+    if (pathname === '/api/hr/payroll/import/coverage' && req.method === 'GET') {
+      const user = requirePermission(req, res, 'payroll', 'view');
+      if (!user) return;
+      const weeks = db.getRecentImportCoverage({ weeksBack: query.weeks_back ? Number(query.weeks_back) : undefined });
+      return sendJson(res, 200, { weeks });
     }
 
     // ---- Справка "дължимо / изплатено" --------------------------------
@@ -2742,6 +2758,7 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 400, { error: 'Липсва списък от записи за изплащане (ids).' });
       }
       const result = db.bulkMarkPayrollPaid(body.ids, user.id);
+      await db.flushPendingWrite();
       return sendJson(res, 200, { updated_count: result.updated.length, updated: result.updated, errors: result.errors });
     }
 
@@ -2786,6 +2803,7 @@ async function handleApi(req, res, pathname, query) {
         const rec = db.decidePayrollCorrectionRequest(payrollCorrectionDecideMatch[1], {
           approve: !!body.approve, decided_by: user.id, decision_note: body.decision_note || null,
         });
+        await db.flushPendingWrite();
         return sendJson(res, 200, { request: rec });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
@@ -2969,6 +2987,13 @@ async function handleApi(req, res, pathname, query) {
         }
       }
 
+      // ВАЖНО: изчакваме реалния запис в Postgres преди да върнем "готово" —
+      // точно тук администраторът качва седмичния Bolt/Glovo файл, който
+      // определя заплатите; без това (стария, "best effort" fire-and-forget
+      // запис) UI показваше успех, но при рестарт на процеса точно в този
+      // прозорец записът тихо изчезваше (изрично съобщен проблем — виж
+      // flushPendingWrite в lib/db.js).
+      await db.flushPendingWrite();
       return sendJson(res, 200, {
         written_entries: writtenEntries.length,
         created_profiles: created,
@@ -3103,6 +3128,7 @@ async function handleApi(req, res, pathname, query) {
           written_count: written.length, unmatched_count: unmatched.length, imported_by: user.id,
         });
       } catch (e) { /* историята е best-effort, не трябва да проваля самия импорт */ }
+      await db.flushPendingWrite();
       return sendJson(res, 200, { written_entries: written.length, unmatched });
     }
 
@@ -3178,6 +3204,7 @@ async function handleApi(req, res, pathname, query) {
       });
       const event = db.addEsignEvent({ document_type: 'payroll', document_id: entry.id, ...result });
       const signed = db.signPayrollEntry(entry.id, { signed_by_name: result.signer_name });
+      await db.flushPendingWrite();
       return sendJson(res, 200, { event, entry: signed });
     }
 
@@ -3187,6 +3214,7 @@ async function handleApi(req, res, pathname, query) {
       if (!user) return;
       const body = await readJsonBody(req);
       const rec = db.markPayrollPaid(payrollPaidMatch[1], body.paid !== false, user.id);
+      await db.flushPendingWrite();
       return sendJson(res, 200, { entry: rec });
     }
 
