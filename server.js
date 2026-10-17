@@ -1590,23 +1590,29 @@ async function handleApi(req, res, pathname, query) {
       const user = requirePermission(req, res, 'cashier', 'view');
       if (!user) return;
       const cashierId = db.getCashierProfileId();
-      if (!cashierId) return sendJson(res, 200, { cashier: null, balance: 0, transactions: [] });
+      const full = query.full === '1' || query.full === 'true';
+      if (!cashierId) return sendJson(res, 200, { cashier: null, balance: 0, transactions: [], financial_start_date: full ? null : db.getFinancialStartDate(), full });
       const cashier = db.findUserById(cashierId);
       return sendJson(res, 200, {
         cashier: cashier ? { id: cashier.id, full_name: cashier.full_name, role: cashier.role } : null,
-        balance: db.getCashierBalance(cashierId),
-        transactions: db.listCashierTransactions(cashierId, { from: query.from, to: query.to }),
+        balance: db.getCashierBalance(cashierId, { full }),
+        transactions: db.listCashierTransactions(cashierId, { from: query.from, to: query.to, full }),
+        financial_start_date: full ? null : db.getFinancialStartDate(),
+        full,
       });
     }
     // връща и списък мениджъри/админи, измежду които супер администраторът
-    // може да избере касиер — само super_admin вижда/пипа тази настройка
+    // може да избере касиер — само super_admin вижда/пипа тази настройка.
+    // financial_start_date = "официален старт на системата" (изрично искане
+    // на потребителя 2026-10-17) — вж. db.getFinancialStartDate за пълния
+    // контекст защо НЕ трием касовата история, а само филтрираме по дата.
     if (pathname === '/api/cashier/settings' && req.method === 'GET') {
       const user = requireSuperAdmin(req, res);
       if (!user) return;
       const candidates = db.listUsers()
         .filter(u => ['admin', 'manager'].includes(u.role) && u.status === 'active')
         .map(u => ({ id: u.id, full_name: u.full_name, role: u.role }));
-      return sendJson(res, 200, { cashier_profile_id: db.getCashierProfileId(), candidates });
+      return sendJson(res, 200, { cashier_profile_id: db.getCashierProfileId(), candidates, financial_start_date: db.getFinancialStartDate() });
     }
     if (pathname === '/api/cashier/settings' && req.method === 'PUT') {
       const user = requireSuperAdmin(req, res);
@@ -1614,7 +1620,15 @@ async function handleApi(req, res, pathname, query) {
       const body = await readJsonBody(req);
       try {
         const cashierId = db.setCashierProfileId(body.profile_id || null);
-        return sendJson(res, 200, { cashier_profile_id: cashierId });
+        let financialStartDate = db.getFinancialStartDate();
+        // financial_start_date е ПО ИЗБОР поле в същото тяло — изпраща се
+        // само когато администраторът изрично е променил/запазил тази секция
+        // (вж. public/cashier.html), за да не се налага отделен endpoint.
+        if (Object.prototype.hasOwnProperty.call(body, 'financial_start_date')) {
+          financialStartDate = db.setFinancialStartDate(body.financial_start_date || null, { created_by: user.id });
+        }
+        await db.flushPendingWrite();
+        return sendJson(res, 200, { cashier_profile_id: cashierId, financial_start_date: financialStartDate });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
       }
@@ -1798,7 +1812,8 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/cashier/period-summary' && req.method === 'GET') {
       const user = requirePermission(req, res, 'cashier', 'view');
       if (!user) return;
-      return sendJson(res, 200, db.getCashierPeriodSummary({ from: query.from, to: query.to }));
+      const full = query.full === '1' || query.full === 'true';
+      return sendJson(res, 200, db.getCashierPeriodSummary({ from: query.from, to: query.to, full }));
     }
     // статистика (НЕ касова!) за наем на коли + удръжки по договор — виж
     // коментара над CASHIER_TX_TYPES/upsertPayrollEntry в lib/db.js
