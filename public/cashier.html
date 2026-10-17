@@ -35,16 +35,38 @@ function txnTypeLabel(t) { return TXN_TYPE_LABELS[t] || t; }
 
 let CURRENT_USER = null;
 let VEHICLES = [];
+// изрично искане на потребителя (2026-10-17): официален старт на системата —
+// по подразбиране касата/справките показват само от тази дата нататък; тук
+// пазим дали текущо гледаме "пълна история" (архив отпреди старта), общо за
+// loadCashier() и loadSummary(), за да се сменят заедно от един бутон.
+let showFullCashHistory = false;
 
-function summaryHtml(cashier, balance) {
+function startDateBadgeHtml(financialStartDate, full) {
+  if (full) {
+    return `<div class="hint" style="background:var(--warn-soft,#fdf3e2);border:1px solid var(--warn,#b7791f);border-radius:8px;padding:8px 12px;margin-bottom:12px;">
+      ⚠️ Гледате <strong>пълната история</strong> — включва и движения отпреди официалния старт на системата.
+      <button type="button" class="btn btn-ghost btn-sm" id="toggleFullHistoryBtn" style="margin-left:8px;">← Само от официалния старт</button>
+    </div>`;
+  }
+  if (financialStartDate) {
+    return `<div class="hint" style="margin-bottom:12px;">
+      Показва се от <strong>официалния старт на системата — ${fmtDate(financialStartDate)}</strong>.
+      <button type="button" class="btn btn-ghost btn-sm" id="toggleFullHistoryBtn" style="margin-left:8px;">Покажи пълна история →</button>
+    </div>`;
+  }
+  return '';
+}
+
+function summaryHtml(cashier, balance, financialStartDate, full) {
   if (!cashier) {
     return `<div class="panel"><p class="hint">Все още не е избран касиер — общата каса няма да натрупва движения, докато супер администраторът не избере кой служител я управлява.</p></div>`;
   }
   return `
+    ${startDateBadgeHtml(financialStartDate, full)}
     <div class="stat-grid">
       <div class="stat-card"><div class="label">Касиер</div><div class="value" style="font-size:1.1rem;">${cashier.full_name}</div>
         <div class="sub">${ROLE_LABELS[cashier.role] || cashier.role}</div></div>
-      <div class="stat-card"><div class="label">Текуща наличност в брой</div><div class="value ${balance >= 0 ? 'green' : 'warn'}">${fmtMoney(balance)}</div></div>
+      <div class="stat-card"><div class="label">Текуща наличност в брой${!full && financialStartDate ? ' (от старта)' : ''}</div><div class="value ${balance >= 0 ? 'green' : 'warn'}">${fmtMoney(balance)}</div></div>
     </div>`;
 }
 
@@ -220,7 +242,12 @@ function adjustmentFormHtml() {
     </div>`;
 }
 
-function settingsFormHtml(cashierProfileId, candidates) {
+function settingsFormHtml(cashierProfileId, candidates, financialStartDate) {
+  // предложена дата по подразбиране в полето: понеделник на текущата
+  // седмица (виж mondayOf/isoDateOnly в app.js — mondayOf очаква стринг
+  // дата, не Date обект) — админът може да я промени преди запазване, напр.
+  // ако иска следващата седмица да е официалният старт
+  const suggestedMonday = mondayOf(isoDateOnly(new Date()));
   return `
     <div class="panel">
       <div class="panel-head"><h2>Настройка на касиера (само супер администратор)</h2></div>
@@ -230,7 +257,15 @@ function settingsFormHtml(cashierProfileId, candidates) {
         <option value="">— няма избран —</option>
         ${candidates.map(c => `<option value="${c.id}" ${c.id === cashierProfileId ? 'selected' : ''}>${c.full_name} (${ROLE_LABELS[c.role] || c.role})</option>`).join('')}
       </select></div>
-      <button type="button" class="btn btn-ghost btn-sm" id="saveCashierBtn" style="margin-top:8px;">Запази</button>
+
+      <div class="field" style="margin-top:14px;">
+        <label>Официален старт на системата (по избор)</label>
+        <input type="date" id="financialStartDateInput" value="${financialStartDate || ''}">
+        <p class="hint" style="margin-top:4px;">От тази дата нататък касата и справките показват „от нула" — нищо от по-старата история НЕ се трие, само спира да влиза по подразбиране в текущия баланс/справки (пълната история остава достъпна при изричен преглед). Взетите, но невърнати депозити по договори продължават да се следят изцяло, независимо от тази дата. Оставете празно, за да върнете показването на пълната история по подразбиране.</p>
+        <button type="button" class="btn btn-ghost btn-sm" id="useThisWeekBtn" style="margin-top:4px;">Използвай понеделник тази седмица (${fmtDate(suggestedMonday)})</button>
+      </div>
+
+      <button type="button" class="btn btn-primary btn-sm" id="saveCashierBtn" style="margin-top:12px;">Запази</button>
     </div>`;
 }
 
@@ -279,17 +314,24 @@ function periodSummaryHtml(summary, nonCash) {
 async function loadCashier() {
   const host = document.getElementById('cashierHost');
   host.innerHTML = `<div class="loading">Зареждане…</div>`;
-  const { cashier, balance, transactions } = await Api.get('/api/cashier');
+  const { cashier, balance, transactions, financial_start_date, full } = await Api.get(`/api/cashier${showFullCashHistory ? '?full=1' : ''}`);
   const isSuperAdmin = CURRENT_USER.role === 'super_admin';
 
   host.innerHTML = `
-    ${summaryHtml(cashier, balance)}
+    ${summaryHtml(cashier, balance, financial_start_date, full)}
     ${isSuperAdmin ? adjustmentFormHtml() : ''}
     <div class="panel">
       <div class="panel-head"><h2>Движения в брой</h2></div>
       ${transactionsHtml(transactions)}
     </div>
   `;
+
+  const toggleBtn = document.getElementById('toggleFullHistoryBtn');
+  if (toggleBtn) toggleBtn.addEventListener('click', async () => {
+    showFullCashHistory = !showFullCashHistory;
+    await loadCashier();
+    await loadSummary();
+  });
 
   if (isSuperAdmin) {
     const kindSelect = document.getElementById('adjKindSelect');
@@ -351,6 +393,7 @@ async function loadSummary() {
   const qs = new URLSearchParams();
   if (from) qs.set('from', from);
   if (to) qs.set('to', to);
+  if (showFullCashHistory) qs.set('full', '1');
   const [summary, nonCash] = await Promise.all([
     Api.get(`/api/cashier/period-summary?${qs.toString()}`),
     Api.get(`/api/cashier/non-cash-payroll-stats?${qs.toString()}`),
@@ -369,16 +412,22 @@ async function loadSummary() {
 async function loadSettings() {
   const host = document.getElementById('settingsHost');
   try {
-    const { cashier_profile_id, candidates } = await Api.get('/api/cashier/settings');
-    host.innerHTML = settingsFormHtml(cashier_profile_id, candidates);
+    const { cashier_profile_id, candidates, financial_start_date } = await Api.get('/api/cashier/settings');
+    host.innerHTML = settingsFormHtml(cashier_profile_id, candidates, financial_start_date);
+    document.getElementById('useThisWeekBtn').addEventListener('click', () => {
+      document.getElementById('financialStartDateInput').value = mondayOf(isoDateOnly(new Date()));
+    });
     document.getElementById('saveCashierBtn').addEventListener('click', async () => {
       const errorBox = document.getElementById('settingsError');
       errorBox.classList.remove('show');
       const profileId = document.getElementById('cashierSelect').value || null;
+      const financialStartDate = document.getElementById('financialStartDateInput').value || null;
       try {
-        await Api.put('/api/cashier/settings', { profile_id: profileId });
+        await Api.put('/api/cashier/settings', { profile_id: profileId, financial_start_date: financialStartDate });
+        showFullCashHistory = false;
         await loadCashier();
         await loadSettings();
+        await loadSummary();
       } catch (err) {
         errorBox.textContent = err.message;
         errorBox.classList.add('show');
